@@ -3,7 +3,7 @@
 // matches the canonically equivalent text.
 // Not run by default: python tools/difftest.py d_known_regex_canon_eq
 // difftest: heap 32768 -- the Regex engine builds its tables on the heap: the default 16 KB runs out
-// difftest: large -- the Regex engine is about 240 KB of flash
+// difftest: large -- a program that uses Regex is about 365 KB of flash
 fun err(label: String, block: () -> Any?) {
     val r = runCatching(block)
     val e = r.exceptionOrNull()

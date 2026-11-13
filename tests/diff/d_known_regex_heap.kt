@@ -1,4 +1,4 @@
-// Known not to work on kmicro yet: Regex beyond a few small patterns. The engine keeps its tables and compiled
+// Does not work on kmicro: Regex beyond a few small patterns. The engine keeps its tables and compiled
 // patterns on the heap, which runs out after the first line with the default 16 KB, and with 64 KB after 16 of the 35
 // lines (58032 bytes live, the free memory in 129 pieces). (A few small patterns with a 32 KB heap: d_regex.kt.)
 // Not run by default: python tools/difftest.py d_known_regex_heap

@@ -1,7 +1,7 @@
 // Regex: find, findAll with groups, replace with group references, split, IGNORE_CASE, destructured, matchEntire,
 // \w \d \s. More patterns, or \p{L}, need more heap (d_known_regex_heap.kt).
 // difftest: heap 32768 -- the Regex engine builds its tables on the heap: the default 16 KB runs out
-// difftest: large -- the Regex engine is about 240 KB of flash
+// difftest: large -- a program that uses Regex is about 365 KB of flash
 fun main() {
     val r = Regex("""(\w+)@(\w+)\.com""")
     println(r.find("mail: alice@example.com, bob@test.com")?.groupValues)
