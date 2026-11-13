@@ -222,3 +222,51 @@ KM_NOTHROW __attribute__((noinline)) const InterfaceTableRecord *LookupInterface
     }
     return table + l;
 }
+
+/* ---- reflection helpers (Types.cpp, TypeInfo.cpp) ---- */
+
+/* KClass.findAssociatedObject: the compiler lists {key class, getter} pairs per class, ending with a null key. */
+typedef struct { const TypeInfo *key; ObjHeader *(*get)(ObjHeader **result); } AssociatedObjectTableRecord;
+ObjHeader *Kotlin_TypeInfo_findAssociatedObject(const void *type, const void *key, ObjHeader **result)
+{
+    const AssociatedObjectTableRecord *r = ((const TypeInfo *)type)->associatedObjects;
+    for (; r != NULL && r->key != NULL; r++)
+        if (r->key == key)
+            return r->get(result);
+    return km_return(result, NULL);
+}
+
+KM_NOTHROW int32_t Kotlin_internal_reflect_getObjectReferenceFieldsCount(const ObjHeader *obj)
+{
+    const TypeInfo *t = km_type_info(obj);
+    return t->instanceSize_ < 0 ? 0 : t->objOffsetsCount_;
+}
+KM_NOTHROW ObjHeader *Kotlin_internal_reflect_getObjectReferenceFieldByIndex(const ObjHeader *obj, int32_t index,
+                                                                           ObjHeader **result)
+{
+    return km_return(result, *(ObjHeader **)((uintptr_t)obj + (uint32_t)km_type_info(obj)->objOffsets_[index]));
+}
+/* No Objective-C here: no class has an Objective-C name. */
+KM_NOTHROW ObjHeader *Kotlin_native_internal_reflect_objCNameOrNull(const void *type, ObjHeader **result)
+{
+    (void)type;
+    return km_return(result, NULL);
+}
+
+/* ---- small natives of Natives.cpp and Types.cpp ---- */
+
+/* kotlinx.cinterop.vectorOf. Both return <4 x float>, as the stock runtime: an Int vector is the same 16 bytes. */
+typedef float km_vector4f __attribute__((vector_size(16)));
+typedef int32_t km_vector4i __attribute__((vector_size(16)));
+km_vector4f Kotlin_Interop_Vector4f_of(float f0, float f1, float f2, float f3)
+{
+    return (km_vector4f){ f0, f1, f2, f3 };
+}
+km_vector4f Kotlin_Interop_Vector4i32_of(int32_t i0, int32_t i1, int32_t i2, int32_t i3)
+{
+    return (km_vector4f)(km_vector4i){ i0, i1, i2, i3 };
+}
+
+void Kotlin_CPointer_CopyMemory(void *to, const void *from, int32_t count) { memcpy(to, from, (size_t)count); }
+
+KM_NOTHROW ObjHeader *Kotlin_native_internal_undefined(ObjHeader **result) { return km_return(result, NULL); }

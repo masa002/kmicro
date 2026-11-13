@@ -89,6 +89,14 @@ uint16_t Kotlin_String_get(const ObjHeader *s, int32_t index)
     return at(s, (uint32_t)index);
 }
 
+/* String.refTo / Pinned<String>.addressOf (cinterop): the address of a character in the string's own encoding. */
+const void *Kotlin_Arrays_getStringAddressOfElement(const ObjHeader *s, int32_t index)
+{
+    if ((uint32_t)index >= len(s))
+        ThrowArrayIndexOutOfBoundsException();
+    return SH(s)->data_ + (enc(s) == ENC_LATIN1 ? 1u : 2u) * (uint32_t)index;
+}
+
 ObjHeader *Kotlin_String_plusImpl(const ObjHeader *a, const ObjHeader *b, ObjHeader **result)
 {
     uint32_t la = len(a), lb = len(b);
