@@ -239,7 +239,8 @@ TESTS = [
 PATH_OPTIONS = ('c_api', 'defs', 'libs', 'deps', 'include_dirs')
 QBUILD_SIZE = re.compile(r'^qbuild: .*  text (\d+)  data (\d+)  bss (\d+).*\n', re.M)
 QBUILD_STUBS = re.compile(r'^qbuild: warning: \d+ runtime symbols stubbed .*$', re.M)
-QEMU_END = re.compile(r'qemu: (?:exit -?\d+|timed out after .*)\n?\Z')
+# the last such line: a tool warning on stderr (an untested LLVM, say) comes after it
+QEMU_END = re.compile(r'^qemu: (?:exit -?\d+|timed out after .*)$\n?', re.M)
 
 
 class Failed(Exception):
@@ -376,7 +377,7 @@ def run_check(t, c, d, args):
 def program_output(t, d, rc, out):
     """What the program printed, taken from qbuild's output after the checks on the image (stubs, size): (the output,
     the note for the PASS line)."""
-    size, end = QBUILD_SIZE.search(out), QEMU_END.search(out)
+    size, end = QBUILD_SIZE.search(out), ([None] + list(QEMU_END.finditer(out)))[-1]
     if not size or not end:
         raise Failed(f'qbuild failed (exit {rc})\n' + out[-3000:])
     got = out[size.end():end.start()]
