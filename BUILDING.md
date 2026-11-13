@@ -5,7 +5,7 @@
 | Tool | Tested version | What kmicro uses it for | Where kmicro looks |
 |---|---|---|---|
 | Kotlin/Native, prebuilt | 2.4.21 | `kotlinc-native`, `cinterop` | `KMICRO_KOTLIN_NATIVE`, else `~/toolchains/kotlin-native-prebuilt-*-2.4.21` |
-| LLVM (`clang`, `ld.lld`) | 21, as downloaded by Kotlin/Native | IR to objects, the LTO link | `KMICRO_LLVM`, else `~/.konan/dependencies/llvm-*-essentials-*/bin` on Windows, `~/.konan/dependencies/llvm-*-dev-*/bin` on Linux and macOS |
+| LLVM (`clang`, `ld.lld`) | 21, as downloaded by Kotlin/Native | IR to objects, the LTO link | `KMICRO_LLVM`, else `~/.konan/dependencies/llvm-*-essentials-*/bin` on Windows and Linux, `~/.konan/dependencies/llvm-*-dev-*/bin` on macOS |
 | xPack GNU Arm Embedded GCC | 15.2.1-1.1 | newlib-nano, libm, libgcc, `objcopy`, `size`, `nm`, `objdump`, `addr2line` | `KMICRO_ARM_GCC`, else `~/toolchains/xpack-arm-none-eabi-gcc-*` |
 | xPack QEMU Arm | 9.2.4-1 | running the tests and examples | `KMICRO_QEMU`, else `~/toolchains/xpack-qemu-arm-*` |
 | Java (JDK or JRE) | 21 | runs `kotlinc-native` and `cinterop` | `JAVA_HOME`, else `java` on `PATH` |
@@ -24,8 +24,8 @@ else the newest, with a warning.
    [toolchain/versions.txt](toolchain/versions.txt) has the SHA-256 of each host's archive.
 2. **The compiler's LLVM.** The first compile for `linux_arm32_hfp` downloads the compiler's dependencies into
    `~/.konan/dependencies`: LLVM 21 and a Linux ARM sysroot, a few hundred MB. It is the essentials build of LLVM on
-   Windows and the dev build on Linux and macOS (versions.txt names each). `python tests/run_all.py add` does that
-   compile.
+   Windows and Linux; on macOS, the dev build that konan.properties names (versions.txt names each).
+   `python tests/run_all.py add` does that compile.
 3. **xPack GCC** from <https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases>, unpacked into
    `~/toolchains`. kmicro compiles with clang, but links newlib-nano and libgcc from this toolchain and uses its
    binutils.
@@ -63,8 +63,9 @@ else the newest, with a warning.
   run kbuild from inside that folder, or move it. The xPack tools (QEMU, `size`, `nm`, `objdump`) open files through
   the ANSI code page too: kmicro runs them in the file's folder with its bare name, so a folder name outside the
   code page works, but such a file name does not.
-- **Linux, macOS:** `paths.py` runs the shell launchers of Kotlin/Native and looks for the dev build of its LLVM.
-  Untested so far.
+- **Linux x64:** tested in CI (ubuntu-latest), with the toolchains of versions.txt. `paths.py` runs the shell
+  launchers of Kotlin/Native.
+- **macOS:** untested. `paths.py` runs the shell launchers and looks for the dev build of the LLVM.
 
 ## Build output
 
