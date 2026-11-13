@@ -73,9 +73,9 @@ def main():
     print(f'qbuild: {out.name}  text {size[0]}  data {size[1]}  bss {size[2]}')
     if do_run:
         r = subprocess.run([str(paths.qemu_system_arm()), '-machine', 'b-l475e-iot01a', '-nographic',
-                            '-semihosting-config', 'enable=on,target=native', '-kernel',
-                            paths.arg_path(out, ascii=True), '-serial', 'none', '-monitor', 'none'],
-                           capture_output=True, timeout=120)
+                            '-semihosting-config', 'enable=on,target=native', '-kernel', out.name, '-serial', 'none',
+                            '-monitor', 'none'], capture_output=True, timeout=120,
+                           cwd=out.parent)             # QEMU opens a non-ASCII path wrongly on Windows
         sys.stdout.buffer.write(r.stdout)
         sys.stdout.buffer.write(r.stderr)
         sys.stdout.flush()

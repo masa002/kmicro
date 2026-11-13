@@ -191,15 +191,15 @@ def _short_path(p):
     return buf.value if 0 < n < len(buf) else None
 
 
-def arg_path(p, relative=True, ascii=False, fail=True):
-    """A path as a command-line argument of a tool that cannot take every Windows file name. Java's launcher reads its
+def arg_path(p, relative=True, fail=True):
+    """A path as a command-line argument of Java (kotlinc-native, cinterop). Java's launcher on Windows reads its
     command line in the ANSI code page, so a character outside it (an accented letter on Japanese Windows, Japanese on
-    English Windows) is lost; QEMU opens files by narrow names and needs `ascii`. Such a path is given relative to the
-    current folder, or by its 8.3 short name, when that avoids the character; else an error (None with fail=False)."""
+    English Windows) is lost. Such a path is given relative to the current folder, or by its 8.3 short name, when that
+    avoids the character; else an error (None with fail=False)."""
     s = Path(p).as_posix()
     if not WINDOWS:
         return s
-    cp = 'ascii' if ascii else _ansi_codepage()
+    cp = _ansi_codepage()
 
     def ok(t):
         try:
