@@ -1,5 +1,5 @@
-/* Type checks, identity hash, box caches, primitive and object arrays (Types.cpp, Natives.cpp, Boxing.cpp,
- * Arrays.cpp of the stock runtime). */
+/* Type checks, identity hash, box caches, primitive and object arrays, interface dispatch (Types.cpp, TypeInfo.cpp,
+ * Natives.cpp, Boxing.cpp, Arrays.cpp of the stock runtime). */
 #include <string.h>
 #include "kmicro.h"
 
@@ -196,3 +196,29 @@ KM_BYTE_ARRAY_AT(Int, int32_t)
 KM_BYTE_ARRAY_AT(Long, int64_t)
 KM_BYTE_ARRAY_AT(Float, float)
 KM_BYTE_ARRAY_AT(Double, double)
+
+/* ---- interface dispatch, slow path (TypeInfo.cpp) ---- */
+
+/* A class whose interfaces do not fit a 32-entry perfect hash (the program needs more than 5 bits of interface colour)
+ * gets a negative interfaceTableSize_ and its records sorted by id; every interface call and check on it comes here.
+ * Returns a record even on a miss: the caller compares the id. */
+typedef struct { int32_t id; uint32_t vtableSize; const void *const *vtable; } InterfaceTableRecord;
+KM_NOTHROW __attribute__((noinline)) const InterfaceTableRecord *LookupInterfaceTableRecord(
+    const InterfaceTableRecord *table, int32_t size, int32_t id)
+{
+    if (size <= 8) {
+        int32_t i = 0;
+        while (i < size - 1 && table[i].id < id)
+            i++;
+        return table + i;
+    }
+    int32_t l = 0, r = size - 1;
+    while (l < r) {
+        int32_t m = (l + r) / 2;
+        if (table[m].id < id)
+            l = m + 1;
+        else
+            r = m;
+    }
+    return table + l;
+}
