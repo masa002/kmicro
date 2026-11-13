@@ -1,8 +1,9 @@
 /* hw.h - what Kotlin cannot say by itself, one instruction each after LTO.
  *
- * Kotlin has no `volatile` and no way to emit a CPU instruction such as WFI. Kotlin code reaches the hardware only
- * through these functions (cinterop with support/hw.def, package c). hw.c is compiled by clang with -flto, so a
- * call such as hw_rd32(RCC_CR_ADDR) becomes one LDR in the Kotlin function that made it.
+ * Kotlin has no volatile memory access (@Volatile applies to properties only) and no way to emit a CPU instruction
+ * such as WFI. Kotlin code reaches the hardware only through these functions (cinterop with support/hw.def, package
+ * c). hw.c is compiled by clang with -flto, so a call such as hw_rd32(RCC_CR_ADDR) becomes one LDR in the Kotlin
+ * function that made it.
  *
  *   hw_*   volatile: every access really happens, in program order (peripheral registers, DMA-shared memory)
  *   mem_*  plain: the compiler may merge or drop them like ordinary loads/stores (RAM buffers shared with C)
