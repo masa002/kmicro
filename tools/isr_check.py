@@ -8,16 +8,22 @@
     --boxing    also list every call outside the standard library that boxes an Int, Long, Short or Byte, in any
                 code (an unsigned == / != or a generic container of a primitive), and fail on them
 
-Walks the machine code (arm-none-eabi-objdump -d) from every interrupt handler of the vector table along direct
-calls and tail branches, and reports each path that ends in the Kotlin allocator (AllocInstance, AllocArrayInstance
-and kmicro's allocation functions) or in a boxing function. The heap is not reentrant, so a handler that allocates
-can corrupt it (kmicro also stops at run time with "allocation inside an interrupt handler"). Paths through Throw*
-functions are not followed: those only run on a bug (an index out of bounds, a null), and the run-time guard covers
-them.
+The handlers are the entries of the vector table (.isr_vector, without the initial stack pointer and the reset
+handler), whatever their names: under LTO the C name kbuild --c-api gives a Kotlin handler (SysTick_Handler) is
+folded into the Kotlin function, so only the table still shows it. Functions named like handlers (C names ending in
+_Handler or _IRQHandler, Kotlin functions ending in Handler) are checked too, for handlers installed at run time.
+
+Walks the machine code (arm-none-eabi-objdump -d) from every handler along direct calls and tail branches, and
+reports each path that ends in the Kotlin allocator (AllocInstance, AllocArrayInstance and kmicro's allocation
+functions) or in a boxing function. The heap is not reentrant, so a handler that allocates can corrupt it (kmicro
+also stops at run time with "allocation inside an interrupt handler"). Paths through Throw* functions are not
+followed: those only run on a bug (an index out of bounds, a null), and the run-time guard covers them.
 Indirect calls (function pointers, virtual calls) cannot be followed here and are listed per handler.
 
-Exit status: 0 when no handler reaches an allocation, 1 when one does (or --boxing finds a box).
+Exit status: 0 when no handler reaches an allocation, 1 when one does (or --boxing finds a box), 2 when the image
+cannot be read or has no handler.
 """
+import argparse
 import re
 import subprocess
 import sys
@@ -29,6 +35,7 @@ import paths  # noqa: E402
 
 ALLOC = {'AllocInstance', 'AllocArrayInstance', 'kmicro_alloc_object', 'kmicro_alloc_array', 'alloc_block'}
 BOX = re.compile(r'<U?(Int|Byte|Short|Long)-box>')
+HANDLER_NAME = re.compile(r'\w+_(IRQ)?Handler|kfun:[^#]*#\w*Handler\(\)\{\}')
 
 
 def lazy(name):
@@ -37,25 +44,15 @@ def lazy(name):
     return name == 'CallInitGlobalPossiblyLock' or '<get-$companion>' in name or '<get-$instance>' in name
 
 
-def main():
-    args = sys.argv[1:]
-    boxing = '--boxing' in args
-    args = [a for a in args if a != '--boxing']
-    callbacks = set()
-    while '--callback' in args:
-        i = args.index('--callback')
-        callbacks.add(args[i + 1])
-        del args[i:i + 2]
-    if not args:
-        sys.exit(__doc__)
-    elf = Path(args[0])
-    text = subprocess.run([str(paths.gcc_bin('objdump')), '-d', '--no-show-raw-insn', str(elf)], capture_output=True, text=True,
-                          errors='replace').stdout
-    calls, indirect, cur = {}, {}, None
+def parse_disassembly(text):
+    """objdump -d output -> (calls: function -> the functions it calls or tail-branches to, indirect: function ->
+    number of indirect calls, start: address -> function)."""
+    calls, indirect, start, cur = {}, {}, {}, None
     for line in text.splitlines():
-        m = re.match(r'^[0-9a-f]+ <(.+)>:$', line)
+        m = re.match(r'^([0-9a-f]+) <(.+)>:$', line)
         if m:
-            cur = m.group(1)
+            cur = m.group(2)
+            start.setdefault(int(m.group(1), 16), cur)
             calls.setdefault(cur, set())
             indirect.setdefault(cur, 0)
             continue
@@ -72,51 +69,125 @@ def main():
             calls[cur].add(m.group(2))
         elif re.search(r'\tblx\s+r\d+', line):
             indirect[cur] += 1
-    # plus the functions handlers reach only through a pointer (--callback): a callback a driver calls from its
-    # interrupt, for example
-    roots = sorted(f for f in calls if (re.fullmatch(r'\w+_(IRQ)?Handler', f) and f != 'Reset_Handler') or
-                   f in callbacks)
+    return calls, indirect, start
+
+
+def vector_words(text):
+    """objdump -s -j .isr_vector output -> the table's 32-bit words, in order."""
+    data = bytearray()
+    for line in text.splitlines():
+        if not re.match(r'^ [0-9a-f]+ [0-9a-f]', line):
+            continue
+        hexpart = line[1:].split('  ')[0].split()[1:]      # address, up to 4 groups of bytes, then the ASCII
+        data += bytes.fromhex(''.join(hexpart))
+    return [int.from_bytes(data[i:i + 4], 'little') for i in range(0, len(data) - 3, 4)]
+
+
+def handler_roots(words, calls, start, callbacks=()):
+    """The functions to check: every vector table entry (without the stack pointer and the reset handler), the
+    functions named like handlers, the callbacks. Returns (roots, notes)."""
+    roots, notes = [], []
+    for i, w in enumerate(words[2:], 2):
+        f = start.get(w & ~1)
+        if w and f is None:
+            notes.append(f'note   vector {i} (0x{w:08x}) is not the start of a function')
+        elif f and f not in roots:
+            roots.append(f)
+    reset = start.get(words[1] & ~1) if len(words) > 1 else None
+    for f in sorted(calls):
+        if HANDLER_NAME.fullmatch(f) and f not in roots and f not in ('Reset_Handler', reset):
+            roots.append(f)
+    roots += [f for f in callbacks if f not in roots]
+    return roots, notes
+
+
+def walk(root, calls, indirect):
+    """Breadth-first from root: (hits, lazies, indirect call count). Each hit or lazy is the path that reaches it."""
+    prev, q, hits, lazies, ind = {root: None}, deque([root]), [], [], 0
+
+    def path(n):
+        p = []
+        while n:
+            p.append(n)
+            n = prev[n]
+        return ' -> '.join(reversed(p))
+    while q:
+        f = q.popleft()
+        ind += indirect.get(f, 0)
+        for g in sorted(calls.get(f, ())):
+            if g in prev or g.startswith('Throw') or 'Throw' in g.split('#')[-1][:12]:
+                continue
+            prev[g] = f
+            if g in ALLOC:
+                hits.append(('ALLOC', path(g)))
+            elif BOX.search(g):
+                hits.append(('BOX', path(g)))
+            elif lazy(g):
+                lazies.append(path(g))
+            else:
+                q.append(g)
+    return hits, lazies, ind
+
+
+def analyse(disasm, vectors, callbacks=(), boxing=False):
+    """The report: (lines, number of failures, number of handlers). Raises ValueError when there is nothing to
+    check."""
+    calls, indirect, start = parse_disassembly(disasm)
+    if not calls:
+        raise ValueError('no functions in the disassembly')
+    unknown = [c for c in callbacks if c not in calls]
+    if unknown:
+        raise ValueError('no such function: ' + ', '.join(unknown))
+    roots, lines = handler_roots(vector_words(vectors), calls, start, callbacks)
+    if not roots:
+        raise ValueError('no interrupt handler found (no vector table, no function named like a handler)')
     bad = 0
     for root in roots:
-        prev, seen, q, hits, ind, lazies = {root: None}, {root}, deque([root]), [], 0, []
-        while q:
-            f = q.popleft()
-            ind += indirect.get(f, 0)
-            for g in calls.get(f, ()):
-                if g in seen or g.startswith('Throw') or 'Throw' in g.split('#')[-1][:12]:
-                    continue
-                seen.add(g)
-                prev[g] = f
-                if g in ALLOC or BOX.search(g):
-                    hits.append(g)
-                elif lazy(g):
-                    lazies.append(g)
-                else:
-                    q.append(g)
-        for h in hits:
-            path, n = [], h
-            while n:
-                path.append(n)
-                n = prev[n]
-            print(f'{"BOX" if BOX.search(h) else "ALLOC":6s} {root}: ' + ' -> '.join(reversed(path)))
-            bad += 1
-        for h in lazies:
-            path, n = [], h
-            while n:
-                path.append(n)
-                n = prev[n]
-            print(f'LAZY   {root}: ' + ' -> '.join(reversed(path)))
+        hits, lazies, ind = walk(root, calls, indirect)
+        for kind, p in hits:
+            lines.append(f'{kind:6s} {root}: {p}')
+        lines += [f'LAZY   {root}: {p}' for p in lazies]
         if ind:
-            print(f'note   {root}: {ind} indirect call site(s) not followed')
-    print(f'{len(roots)} interrupt handler(s) checked: '
-          + ('no path to an allocation' if not bad else f'{bad} path(s) to an allocation'))
+            lines.append(f'note   {root}: {ind} indirect call site(s) not followed')
+        bad += len(hits)
+    lines.append(f'{len(roots)} interrupt handler(s) checked: '
+                 + ('no path to an allocation' if not bad else f'{bad} path(s) to an allocation'))
     if boxing:          # boxing anywhere in the program's own code, handler or not
         boxes = sorted((f, g) for f, gs in calls.items() for g in gs if BOX.search(g)
                        and not f.startswith('kfun:kotlin'))
-        for f, g in boxes:
-            print(f'BOX    {f[:90]} -> {g}')
-        print(f'--boxing: {len(boxes)} boxing call(s) outside the standard library')
+        lines += [f'BOX    {f[:90]} -> {g}' for f, g in boxes]
+        lines.append(f'--boxing: {len(boxes)} boxing call(s) outside the standard library')
         bad += len(boxes)
+    return lines, bad, len(roots)
+
+
+def objdump(*args):
+    r = subprocess.run([str(paths.gcc_bin('objdump')), *args], capture_output=True, text=True, errors='replace')
+    if r.returncode != 0:
+        print(f'isr_check: objdump {" ".join(args)} failed: {r.stderr.strip()[-500:]}', file=sys.stderr)
+        sys.exit(2)
+    return r.stdout
+
+
+def main():
+    ap = argparse.ArgumentParser(usage='python tools/isr_check.py firmware.elf [--callback NAME ...] [--boxing]',
+                                 description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('elf', type=Path, help=argparse.SUPPRESS)
+    ap.add_argument('--callback', action='append', default=[], help=argparse.SUPPRESS)
+    ap.add_argument('--boxing', action='store_true', help=argparse.SUPPRESS)
+    args = ap.parse_args()
+    if not args.elf.is_file():
+        print(f'isr_check: no such file: {args.elf}', file=sys.stderr)
+        sys.exit(2)
+    disasm = objdump('-d', '--no-show-raw-insn', str(args.elf))
+    sections = objdump('-h', str(args.elf))
+    vectors = objdump('-s', '-j', '.isr_vector', str(args.elf)) if re.search(r'\s\.isr_vector\s', sections) else ''
+    try:
+        lines, bad, _ = analyse(disasm, vectors, args.callback, args.boxing)
+    except ValueError as e:
+        print(f'isr_check: {args.elf}: {e}', file=sys.stderr)
+        sys.exit(2)
+    print('\n'.join(lines))
     sys.exit(1 if bad else 0)
 
 
