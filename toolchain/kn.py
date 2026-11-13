@@ -6,7 +6,7 @@
     lto_object()   clang -flto: the IR becomes an object that ld.lld optimises together with the runtime and the C code
     bridges()      the cinterop call bridges (toolchain/bridges.py), when the program calls C through cinterop
     cinterop()     a .def file -> klib (C declarations Kotlin can call)
-    add_c_aliases()   C names for Kotlin functions (`crc32_update` -> fw.crc32Update), so C code calls Kotlin directly
+    add_c_aliases()   C names for Kotlin functions (`crc32_update` -> app.crc32Update): C calls Kotlin directly
     add_init_all()    one C-callable function that initialises every Kotlin file's globals at boot
     build()        all of the above in order: Kotlin sources -> the objects to link (tools/kbuild.py is its command line)
 
@@ -189,14 +189,41 @@ def cinterop(def_file, out_base, include_dirs=(), deps=(), force=False):
     return klib
 
 
-def camel(snake):
-    """C name -> the Kotlin function name kmicro expects: crc32_update -> crc32Update,
-    DMA1_Channel3_IRQHandler -> dma1Channel3IrqHandler."""
-    if snake.endswith('_IRQHandler'):
-        head, *rest = snake[:-len('_IRQHandler')].split('_')
+def camel(cname):
+    """C name -> the Kotlin function name kmicro expects, in lowerCamelCase: crc32_update -> crc32Update,
+    DMA1_Channel3_IRQHandler -> dma1Channel3IrqHandler, SysTick_Handler -> sysTickHandler, TIM1_UP_TIM16_IRQHandler
+    -> tim1UpTim16IrqHandler (an all-caps word keeps only its first capital), EXTI15_10_IRQHandler ->
+    exti15_10IrqHandler (an underscore stays between two numbers)."""
+    suffix = ''
+    for c_end, k_end in (('_IRQHandler', 'IrqHandler'), ('_Handler', 'Handler')):
+        if cname.endswith(c_end) and len(cname) > len(c_end):
+            cname, suffix = cname[:-len(c_end)], k_end
+            break
+    out = ''
+    for w in filter(None, cname.split('_')):
+        if not out:
+            w = w.lower() if w.isupper() else w[0].lower() + w[1:]
+        else:
+            w = w[0] + w[1:].lower() if w.isupper() else w[0].upper() + w[1:]
+            if out[-1].isdigit() and w[0].isdigit():
+                out += '_'
+        out += w
+    return (out or cname) + suffix
+
+
+def legacy_camel(cname):
+    """The Kotlin name earlier kmicro versions expected (SysTickHandler, tim1UPTIM16IrqHandler, USBSend), still
+    accepted with a note."""
+    if cname.endswith('_IRQHandler'):
+        head, *rest = cname[:-len('_IRQHandler')].split('_')
         return head.lower() + ''.join(w[:1].upper() + w[1:] for w in rest) + 'IrqHandler'
-    head, *rest = snake.split('_')
+    head, *rest = cname.split('_')
     return head + ''.join(w[:1].upper() + w[1:] for w in rest)
+
+
+def kotlin_names(cname):
+    """The Kotlin names that may implement a C name: camel(), then the legacy spelling when it differs."""
+    return list(dict.fromkeys([camel(cname), legacy_camel(cname)]))
 
 
 def _type_list(params):
@@ -216,16 +243,27 @@ def kotlin_functions(ll_text, package):
 
 def add_c_aliases(ll_text, cnames, package, prefix=''):
     """`@<prefix><cname> = alias ...` for every C name whose camelCase Kotlin function exists in `package`. Returns the
-    alias lines and the C names that found no Kotlin function."""
+    alias lines and the C names that found no Kotlin function. Two C names with one Kotlin name are an error."""
+    cnames = list(dict.fromkeys(cnames))
+    seen = {}
+    for cname in cnames:
+        other = seen.setdefault(camel(cname), cname)
+        if other != cname:
+            sys.exit(f'kmicro: the C names {other} and {cname} both become the Kotlin name {camel(cname)}: rename '
+                     'one of them')
     defs = kotlin_functions(ll_text, package)
     lines, missing = [], []
     for cname in cnames:
-        k = defs.get(camel(cname))
-        if not k:
+        name = next((n for n in kotlin_names(cname) if n in defs), None)
+        if name is None:
             missing.append(cname)
             continue
+        if name != camel(cname):
+            print(f'kmicro: note: {cname} is implemented by {name}, an old spelling: rename it {camel(cname)} (the '
+                  'old one will stop working)', file=sys.stderr)
+        k = defs[name]
         if len(k) > 1:
-            sys.exit(f'overloaded Kotlin function for {cname}: {[x[0] for x in k]}')
+            sys.exit(f'kmicro: overloaded Kotlin function for {cname}: {[x[0] for x in k]}')
         sym, ret, params = k[0]
         lines.append(f'@{prefix}{cname} = alias {ret} ({params}), ptr @"{sym}"')
     return lines, missing
