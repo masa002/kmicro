@@ -2,7 +2,7 @@
 for paths.TARGET_M4F, --hot, and the stdlib rewrites (Random seed, hex float parser, Unicode tables). The output must
 compile with clang.
 
-usage: python -m unittest discover tests/unit       (skipped when Kotlin/Native's LLVM is not installed)
+usage: python -m unittest discover tests/unit       (skipped when the LLVM of Kotlin/Native is not installed)
 """
 import re
 import subprocess
@@ -160,7 +160,7 @@ def body(text, name):
     return m.group(1) if m else None
 
 
-@unittest.skipUnless(HAVE_CLANG, "needs Kotlin/Native's LLVM (python toolchain/paths.py)")
+@unittest.skipUnless(HAVE_CLANG, 'needs the LLVM of Kotlin/Native (python toolchain/paths.py)')
 class RetargetTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
