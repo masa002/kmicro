@@ -1,7 +1,9 @@
 # kmicro CI.
 #   unit      the tool tests without any toolchain: the tests that need one skip
-#   qemu      the toolchains of toolchain/versions.txt, then tests/run_all.py on QEMU, as is and under GC stress
-#   difftest  tools/difftest.py, as is and under GC stress (long): on pushes to main, by hand and weekly
+#   qemu      the toolchains of toolchain/versions.txt, then the tool tests with them (the start code's QEMU probes
+#             included) and tests/run_all.py on QEMU, as is and under GC stress
+#   difftest  tools/difftest.py, as is and under GC stress (long), and missing_natives --check on the IR of its
+#             programs: on pushes to main, by hand and weekly
 name: CI
 
 on:
@@ -75,6 +77,8 @@ jobs:
         run: python tests/run_all.py add
       - name: python toolchain/paths.py
         run: python toolchain/paths.py
+      - name: python -m unittest discover -s tests/unit (with the toolchains)
+        run: python -m unittest discover -s tests/unit
       - name: python tests/run_all.py
         run: python tests/run_all.py
       - name: python tests/run_all.py --stress
@@ -132,6 +136,8 @@ jobs:
         run: python toolchain/paths.py
       - name: python tools/difftest.py
         run: python tools/difftest.py
+      - name: python tools/missing_natives.py --check (the runtime functions the difftest programs declare)
+        run: python tools/missing_natives.py --check --ir 'build/diff/kmicro/*/m4.ll'
       - name: python tools/difftest.py --stress
         run: python tools/difftest.py --stress
       - name: Keep the outputs
