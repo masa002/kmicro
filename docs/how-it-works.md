@@ -289,8 +289,11 @@ qemu: exit 98
 
 Under each frame, the functions inlined at that call are listed innermost first, each with its file and line,
 then the function that holds them (`arm-none-eabi-addr2line -i`). kotlinc-native warns
-`unsupported combination of flags: -opt and -g` and builds the program, here 2,124 bytes larger. On a board, save
-what the UART printed and pass that file the same way; the ELF must be the one the board runs.
+`unsupported combination of flags: -opt and -g` and builds the program, here 2,124 bytes larger. The C files need
+`-g` too, which qbuild gives them and which takes no flash: without it, the Kotlin functions that LTO inlined into a
+C function (here into `run_main`) are not listed. On a board, compile the C files with `-g`
+([porting.md](porting.md#compiling-the-runtime)), save what the UART printed and pass that file the same way; the
+ELF must be the one the board runs.
 
 symbolize.py also reads the log on stdin (`python tools/symbolize.py build/exc/exc.elf < exc.log`), or names
 addresses given as arguments:
@@ -343,7 +346,7 @@ Uncaught Kotlin exception: kotlin.IllegalStateException: boot failed at sensor 3
     at 0x0800984c  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
     at 0x0800984c  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
     at 0x08002128  run_main+0x64
-        run_main (trace.kt:9)
+        run_main (trace.kt:10)
     at 0x08001942  start_c+0xaa
         start_c (start.c:68)
 Caused by: SensorMissing: sensor 3 not answering
