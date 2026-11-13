@@ -44,6 +44,15 @@ DISASM = '''
  8001612:	sub	sp, #400
 08001700 <leaf>:
  8001700:	bx	lr
+08001800 <early_return>:
+ 8001800:	cmp	r0, #0
+ 8001802:	itt	eq
+ 8001804:	moveq	r0, #0
+ 8001806:	bxeq	lr
+ 8001808:	cbz	r1, 8001820 <early_return+0x20>
+ 800180a:	push	{r4, r5, r7, lr}
+ 800180c:	sub.w	sp, sp, #4096	@ 0x1000
+ 8001810:	bl	8000300 <work>
 '''
 
 
@@ -75,6 +84,7 @@ class After(unittest.TestCase):
         self.assertEqual(f['Reset_Handler'], 9 * 4 + 56064 + 52)
         self.assertEqual(f['small'], 2 * 4 + 2 * 8 + 5000)     # stops at the call: the later sub is not counted
         self.assertEqual(f['leaf'], 0)
+        self.assertEqual(f['early_return'], 4 * 4 + 4096)     # the prologue after the early returns
 
 
 if __name__ == '__main__':

@@ -58,8 +58,9 @@ def frames(disasm):
             m2 = re.match(r'^sp,\s*(?:sp,\s*)?(#(\d+)|(\w+))$', args)
             if m2:
                 out[name] += int(m2.group(2)) if m2.group(2) else imm.get(m2.group(3), 0)
-        elif op.startswith(('b', 'cb')) and not op.startswith('bic'):
-            seen = PROLOGUE                    # the prologue ends at the first branch or call
+        elif op in ('bl', 'blx'):
+            seen = PROLOGUE                    # the prologue ends at the first call; an early return may come
+                                               # before it (bxeq lr, cbz), the frame only on the longer path
     return out
 
 
