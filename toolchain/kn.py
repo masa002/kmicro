@@ -12,6 +12,7 @@
 
 A program built this way runs on the kmicro runtime (runtime/): see docs/how-it-works.md.
 """
+import os
 import re
 import subprocess
 import sys
@@ -36,6 +37,12 @@ def stale(target, *sources):
     return not target.exists() or any(target.stat().st_mtime < Path(s).stat().st_mtime for s in sources)
 
 
+def argfile(path, args):
+    """kotlinc's argument file: UTF-8, every argument quoted (a path may hold spaces; a backslash escapes)."""
+    Path(path).write_text(''.join('"' + str(a).replace('\\', '\\\\').replace('"', '\\"') + '"\n' for a in args),
+                          encoding='utf-8')
+
+
 def compile_ir(srcs, out, extra=(), deps=(), force=False):
     """kotlinc-native -> out/ir/out.Codegen.ll and out/ir/out.LinkBitcodeDependencies.ll. Skipped while the IR is
     newer than every source and dependency (klibs). Returns the compiler's warnings (empty when skipped)."""
@@ -45,10 +52,11 @@ def compile_ir(srcs, out, extra=(), deps=(), force=False):
         return []
     (out / 'ir').mkdir(parents=True, exist_ok=True)
     (out / 'tmp').mkdir(exist_ok=True)
-    args = [Path(s).as_posix() for s in srcs] + KOTLINC_BASE + [str(a) for a in extra] + [
-        '-o', (out / 'lib').as_posix(), '-Xsave-llvm-ir-after=Codegen,LinkBitcodeDependencies',
-        f'-Xsave-llvm-ir-directory={(out / "ir").as_posix()}', f'-Xtemporary-files-dir={(out / "tmp").as_posix()}']
-    (out / 'args.txt').write_text('\n'.join(args) + '\n')
+    o = Path(os.path.abspath(out))             # absolute: paths.run_kn may start the compiler in another folder
+    args = [Path(os.path.abspath(s)).as_posix() for s in srcs] + KOTLINC_BASE + [str(a) for a in extra] + [
+        '-o', (o / 'lib').as_posix(), '-Xsave-llvm-ir-after=Codegen,LinkBitcodeDependencies',
+        f'-Xsave-llvm-ir-directory={(o / "ir").as_posix()}', f'-Xtemporary-files-dir={(o / "tmp").as_posix()}']
+    argfile(out / 'args.txt', args)
     r = paths.run_kn('kotlinc-native', ['@' + (out / 'args.txt').as_posix()])
     msgs = [l for l in (r.stdout + r.stderr).splitlines()
             if ('error:' in l or 'warning:' in l) and 'deprecated' not in l.lower() and 'api.cpp' not in l]
@@ -83,10 +91,11 @@ def cinterop(def_file, out_base, include_dirs=(), deps=(), force=False):
     klib = Path(str(out_base) + '.klib')
     if force or stale(klib, def_file, *deps):
         Path(out_base).parent.mkdir(parents=True, exist_ok=True)
-        args = ['-def', Path(def_file).as_posix(), '-target', 'linux_arm32_hfp']
+        # cinterop takes no argument file: its arguments go on Java's command line (paths.arg_path)
+        args = ['-def', paths.arg_path(def_file), '-target', 'linux_arm32_hfp']
         for d in include_dirs:
-            args += ['-compiler-option', '-I' + Path(d).as_posix()]
-        args += ['-o', Path(out_base).as_posix()]
+            args += ['-compiler-option', '-I' + paths.arg_path(d)]
+        args += ['-o', paths.arg_path(out_base)]
         r = paths.run_kn('cinterop', args)
         if r.returncode != 0:
             sys.exit('cinterop FAILED:\n' + (r.stdout + r.stderr)[-3000:])

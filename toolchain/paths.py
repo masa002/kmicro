@@ -10,10 +10,13 @@ Each tool is looked up in this order: its environment variable, then the usual i
                           default: ~/toolchains/xpack-arm-none-eabi-gcc-*
     KMICRO_QEMU           xPack QEMU Arm (only for the emulator targets and tests)
                           default: ~/toolchains/xpack-qemu-arm-*
+    JAVA_HOME             the Java that runs kotlinc-native and cinterop; default: `java` on PATH
 
 BUILDING.md lists the versions kmicro is tested with.
 """
 import os
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -93,16 +96,124 @@ def qemu_system_arm():
     return qemu() / 'bin' / f'qemu-system-arm{EXE}'
 
 
+_java = None
+
+
+def java():
+    """(java executable, major version): JAVA_HOME's java, else the one on PATH (what the launchers use)."""
+    global _java
+    if _java is None:
+        home = os.environ.get('JAVA_HOME')
+        exe = Path(home) / 'bin' / f'java{EXE}' if home else shutil.which('java')
+        if not exe or not Path(exe).exists():
+            where = f'JAVA_HOME={home} has no bin/java{EXE}' if home else 'no java on PATH'
+            sys.exit(f'kmicro: Java not found ({where}). Kotlin/Native runs on Java (JDK or JRE, 21 tested): set '
+                     'JAVA_HOME or put java on PATH.')
+        r = subprocess.run([str(exe), '-version'], capture_output=True, text=True, errors='replace')
+        m = re.search(r'version "(\d+)(?:\.(\d+))?', r.stderr + r.stdout)
+        major = int(m.group(1)) if m else 0
+        if major == 1 and m.group(2):          # "1.8.0_275" is Java 8
+            major = int(m.group(2))
+        _java = (Path(exe), major)
+    return _java
+
+
+def _ansi_codepage():
+    import ctypes
+    acp = ctypes.windll.kernel32.GetACP()
+    return 'utf-8' if acp == 65001 else f'cp{acp}'
+
+
+def _short_path(p):
+    import ctypes
+    buf = ctypes.create_unicode_buffer(32768)
+    n = ctypes.windll.kernel32.GetShortPathNameW(str(p), buf, len(buf))
+    return buf.value if 0 < n < len(buf) else None
+
+
+def arg_path(p, relative=True, ascii=False, fail=True):
+    """A path as a command-line argument of a tool that cannot take every Windows file name. Java's launcher reads its
+    command line in the ANSI code page, so a character outside it (an accented letter on Japanese Windows, Japanese on
+    English Windows) is lost; QEMU opens files by narrow names and needs `ascii`. Such a path is given relative to the
+    current folder, or by its 8.3 short name, when that avoids the character (else an error, or None with fail=False)."""
+    s = Path(p).as_posix()
+    if not WINDOWS:
+        return s
+    cp = 'ascii' if ascii else _ansi_codepage()
+
+    def ok(t):
+        try:
+            t.encode(cp)
+            return True
+        except UnicodeEncodeError:
+            return False
+    if ok(s):
+        return s
+    tries = []
+    if relative:
+        try:
+            tries.append(Path(os.path.relpath(p)).as_posix())
+        except ValueError:                     # another drive
+            pass
+    short = _short_path(p) if Path(p).exists() else _short_path(Path(p).parent)
+    if short:
+        tries.append(Path(short).as_posix() if Path(p).exists() else (Path(short) / Path(p).name).as_posix())
+    for t in tries:
+        if ok(t):
+            return t
+    if fail:
+        sys.exit(f'kmicro: {s}: this path cannot be passed to the tool ({cp} only) and has no short name: move it to '
+                 'a folder whose name has no such characters, or run from a folder above it.')
+    return None
+
+
+KN_TOOLS = {'kotlinc-native': 'konanc', 'konanc': 'konanc', 'cinterop': 'cinterop', 'klib': 'klib'}
+
+
 def kn_command(tool, args):
-    """Command line for kotlinc-native / cinterop (Windows ships .bat wrappers that need cmd.exe)."""
-    b = kotlin_native() / 'bin'
-    if WINDOWS:
-        return ['cmd.exe', '/c', str(b / f'{tool}.bat'), *map(str, args)]
-    return [str(b / tool), *map(str, args)]
+    """Command line for kotlinc-native / cinterop. On Windows, Java runs the compiler directly, as run_konan.bat does:
+    the .bat launchers go through cmd.exe, which splits arguments at '=' and ',', and breaks on a space in the
+    Kotlin/Native path or on &, ^, %, ! in any path. An argument `@file` (an argument file) gets arg_path()."""
+    return _kn_command(tool, args)[0]
+
+
+def _kn_command(tool, args):
+    """(command, working folder or None): an argument file whose path Java cannot take is named from its own folder."""
+    if not WINDOWS:
+        return [str(kotlin_native() / 'bin' / tool), *map(str, args)], None
+    home = Path(os.path.abspath(kotlin_native()))
+    exe, major = java()
+    jar = home / 'konan/lib/kotlin-native-compiler-embeddable.jar'
+    if not jar.exists():
+        sys.exit(f'kmicro: {jar} not found: KMICRO_KOTLIN_NATIVE must be the top folder of the Kotlin/Native '
+                 'distribution')
+    opts = ['-ea', '-Xmx3G', '-XX:TieredStopAtLevel=1', '-Dfile.encoding=UTF-8',
+            f'-Dkonan.home={arg_path(home, relative=False)}']
+    if major >= 19:                            # messages as UTF-8 (run_kn decodes them so)
+        opts += ['-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8']
+    if major >= 24:
+        opts.append('--enable-native-access=ALL-UNNAMED')
+    if major == 24:
+        opts.append('--sun-misc-unsafe-memory-access=allow')
+    opts += os.environ.get('JAVA_OPTS', '').split()
+    cwd, tool_args = None, []
+    for a in map(str, args):
+        if a.startswith('@'):
+            s = arg_path(a[1:], fail=False)
+            if s is None:
+                cwd, s = os.path.abspath(Path(a[1:]).parent), Path(a[1:]).name
+            a = '@' + s
+        tool_args.append(a)
+    return [str(exe), *opts, '-cp', arg_path(jar, relative=False), 'org.jetbrains.kotlin.cli.utilities.MainKt',
+            KN_TOOLS.get(tool, tool), *tool_args], cwd
 
 
 def run_kn(tool, args, **kw):
-    return subprocess.run(kn_command(tool, args), capture_output=True, text=True, errors='replace', **kw)
+    cmd, cwd = _kn_command(tool, args)
+    utf8 = WINDOWS and java()[1] >= 19
+    env = {**os.environ, 'LIBCLANG_DISABLE_CRASH_RECOVERY': '1', **kw.pop('env', {})}
+    return subprocess.run(cmd, capture_output=True, text=True, errors='replace', env=env,
+                          **({'encoding': 'utf-8'} if utf8 else {}), **({'cwd': cwd} if cwd else {}), **kw)
 
 
 if __name__ == '__main__':                 # python toolchain/paths.py: show what was found
