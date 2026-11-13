@@ -257,8 +257,12 @@ KM_NOTHROW ObjHeader *Kotlin_getExceptionObject(void *holder, ObjHeader **result
 
 ObjHeader *Kotlin_Throwable_getMessage(ObjHeader *throwable, ObjHeader **result);
 ObjHeader *Kotlin_Throwable_getStackTrace(ObjHeader *throwable, ObjHeader **result);
-uint32_t kmicro_string_to_utf8(const ObjHeader *s, char *buf, uint32_t cap);
+void Kotlin_io_Console_print(const ObjHeader *message);   /* strings.c: any length, in chunks, no allocation */
+__attribute__((weak)) ObjHeader *km_throwable_cause(ObjHeader *throwable, ObjHeader **result)
+    __asm__("kfun:kotlin.Throwable#<get-cause>(){}kotlin.Throwable?");   /* the virtual getter */
 __attribute__((weak)) void kmicro_on_uncaught(ObjHeader *exception) { (void)exception; }
+
+static int s_uncaught;                               /* uncaught exceptions being reported, one inside another */
 
 static void put_hex(uint32_t v)
 {
@@ -270,41 +274,105 @@ static void put_hex(uint32_t v)
 
 static void put_kstr(const ObjHeader *s)
 {
-    char buf[96];
-    if (s == NULL)
-        return;
-    kmicro_string_to_utf8(s, buf, sizeof buf);
-    kmicro_puts(buf);
+    if (s != NULL)
+        Kotlin_io_Console_print(s);
 }
 
-void kmicro_report_exception(ObjHeader *e)
+/* "<package>.<Class>: <message>", as Throwable.toString() prints it */
+static void put_throwable(ObjHeader *e, ObjHeader **msg)
 {
-    struct { FrameOverlay f; ObjHeader *msg, *trace; } fr = { { 0, 0, 0 }, 0, 0 };   /* roots for the two getters */
-    EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
     const TypeInfo *t = km_type_info(e);
-    kmicro_puts("Uncaught Kotlin exception: ");
     if (t->packageName_ && ((const ArrayHeader *)t->packageName_)->count_ > 3) {
         put_kstr(t->packageName_);
         kmicro_puts(".");
     }
     put_kstr(t->relativeName_);
-    Kotlin_Throwable_getMessage(e, &fr.msg);
-    if (fr.msg != NULL) {
+    Kotlin_Throwable_getMessage(e, msg);
+    if (*msg != NULL) {
         kmicro_puts(": ");
-        put_kstr(fr.msg);
+        put_kstr(*msg);
     }
-    kmicro_puts("\n");
-    Kotlin_Throwable_getStackTrace(e, &fr.trace);
-    if (fr.trace != NULL) {
-        const ArrayHeader *a = (const ArrayHeader *)fr.trace;
-        const uint32_t *pc = km_array_data((ArrayHeader *)a);
-        for (uint32_t i = 0; i < a->count_; i++) {
-            kmicro_puts("    at ");
-            put_hex(pc[i]);
-            kmicro_puts("\n");
+}
+
+/* The frames of a trace. A cause's frames end with the ones it shares with the top exception: all but one of those
+ * are left out, as printStackTrace() does. */
+static void put_frames(const ObjHeader *trace, const ObjHeader *top)
+{
+    uint32_t n = trace != NULL ? ((const ArrayHeader *)trace)->count_ : 0, common = 0;
+    const uint32_t *pc = trace != NULL ? km_array_data((ArrayHeader *)trace) : NULL;
+    if (top != NULL) {
+        uint32_t m = ((const ArrayHeader *)top)->count_;
+        const uint32_t *tpc = km_array_data((ArrayHeader *)top);
+        while (common < n && common < m && pc[n - 1 - common] == tpc[m - 1 - common])
+            common++;
+        if (common > 0)
+            common--;
+    }
+    for (uint32_t i = 0; i < n - common; i++) {
+        kmicro_puts("    at ");
+        put_hex(pc[i]);
+        kmicro_puts("\n");
+    }
+    if (common > 0) {
+        kmicro_puts("    ... and ");
+        kmicro_put_int((int32_t)common);
+        kmicro_puts(" more common stack frames skipped\n");
+    }
+}
+
+#define KM_CAUSES_MAX 8
+
+/* The report of the stock runtime (ReportUnhandledException, printStackTrace()): the exception and every cause, each
+ * with its frames. Written in C, it needs no heap and links none of the stdlib's printing code (about 30 KB), so it
+ * also works inside an interrupt handler and on a full heap. Suppressed exceptions are not listed: printStackTrace()
+ * in a catch block shows them. */
+void kmicro_report_exception(ObjHeader *e)
+{
+    struct { FrameOverlay f; ObjHeader *cur, *msg, *trace, *top; } fr = { { 0, 0, 0 }, e, 0, 0, 0 };
+    EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+    const ObjHeader *seen[KM_CAUSES_MAX];
+    int n = 0;
+    kmicro_puts("Uncaught Kotlin exception: ");
+    for (;;) {
+        put_throwable(fr.cur, &fr.msg);
+        kmicro_puts("\n");
+        Kotlin_Throwable_getStackTrace(fr.cur, &fr.trace);
+        put_frames(fr.trace, n == 0 ? NULL : fr.top);
+        if (n == 0)
+            fr.top = fr.trace;
+        seen[n++] = fr.cur;
+        if (km_throwable_cause == NULL || km_throwable_cause(fr.cur, &fr.cur) == NULL)
+            break;
+        kmicro_puts("Caused by: ");
+        bool again = false;
+        for (int i = 0; i < n; i++)
+            again |= seen[i] == fr.cur;
+        if (again) {
+            kmicro_puts("[CIRCULAR REFERENCE, SEE ABOVE: ");
+            put_throwable(fr.cur, &fr.msg);
+            kmicro_puts("]\n");
+            break;
+        }
+        if (n == KM_CAUSES_MAX) {
+            kmicro_puts("...\n");
+            break;
         }
     }
     LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+}
+
+/* Report e and stop. An exception that escapes from the report (a message getter that throws) is reported in turn. */
+__attribute__((noreturn)) static void terminate(ObjHeader *e)
+{
+    struct { FrameOverlay f; ObjHeader *e; } fr = { { 0, 0, 0 }, e };
+    EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+    if (++s_uncaught > 2)
+        kmicro_panic("uncaught Kotlin exception while reporting an uncaught exception");
+    if (s_uncaught == 2)
+        kmicro_puts("\n");                           /* the first report stopped mid-line */
+    kmicro_report_exception(fr.e);
+    kmicro_on_uncaught(fr.e);
+    kmicro_panic("uncaught Kotlin exception");
 }
 
 __attribute__((noreturn)) void ThrowException(ObjHeader *exception)
@@ -315,20 +383,16 @@ __attribute__((noreturn)) void ThrowException(ObjHeader *exception)
     memcpy(s_exc.ucb.exception_class, "KMICROKT", 8);
     s_exc.exception = exception;
     _Unwind_Reason_Code rc = _Unwind_RaiseException(&s_exc.ucb);
-    /* Only returns when no handler was found (end of stack, or a frame without unwind tables). */
+    /* Only returns when no handler was found (end of stack, or a frame without unwind tables). The report calls
+     * Kotlin getters that may throw and catch exceptions of their own, so this one is no longer in flight. */
     (void)rc;
     ObjHeader *e = s_exc.exception;
-    kmicro_report_exception(e);
-    kmicro_on_uncaught(e);
-    kmicro_panic("uncaught Kotlin exception");
+    s_exc.exception = NULL;
+    terminate(e);
 }
 
 void Kotlin_processUnhandledException(ObjHeader *e) { kmicro_report_exception(e); }
-__attribute__((noreturn)) void Kotlin_terminateWithUnhandledException(ObjHeader *e)
-{
-    kmicro_report_exception(e);
-    kmicro_panic("uncaught Kotlin exception");
-}
+__attribute__((noreturn)) void Kotlin_terminateWithUnhandledException(ObjHeader *e) { terminate(e); }
 __attribute__((noreturn)) void _ZSt9terminatev(void) { kmicro_panic("std::terminate"); }
 
 /* ---- stack traces: return addresses through the same unwind tables ---- */
