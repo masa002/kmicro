@@ -29,7 +29,7 @@ Each gap is described where it matters; this list only points there.
 
 | Theme | Where |
 |---|---|
-| The standard library: what works partly, does not work yet, or is not supported | [kotlin-support.md](kotlin-support.md) |
+| The standard library: what works partly, does not work, or is not supported | [kotlin-support.md](kotlin-support.md) |
 | Memory: a heap that does not move objects and fragments, heap exhaustion that cannot be caught, the size of `Regex` | [README: Known gaps](../README.md#known-gaps), [writing-kotlin.md](writing-kotlin.md#memory) |
 | Diagnostics: stack traces of at most 12 frames, cut without a marker; stack overflow and null reads caught (by MPU guards) only by the start code of `qemu-l475`, not by `qemu-an386` or the STM32L431 example | [how-it-works.md](how-it-works.md#reading-a-stack-trace), [porting.md](porting.md#optional-a-fault-report-and-mpu-guards) |
 | Boards: the hooks a board must provide for clocks, entropy and input | [porting.md](porting.md#the-board-contract) |

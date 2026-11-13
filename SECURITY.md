@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-kmicro has no releases yet. Fixes go into the `main` branch only.
+kmicro has no releases. Fixes go into the `main` branch only.
 
 ## Reporting a vulnerability
 

@@ -38,7 +38,8 @@ Three suites, all on the host and QEMU; no hardware is needed.
 - **`python tools/difftest.py [NAME ...]`** builds each program in `tests/diff/` twice, for the host with the stock
   Kotlin/Native runtime and for kmicro on QEMU, and requires the same output. `--stress` collects garbage at every
   allocation on the kmicro side, and `--size` builds it as `kbuild.py --size` does. Without names it runs every
-  program but the `d_known_*` ones, which show what does not work yet and run only when named.
+  program but the `d_known_*` ones, which show what does not work and run only when named. Without `--stress` the
+  heap peak in the report is often the heap size; with it, the peak is the most the program had live at once.
 
   ```
   $ python tools/difftest.py d_strings
@@ -57,14 +58,16 @@ once; later runs reuse its IR until a source, an option or the compiler changes.
 
 **A differential test** is a Kotlin file `tests/diff/d_<topic>.kt` with a `fun main()` that prints what it checks.
 difftest finds it by its name. When the kmicro side needs more than the default 16 KB heap, or more flash or RAM than
-the STM32L431 has, the file says so on a comment line of its own, with the reason:
+the STM32L431 has, or when its numbers may differ from the host's in the last digits, the file says so on a comment
+line of its own, with the reason:
 
 ```kotlin
 // difftest: heap 32768 -- main keeps every object of the test alive until it returns
 // difftest: large -- most of the String API in one program
+// difftest: ulp 2 -- kotlin.math is newlib's libm on kmicro and another libm on the host
 ```
 
-A program that shows a feature that does not work yet is named `d_known_<topic>.kt`; it runs only when named.
+A program that shows a feature that does not work is named `d_known_<topic>.kt`; it runs only when named.
 
 **A test for run_all** is a Kotlin program with a C driver (or `targets/common/kotlin_main.c` for `fun main()`),
 added to `tests/run_all.py` with the exit code and the output it must print.

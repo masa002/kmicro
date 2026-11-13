@@ -412,8 +412,10 @@ call.
   exceptions, initialisers, number formatting and parsing, sequences. The kmicro side is built as kbuild builds it,
   at the default 16 KB heap; a program that needs more says `// difftest: heap BYTES -- reason`, and
   `// difftest: large -- reason` allows an image above the STM32L431's 256 KB of flash and 64 KB of RAM (the report
-  marks one without it `OVER`). `--stress` collects at every allocation. The `d_known_*.kt` programs show what does
-  not work yet and run only when named.
+  marks one without it `OVER`); `// difftest: ulp N -- reason` lets numbers differ by N units in the last place
+  (`d_math`: kotlin.math is newlib's libm on kmicro). `--stress` collects at every allocation; the heap peak in the
+  report is then the most the program had live at once, while without it the peak is often the heap size. The
+  `d_known_*.kt` programs show what does not work and run only when named.
 - `python -m unittest discover -s tests/unit` tests the tools.
 - `python tools/missing_natives.py` lists the standard library's runtime functions that kmicro implements, does not
   support, or lacks.
