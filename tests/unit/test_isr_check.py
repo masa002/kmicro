@@ -87,6 +87,18 @@ class IsrCheck(unittest.TestCase):
     def test_throw_paths_are_not_followed(self):
         lines, bad, _ = self.run_check(0x080002c0)
         self.assertEqual(bad, 0, lines)
+        helper = 'kfun:kotlin.native.internal#ThrowNoWhenBranchMatchedException(){}kotlin.Nothing'
+        funcs = FUNCS + [(0x08000400, 'kfun:irq#pick(){}', [helper]), (0x08000440, helper, ['AllocInstance'])]
+        lines, bad, _ = self.run_check(0x08000400, funcs)
+        self.assertEqual(bad, 0, lines)
+
+    def test_a_user_function_named_like_a_throw_helper_is_followed(self):
+        for name in ('kfun:irq#sendOrThrow(kotlin.Int){}kotlin.Int', 'kfun:irq#ThrowAway(){}',
+                     'kfun:kotlin#getOrThrow(){}'):
+            funcs = FUNCS + [(0x08000400, 'kfun:irq#tick(){}', [name]), (0x08000440, name, ['AllocInstance'])]
+            lines, bad, _ = self.run_check(0x08000400, funcs)
+            self.assertEqual(bad, 1, (name, lines))
+            self.assertIn(f'ALLOC  kfun:irq#tick(){{}}: kfun:irq#tick(){{}} -> {name} -> AllocInstance', lines)
 
     def test_boxing_in_thread_code_only_with_the_flag(self):
         lines, bad, _ = self.run_check(0x08000200)
