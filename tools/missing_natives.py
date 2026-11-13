@@ -21,6 +21,7 @@ newlib/libgcc defines is listed like a missing native.
     -v       list the implemented and Objective-C natives too
     --check  exit 1 when a native is missing or a signature differs
 """
+import glob
 import re
 import subprocess
 import sys
@@ -143,7 +144,12 @@ def fmt(sig):
 def main():
     args = sys.argv[1:]
     verbose, check = '-v' in args, '--check' in args
-    irs = [Path(a) for a in args if not a.startswith('-')]
+    irs = []
+    for a in (a for a in args if not a.startswith('-')):
+        hits = sorted(glob.glob(a)) if re.search(r'[*?[]', a) else [a]   # PowerShell and cmd leave wildcards to us
+        if not hits or not all(Path(h).is_file() for h in hits):
+            sys.exit(f'missing_natives: no IR file {a}')
+        irs += [Path(h) for h in hits]
     if [a for a in args if a.startswith('-') and a not in ('-v', '--check', '--ir')] or (irs and '--ir' not in args):
         sys.exit(__doc__)
     natives = stdlib_natives()
