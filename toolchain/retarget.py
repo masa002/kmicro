@@ -40,16 +40,17 @@ def target_attributes(cache):
     clang = paths.clang()
     st = clang.stat()
     key = repr((str(clang), st.st_size, st.st_mtime_ns, paths.TARGET_M4F))
+    cpu_re, features_re = r'"target-cpu"="[^"]*"', r'"target-features"="[^"]*"'
     try:
         k, cpu, features = cache.read_text(encoding='utf-8').splitlines()
-        if k == key:
+        if k == key and re.fullmatch(cpu_re, cpu) and re.fullmatch(features_re, features):   # not a cut-off write
             return cpu, features
     except (OSError, ValueError):
         pass
     r = subprocess.run([str(clang), *paths.TARGET_M4F, '-S', '-emit-llvm', '-x', 'c', '-', '-o', '-'],
-                       input='void f(void) {}\n', capture_output=True, text=True)
-    cpu = re.search(r'"target-cpu"="[^"]*"', r.stdout)
-    features = re.search(r'"target-features"="[^"]*"', r.stdout)
+                       input='void f(void) {}\n', capture_output=True, text=True, errors='replace')
+    cpu = re.search(cpu_re, r.stdout)
+    features = re.search(features_re, r.stdout)
     if r.returncode != 0 or not cpu or not features:
         sys.exit(f'retarget: cannot read the target attributes from {clang}:\n{r.stderr[-2000:]}')
     cache.write_text(f'{key}\n{cpu.group(0)}\n{features.group(0)}\n', encoding='utf-8')
