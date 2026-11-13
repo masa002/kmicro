@@ -155,3 +155,18 @@ void Kotlin_Array_copyImpl(const ObjHeader *a, int32_t from, ObjHeader *d, int32
 }
 extern const ArrayHeader theEmptyArray;
 KM_NOTHROW ObjHeader *Kotlin_emptyArray(ObjHeader **result) { return km_return(result, (ObjHeader *)&theEmptyArray); }
+
+/* Atomic arrays (AtomicIntArray, AtomicLongArray, AtomicArray): the compiler takes the element's address and does the
+ * atomic operation there (Natives.cpp). The Kotlin side has already checked the index. */
+KM_NOTHROW __attribute__((pure)) int32_t *Kotlin_intArrayGetElementAddress(ObjHeader *a, int32_t index)
+{
+    return (int32_t *)km_array_data((ArrayHeader *)a) + index;
+}
+KM_NOTHROW __attribute__((pure)) int64_t *Kotlin_longArrayGetElementAddress(ObjHeader *a, int32_t index)
+{
+    return (int64_t *)km_array_data((ArrayHeader *)a) + index;
+}
+KM_NOTHROW __attribute__((pure)) ObjHeader **Kotlin_arrayGetElementAddress(ObjHeader *a, int32_t index)
+{
+    return km_array_refs((ArrayHeader *)a) + index;
+}
