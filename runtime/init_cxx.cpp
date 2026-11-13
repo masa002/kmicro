@@ -65,10 +65,15 @@ bool run_init(Frame &fr, void (*init)(void))
 void CallInitGlobalPossiblyLock(uintptr_t *state, void (*init)(void))
 {
     uintptr_t st = *state;
-    if (st == INITIALIZED || st == BEING_INITIALIZED)
+    if (st == INITIALIZED)
         return;
-    if (km_in_interrupt())                           /* a file's globals are created on first use: never in a handler */
+    if (km_in_interrupt()) {                         /* a file's globals are created on first use: never in a handler */
+        if (st == BEING_INITIALIZED)                 /* the handler interrupted that first use: they are still unset */
+            kmicro_panic("Kotlin globals used inside an interrupt handler while the thread code creates them");
         kmicro_panic("Kotlin globals first used inside an interrupt handler");
+    }
+    if (st == BEING_INITIALIZED)                     /* the initializer itself uses its file's globals */
+        return;
     if (st == FAILED_TO_INITIALIZE)
         ThrowFileFailedToInitializeException(nullptr);
     *state = BEING_INITIALIZED;

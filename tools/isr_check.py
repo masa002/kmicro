@@ -16,8 +16,9 @@ _Handler or _IRQHandler, Kotlin functions ending in Handler) are checked too, fo
 Walks the machine code (arm-none-eabi-objdump -d) from every handler along direct calls and tail branches, and
 reports each path that ends in the Kotlin allocator (AllocInstance, AllocArrayInstance and kmicro's allocation
 functions) or in a boxing function. The heap is not reentrant, so a handler that allocates can corrupt it (kmicro
-also stops at run time with "allocation inside an interrupt handler"). Paths through Throw* functions are not
-followed: those only run on a bug (an index out of bounds, a null), and the run-time guard covers them.
+also stops at run time with "allocation inside an interrupt handler"). Paths through the throw helpers of the
+runtime and the standard library (ThrowException, kfun:kotlin.native.internal#Throw...) are not followed: those only
+run on a bug (an index out of bounds, a null), and the run-time guard covers them.
 Indirect calls (function pointers, virtual calls) cannot be followed here and are listed per handler.
 
 Exit status: 0 when no handler reaches an allocation, 1 when one does (or --boxing finds a box), 2 when the image
@@ -42,6 +43,14 @@ def lazy(name):
     """Kotlin create-on-first-use points: a file's globals, an object or a companion. Safe in a handler only if
     the thread code used them first; kmicro stops at run time otherwise. Listed so each one can be checked."""
     return name == 'CallInitGlobalPossiblyLock' or '<get-$companion>' in name or '<get-$instance>' in name
+
+
+def throw_helper(name):
+    """The functions that exist only to throw: the runtime's C functions (ThrowException, ThrowNullPointerException)
+    and the standard library's own helpers (kfun:kotlin.native.internal#ThrowNoWhenBranchMatchedException). A user
+    function such as sendOrThrow is followed like any other."""
+    return name.startswith('Throw') or (name.startswith(('kfun:kotlin.', 'kfun:kotlin#')) and
+                                        name.split('#')[-1].startswith('Throw'))
 
 
 def parse_disassembly(text):
@@ -115,7 +124,7 @@ def walk(root, calls, indirect):
         f = q.popleft()
         ind += indirect.get(f, 0)
         for g in sorted(calls.get(f, ())):
-            if g in prev or g.startswith('Throw') or 'Throw' in g.split('#')[-1][:12]:
+            if g in prev or throw_helper(g):
                 continue
             prev[g] = f
             if g in ALLOC:

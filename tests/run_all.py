@@ -114,6 +114,7 @@ IRQ = Kotlin('irq', ['examples/irq'], dict(defs=['support/hw.def'], c_api=['exam
                                            init_all='kt_init_all'))
 INTERRUPTS = Kotlin('interrupts', ['tests/interrupts'], dict(c_api=['tests/interrupts/isr.h'], package='isr',
                                                              init_all='kt_init_all'))
+WINDOW = Kotlin('interrupt_window', ['tests/interrupt_window/window.kt'], dict(defs=['support/hw.def']))
 NATIVES = Kotlin('natives', ['tests/natives/natives.kt'])
 MEMORY = Kotlin('memory', ['tests/memory/memory.kt', 'tests/memory/globals.kt'])
 FAULTS = Kotlin('faults', ['tests/faults/faults.kt'])
@@ -190,6 +191,7 @@ TESTS = [
     isr('isr_schedule', 'TEST_SCHEDULE', exit=0),
     isr('isr_lazy_globals', 'TEST_LAZY'),
     isr('isr_init_all', 'TEST_INIT_ALL', exit=0),
+    Test('isr_init_window', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98),
     isr('isr_swap_fields', 'TEST_SWAP_FIELDS', exit=0, heap=32768, defs=['KM_GC_STRESS=1'],
         case={'RVR': '200u', 'ROUNDS': 40000}),
     isr('isr_swap_slots', 'TEST_SWAP_SLOTS', exit=0, heap=32768, defs=['KM_GC_STRESS=1'],

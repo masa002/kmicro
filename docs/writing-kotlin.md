@@ -160,7 +160,9 @@ What a handler must not do:
 - **Run a collection**: `GC.collect()` and `kmicro_gc()` stop the program. `GC.schedule()` does nothing inside a
   handler.
 - **Use a file's globals for the first time** (rule 11): that initialises them, which allocates, and stops the
-  program with `Kotlin globals first used inside an interrupt handler`.
+  program with `Kotlin globals first used inside an interrupt handler`. A handler that interrupts the thread code
+  in the middle of that first use finds the globals still unset, and the program stops with
+  `Kotlin globals used inside an interrupt handler while the thread code creates them`.
 
 An exception that escapes a handler is reported and stops the program (exit 98). The Kotlin hook set with
 `setUnhandledExceptionHook` does not run for it, because it may allocate; the C hook `kmicro_on_uncaught`
