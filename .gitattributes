@@ -1,0 +1,5 @@
+# Text files are stored and checked out with LF line endings on every host; binary files are left as they are.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.bin binary

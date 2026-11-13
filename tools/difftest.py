@@ -85,7 +85,7 @@ def exit_code(rc):
 
 def host(name, src):
     d = OUT / 'host' / name
-    exe = d / (name + paths.EXE)
+    exe = d / (name + ('.exe' if paths.WINDOWS else '.kexe'))   # what kotlinc-native -p program writes
     if not exe.exists() or exe.stat().st_mtime < src.stat().st_mtime:
         kotlinc([src.as_posix(), '-target', host_target(), '-p', 'program', '-opt', '-o', (d / name).as_posix()], d)
     r = subprocess.run([str(exe)], capture_output=True, timeout=300)  # the runtime writes UTF-8 bytes (::write)
