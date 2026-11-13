@@ -5,7 +5,8 @@ Each tool is looked up in this order: its environment variable, then the usual i
     KMICRO_KOTLIN_NATIVE  Kotlin/Native 2.4.21 prebuilt distribution (contains bin/kotlinc-native, bin/cinterop)
                           default: ~/toolchains/kotlin-native-prebuilt-*-2.4.21
     KMICRO_LLVM           the LLVM bin folder Kotlin/Native downloads on its first run (clang, ld.lld)
-                          default: ~/.konan/dependencies/llvm-*-essentials-*/bin
+                          default: ~/.konan/dependencies/llvm-*-essentials-*/bin (Windows), llvm-*-dev-*/bin (Linux,
+                          macOS)
     KMICRO_ARM_GCC        xPack arm-none-eabi-gcc (newlib, libgcc, objcopy, size, objdump)
                           default: ~/toolchains/xpack-arm-none-eabi-gcc-*
     KMICRO_QEMU           xPack QEMU Arm (only for the emulator targets and tests)

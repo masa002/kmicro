@@ -56,6 +56,12 @@ class VersionChoice(unittest.TestCase):
         for tool in ('llvm', 'arm-gcc', 'qemu', 'java'):
             self.assertIn(tool, t)
 
+    def test_llvm_kotlin_native_downloads(self):
+        # konan.properties llvmHome.<host>: the essentials build on Windows, the dev build on Linux and macOS
+        for name in ('llvm-21-x86_64-windows-essentials-150', 'llvm-21-x86_64-linux-dev-116',
+                     'llvm-21-aarch64-macos-dev-97', 'llvm-21-x86_64-macos-dev-83'):
+            self.assertTrue(paths._tested('llvm', self.home / '.konan/dependencies' / name / 'bin'), name)
+
 
 class Check(unittest.TestCase):
     def run_check(self, **env):
