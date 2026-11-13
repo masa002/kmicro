@@ -81,7 +81,8 @@ The short list; [docs/kotlin-support.md](docs/kotlin-support.md) has every case.
   `Uuid.random()` stop the program naming the missing hook, `Random.Default` repeats its sequence after every reset,
   and `readln()` sees the end of the input. [runtime/kmicro.h](runtime/kmicro.h) lists the hooks.
 - **Stack traces:** addresses, at most 12 frames; [tools/symbolize.py](tools/symbolize.py) turns them into function
-  names, with file and line when the code is built with `-g`. Functions that LTO inlines fold into their callers.
+  names, with file and line when the code is built with `-g`. Functions that LTO inlines fold into their callers
+  ([reading a stack trace](docs/how-it-works.md#reading-a-stack-trace)).
 - **Smaller limits:** `kotlin.math` results are within 2 ulp of stock (newlib's libm); `nativeHeap`, `memScoped`
   and `cstr` share a 1 KB arena (`KM_INTEROP_BYTES`); a public function whose backtick name contains a space cannot
   be exported to C (make it `internal` or `private`); on Windows, a file name with characters outside the ANSI code

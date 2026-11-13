@@ -164,6 +164,194 @@ allocation, 1 when one does (or `--boxing` finds a box), and 2 when the image ca
 [examples/irq](../examples/irq) is a worked example, and [writing-kotlin.md](writing-kotlin.md#interrupt-handlers)
 has the rules and the Kotlin constructs that allocate where it is not obvious.
 
+## Reading a stack trace
+
+An uncaught exception prints its qualified type, its whole message and its stack trace, then each cause as
+`Caused by: ...` with its own frames. Frames that a cause shares with the exception above it become
+`... and N more common stack frames skipped`, as in `printStackTrace()`. The report allocates nothing. It leaves out
+suppressed exceptions (`e.printStackTrace()` in a catch block shows them) and does not call a custom `toString()`.
+A stack trace is a list of return addresses; [tools/symbolize.py](../tools/symbolize.py) names them from the ELF.
+
+Before the report, the hook set with `setUnhandledExceptionHook` runs, as on stock Kotlin/Native; if it throws, its
+exception is reported instead. It may end the program itself with `terminateWithUnhandledException(it)`.
+`processUnhandledException(e)` returns after a hook that returns, and otherwise reports and stops. Inside an
+interrupt handler the Kotlin hook is skipped, because it may allocate; the C hook `kmicro_on_uncaught` runs after
+the report in every case ([porting.md](porting.md#the-board-contract)). When no hook was ever set, the first
+uncaught exception makes the standard library create its hook holder, two small objects; if the heap is full at
+that moment, the program stops with the out-of-memory report instead.
+
+The exc test ([tests/m3/exc.kt](../tests/m3/exc.kt)) ends with an uncaught exception thrown three calls deep. Its
+output saved to a log file, then symbolized:
+
+```
+python tools/kbuild.py build/exc tests/m3/exc.kt
+python tools/qbuild.py build/exc/exc.elf tests/m3/exc.c build/exc/k.o -D KM_HEAP_BYTES=8192 --run > exc.log
+python tools/symbolize.py build/exc/exc.elf exc.log
+```
+
+symbolize.py prints the log with the names added:
+
+```
+qbuild: exc.elf  text 53312  data 80  bss 10672  stack 88012
+exception checks failed mask = 0  OK   (gcs=6)
+now an uncaught one (expected to stop with a report):
+Uncaught Kotlin exception: PanelError: panel error -5
+    at 0x08009aa0  PanelError#<init>(kotlin.Int){}+0x1e4
+    at 0x08002822  run_main+0x75e
+        run_main (exc.c:17)
+    at 0x08001942  start_c+0xaa
+        start_c (start.c:68)
+kmicro panic: uncaught Kotlin exception
+qemu: exit 98
+```
+
+symbolize.py adds the function and the offset after each `at 0x...`. A trace address is a return address, so it
+names the function that made the call; the offset is the return address's. The trace starts where the exception
+was created, here in the constructor of `PanelError`. LTO inlined `uncaught`, `deep` and `check` into `main` of
+`exc.c`, and `main` into `run_main` of the start code, so the Kotlin functions fold into `run_main`. The C files are
+compiled with `-g` by qbuild, hence `exc.c:17`.
+
+Compiled with debug information, the Kotlin frames come back:
+
+```
+python tools/kbuild.py build/exc tests/m3/exc.kt --kotlinc -g
+python tools/qbuild.py build/exc/exc.elf tests/m3/exc.c build/exc/k.o -D KM_HEAP_BYTES=8192 --run > exc.log
+python tools/symbolize.py build/exc/exc.elf exc.log
+```
+
+symbolize.py prints the log with the names added:
+
+```
+qbuild: exc.elf  text 55436  data 80  bss 10672  stack 88012
+exception checks failed mask = 0  OK   (gcs=6)
+now an uncaught one (expected to stop with a report):
+Uncaught Kotlin exception: PanelError: panel error -5
+    at 0x0800a174  PanelError#<init>(kotlin.Int){}+0x1c0
+    at 0x08002838  run_main+0x774
+        #check(kotlin.Int){} (exc.kt:6) [inlined]
+        #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exc.kt:7) [inlined]
+        #uncaught(kotlin.Int){}kotlin.Int (exc.kt:40) [inlined]
+        main (exc.c:17) [inlined]
+        run_main (start.c:58)
+    at 0x08001942  start_c+0xaa
+        start_c (start.c:68)
+kmicro panic: uncaught Kotlin exception
+qemu: exit 98
+```
+
+Under each frame, the functions inlined at that call are listed innermost first, each with its file and line,
+then the function that holds them (`arm-none-eabi-addr2line -i`). kotlinc-native warns
+`unsupported combination of flags: -opt and -g` and builds the program, here 2,124 bytes larger. On a board, save
+what the UART printed and pass that file the same way; the ELF must be the one the board runs.
+
+symbolize.py also reads the log on stdin (`python tools/symbolize.py build/exc/exc.elf < exc.log`), or names
+addresses given as arguments:
+
+```
+python tools/symbolize.py build/exc/exc.elf 0x08002838
+```
+
+```
+0x08002838  run_main+0x774
+        #check(kotlin.Int){} (exc.kt:6) [inlined]
+        #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exc.kt:7) [inlined]
+        #uncaught(kotlin.Int){}kotlin.Int (exc.kt:40) [inlined]
+        main (exc.c:17) [inlined]
+        run_main (start.c:58)
+```
+
+It reads the log as UTF-8: in Windows PowerShell, save the log with `| Out-File -Encoding utf8 exc.log` rather than
+`>`, whose encoding depends on the PowerShell version and its settings. symbolize.py exits 1 when the ELF is missing
+or unreadable and 2 for a bad argument.
+
+A cause chain, from a Kotlin-only program:
+
+```kotlin
+// trace.kt
+class SensorMissing(id: Int) : Exception("sensor $id not answering")
+
+fun probe(id: Int, left: Int): Int {
+    if (left == 0) throw IllegalStateException("boot failed at sensor $id", SensorMissing(id))
+    return probe(id, left - 1) + id
+}
+
+fun main() {
+    println(probe(3, 2))
+}
+```
+
+```
+python tools/kbuild.py build/trace trace.kt --kotlinc -g
+python tools/qbuild.py build/trace/trace.elf targets/common/kotlin_main.c build/trace/k.o --run > trace.log
+python tools/symbolize.py build/trace/trace.elf trace.log
+```
+
+symbolize.py prints the log with the names added:
+
+```
+qbuild: trace.elf  text 52156  data 80  bss 18864  stack 79820
+Uncaught Kotlin exception: kotlin.IllegalStateException: boot failed at sensor 3
+    at 0x080098ac  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x90
+    at 0x0800984c  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
+    at 0x0800984c  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
+    at 0x08002128  run_main+0x64
+        run_main (trace.kt:9)
+    at 0x08001942  start_c+0xaa
+        start_c (start.c:68)
+Caused by: SensorMissing: sensor 3 not answering
+    at 0x08009806  SensorMissing#<init>(kotlin.Int){}+0x1ea
+    at 0x080098a2  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x86
+    at 0x0800984c  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
+    ... and 3 more common stack frames skipped
+kmicro panic: uncaught Kotlin exception
+qemu: exit 98
+```
+
+A trace keeps at most 12 frames, with no marker when it is cut.
+
+**A CPU fault** is not an exception. On `qemu-l475` the start code prints a fault report and stops with exit 99
+([porting.md](porting.md#optional-a-fault-report-and-mpu-guards) has the format). Here a constructor of `Base` calls
+`describe()` before `Sub` has set `name`, so `name.length` reads through null:
+
+```kotlin
+// fault.kt
+abstract class Base {
+    init { println("Base sees " + describe()) }
+    abstract fun describe(): String
+}
+
+class Sub(val name: String) : Base() {
+    override fun describe() = "name of ${name.length} characters"
+}
+
+fun main() {
+    println(Sub("x").describe())
+}
+```
+
+```
+python tools/kbuild.py build/fault fault.kt --kotlinc -g
+python tools/qbuild.py build/fault/fault.elf targets/common/kotlin_main.c build/fault/k.o --run > fault.log
+python tools/symbolize.py build/fault/fault.elf fault.log
+```
+
+symbolize.py prints the log with the names added:
+
+```
+qbuild: fault.elf  text 47780  data 80  bss 18864  stack 79820
+kmicro fault: null pointer access (MemManage) at 0x08009032  Sub#describe(){}kotlin.String+0xfe
+    sp 0x20017ec8  lr 0x20000820  cfsr 0x00000082  hfsr 0x00000000  mmfar 0x0000000c  bfar 0x00000000
+qemu: exit 99
+```
+
+The address of a fault report is the faulting instruction itself, not a return address, so symbolize.py looks it up
+as it is. `mmfar` is the address that was read, 12 bytes past null. A stack overflow reports
+`kmicro fault: stack overflow (MemManage), no stacked frame`: there is no PC to name.
+
+A panic that knows where it happened ends with the address too, for example
+`kmicro panic: allocation inside an interrupt handler at 0x0800...`; symbolize.py names the function that made the
+call.
+
 ## Testing
 
 - [tests/run_all.py](../tests/run_all.py) builds every test program and the examples and runs them on QEMU
