@@ -16,6 +16,12 @@
 #include <string.h>
 #include "kmicro.h"
 
+/* Without -fexceptions this file's functions get [cantunwind] entries: phase 1 stops at ThrowException and every Kotlin
+ * exception is reported as uncaught. Clang and GCC define __EXCEPTIONS for C exactly when -fexceptions is given. */
+#ifndef __EXCEPTIONS
+#error "compile the kmicro runtime with -fexceptions -funwind-tables (docs/porting.md)"
+#endif
+
 /* ARM EHABI interface of libgcc (unwind-arm-common.h, GCC 15.2), declared here because clang's own <unwind.h>
  * describes a different (LLVM libunwind) layout. */
 typedef enum {
