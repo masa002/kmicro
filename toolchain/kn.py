@@ -14,6 +14,7 @@
 
 A program built this way runs on the kmicro runtime (runtime/): see docs/how-it-works.md.
 """
+import bisect
 import json
 import os
 import re
@@ -424,6 +425,54 @@ def add_cname_aliases(lbd_text, ll_text):
     return lines, errors
 
 
+IR_SIZES = {'i1': 1, 'i8': 1, 'i16': 2, 'i32': 4, 'float': 4, 'ptr': 4, 'i64': 8, 'double': 8}
+
+
+def kotlin_name(sym):
+    """A readable name for a function symbol: 'kfun:app.Foo#bar(kotlin.Int){}kotlin.Int' -> 'app.Foo.bar(Int)'."""
+    if not sym.startswith('kfun:') or '#' not in sym:
+        return sym
+    where, rest = sym[5:].split('#', 1)
+    if '(' not in rest:
+        return f'{where + "." if where else ""}{rest}'
+    params = ', '.join(p.replace('kotlin.', '') for p in kotlin_signature(sym)[0])
+    return f'{where + "." if where else ""}{rest.split("(", 1)[0]}({params})'
+
+
+def stack_arrays(ll_text):
+    """Arrays Kotlin/Native puts on the stack: its escape analysis turns a local array of constant size that does not
+    escape into an alloca (up to 64 KB per function). [(function symbol, [(array type, length, bytes)])]."""
+    elem = {m.group(1): IR_SIZES.get(m.group(2), 4) for m in re.finditer(
+        r'^%"(local#\w+?#internal)" = type <?\{ %struct\.ArrayHeader, \[\d+ x (\w+)\] \}>?', ll_text, re.M)}
+    defs = [(m.start(), m.group(1).strip('"')) for m in re.finditer(r'^define [^@\n]*@("[^"]+"|[\w.$]+)\(', ll_text,
+                                                                  re.M)]
+    found = {}
+    for m in re.finditer(r'alloca %"(local#([A-Za-z]+?)(\d+)#internal)"', ll_text):
+        i = bisect.bisect(defs, (m.start(), '￿')) - 1
+        if i >= 0:
+            n = int(m.group(3))
+            found.setdefault(defs[i][1], []).append((m.group(2), n, n * elem.get(m.group(1), 4)))
+    return list(found.items())
+
+
+def check_stack_arrays(ll_text, limit=512, error=False):
+    """Report (or with `error`, refuse) the functions whose stack arrays take more than `limit` bytes."""
+    msgs = []
+    for sym, arrays in stack_arrays(ll_text):
+        total = sum(b for _, _, b in arrays)
+        if total > limit:
+            msgs.append(f'{kotlin_name(sym)} puts arrays on the stack: '
+                        + ', '.join(f'{t}({n}) {b} B' for t, n, b in arrays) + f' (limit {limit} B)')
+    if not msgs:
+        return
+    note = ('A local array of constant size that never leaves its function lives on the stack (Kotlin/Native, up to '
+            '64 KB per function). Keep a big buffer in a top-level val or a class field; --stack-array-limit sets '
+            'the limit. tools/frames.py shows the frames after linking.')
+    if error:
+        sys.exit('kmicro: ' + '\nkmicro: '.join(msgs) + '\n' + note)
+    print('kmicro: warning: ' + '\nkmicro: warning: '.join(msgs) + '\n' + note, file=sys.stderr)
+
+
 MAIN = re.compile(r'^define [^@\n]*@"(kfun:([\w.]*)#main\((kotlin\.Array<kotlin\.String>)?\)\{\})"\(', re.M)
 
 
@@ -536,7 +585,7 @@ def c_declarations(*headers, include_dirs=(), defines=()):
 
 
 def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, size=False, hot=None, force=False,
-          kotlinc_args=(), include_dirs=(), main=None, defs=()):
+          kotlinc_args=(), include_dirs=(), main=None, defs=(), stack_array_limit=512, stack_array_error=False):
     """Kotlin sources -> [out/k.o] (+ out/bridges.o when the program calls C through cinterop), ready to link with
     the kmicro runtime. A function marked @CName("name") gets that C name (add_cname_aliases), and the program's
     `fun main()` the name kmicro_kotlin_main, which targets/common/kotlin_main.c calls (add_kotlin_main).
@@ -554,6 +603,8 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
     include_dirs  folders the .def and c_api headers include from (besides their own, runtime/, support/, newlib)
     main     True: the sources must have one `fun main()` (else an error); False: no kmicro_kotlin_main; None: made
              when there is exactly one main
+    stack_array_limit  warn about a function whose arrays on the stack take more bytes (check_stack_arrays);
+             stack_array_error makes it an error
     """
     out = Path(out)
     if hot and not size:
@@ -578,6 +629,7 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
                      + ', '.join(f'{c} (expected {camel(c)})' for c in missing))
         if init_all:
             lines += add_init_all(text, package, init_all)
+    check_stack_arrays(text, stack_array_limit, stack_array_error)
     if main is not False:
         lines += add_kotlin_main(text, required=bool(main))
     lbd = out / 'ir/out.LinkBitcodeDependencies.ll'

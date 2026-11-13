@@ -59,6 +59,10 @@ def parser():
     p.add_argument('--main', action='store_true',
                    help='require a `fun main()` (an error when there is none); one is found without this flag too '
                         'and gets the C name kmicro_kotlin_main, which targets/common/kotlin_main.c calls')
+    p.add_argument('--stack-array-limit', type=int, default=512, metavar='BYTES',
+                   help='warn about a function whose local arrays live on the stack and take more than BYTES '
+                        '(default 512); Kotlin/Native puts a constant-size array that stays in its function there')
+    p.add_argument('--stack-array-error', action='store_true', help='make that warning an error')
     p.add_argument('--kotlin', dest='force', action='store_true',
                    help='recompile even when the saved IR is current')
     return p
@@ -99,7 +103,8 @@ def main():
     a = parse(sys.argv[1:])
     objs = kn.build(a.sources, a.outdir, libs=a.libs, c_api=a.c_api, package=a.package, init_all=a.init_all,
                     size=a.size, hot=a.hot, force=a.force, kotlinc_args=a.kotlinc_args, include_dirs=a.include_dirs,
-                    main=True if a.main else None, defs=a.defs)
+                    main=True if a.main else None, defs=a.defs, stack_array_limit=a.stack_array_limit,
+                    stack_array_error=a.stack_array_error)
     print('\n'.join(str(o) for o in objs))
 
 
