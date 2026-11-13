@@ -296,26 +296,21 @@ KM_NOTHROW void UpdateReturnRef(ObjHeader **slot, const ObjHeader *object) { *sl
 KM_NOTHROW void UpdateVolatileHeapRef(ObjHeader **location, const ObjHeader *object) { *location = (ObjHeader *)object; }
 KM_NOTHROW void ZeroHeapRef(ObjHeader **location) { *location = NULL; }
 KM_NOTHROW void ZeroArrayRefs(ArrayHeader *array) { memset(km_array_refs(array), 0, array->count_ * sizeof(ObjHeader *)); }
+/* AtomicReference and @Volatile read-modify-writes: atomic against interrupt handlers too (LDREX/STREX; exception
+ * entry clears the exclusive monitor, so an interrupted update retries), like the Int and Long atomics. */
 KM_NOTHROW bool CompareAndSetVolatileHeapRef(ObjHeader **location, ObjHeader *expected, ObjHeader *value)
 {
-    if (*location != expected)
-        return false;
-    *location = value;
-    return true;
+    return __atomic_compare_exchange_n(location, &expected, value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
 }
 KM_NOTHROW ObjHeader *CompareAndSwapVolatileHeapRef(ObjHeader **location, ObjHeader *expected, ObjHeader *value,
                                                     ObjHeader **result)
 {
-    ObjHeader *old = *location;
-    if (old == expected)
-        *location = value;
-    return km_return(result, old);
+    __atomic_compare_exchange_n(location, &expected, value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    return km_return(result, expected);              /* the old value, whether or not it was replaced */
 }
 KM_NOTHROW ObjHeader *GetAndSetVolatileHeapRef(ObjHeader **location, ObjHeader *value, ObjHeader **result)
 {
-    ObjHeader *old = *location;
-    *location = value;
-    return km_return(result, old);
+    return km_return(result, __atomic_exchange_n(location, value, __ATOMIC_SEQ_CST));
 }
 
 /* ---------------------------------------------------------------------------------------------------------- */
