@@ -1,28 +1,29 @@
 """Extract the cinterop bridges from a kotlinc-native module saved after LinkBitcodeDependencies.
 
-usage: python toolchain/bridges.py out.LinkBitcodeDependencies.ll bridges.ll
+usage: python toolchain/bridges.py out.LinkBitcodeDependencies.ll bridges.ll [--codegen out.Codegen.ll]
 
 A Kotlin call to a C function declared through cinterop goes
     Kotlin --invoke--> _<hash>_<n>_knbridge<k>  --load--> @knifunptr_<pkg>_<fn>_<i> = @<pkg>_<fn>_wrapper<j>
                    --tail call--> <fn>  (the C function, or the body of a static inline one)
 and C calls a staticCFunction through
     C --function pointer--> _<hash>_<n>_kncfun<k>  --call--> _<hash>_<n>_knbridge<m>  --> the Kotlin lambda
-The Codegen module (what kmicro compiles, out.Codegen.ll next to the input) defines the Kotlin side of each callback
-and only declares the other bridges and the C-callable stubs: their bodies, the function-pointer globals and the
-wrappers come from the compiler's C stubs, linked in later together with the stock runtime. This tool copies exactly
-those pieces and the types they use into a small module, and declares what they reference: the C functions and
-globals, and every name Codegen knows (the Kotlin side of a callback comes from k.o, runtime functions from the kmicro
-runtime). Full LTO then folds each chain into a direct call. Attribute groups and metadata are dropped (retarget.py
-gives the definitions the Cortex-M4 attributes).
+The Codegen module (what kmicro compiles; --codegen, by default out.Codegen.ll next to the input) defines the Kotlin
+side of each callback and only declares the other bridges and the C-callable stubs: their bodies, the function-pointer
+globals and the wrappers come from the compiler's C stubs, linked in later together with the stock runtime. This tool
+copies exactly those pieces and the types they use into a small module, and declares what they reference: the C
+functions and globals, and every name Codegen knows (the Kotlin side of a callback comes from k.o, runtime functions
+from the kmicro runtime). Full LTO then folds each chain into a direct call. Attribute groups and metadata are dropped
+(retarget.py gives the definitions the Cortex-M4 attributes); string constants and inline assembly keep their text.
 """
+import argparse
 import re
-import sys
 from pathlib import Path
 
 NAME = r'("[^"]*"|[-\w$.]+)'                            # an LLVM name after @ or %: quoted, plain or a number
 ROOT = re.compile(r'_kn(bridge|cfun)\d+"?$')
 TOKEN = re.compile(r'([@%])' + NAME + r'|"[^"]*"')     # a global, local or type name, or a string (skipped)
 LINKAGE = re.compile(r'\b(private|internal|linkonce|linkonce_odr|weak|weak_odr|common|available_externally) ')
+EXTERNAL = re.compile(r'@' + NAME + r' = (?:[\w()]+ )*?external ')
 
 
 def top_level(text):
@@ -47,11 +48,15 @@ def names(text, sigil):
     return {m.group(2) for m in TOKEN.finditer(text) if m.group(1) == sigil}
 
 
+def outside_strings(fn, s):
+    """fn applied to the parts of s that are not quoted (string constants, inline assembly, quoted names)."""
+    return ''.join(p if p.startswith('"') else fn(p) for p in re.split(r'("[^"]*")', s))
+
+
 def clean(s):
-    s = re.sub(r'\s#\d+', '', s)                     # attribute groups (target attributes are stripped anyway)
-    s = re.sub(r', !\w+ !\d+', '', s)                # !tbaa etc.
-    s = re.sub(r' !\w+ !\d+', '', s)
-    return s
+    """Without metadata attachments (!tbaa !7, !llvm.loop !12, !srcloc !3 ...) and attribute groups (#4): neither the
+    metadata nor the attribute groups are copied."""
+    return outside_strings(lambda p: re.sub(r'\s#\d+(?=\s|$)', '', re.sub(r',? ![\w.]+ !\d+', '', p)), s)
 
 
 def function_declaration(define):
@@ -115,18 +120,26 @@ def extract(lbd, codegen):
     text = '\n'.join(['; cinterop bridges extracted by kmicro toolchain/bridges.py', *header, '',
                       *ordered({t: types[t] for t in used}), '', *ordered(out_globs), '',
                       *ordered({**out_decls, **out_defs})]) + '\n'
-    calls_c = sorted(n for n in out_decls if n not in kotlin)
+    external = {n for n in out_globs if EXTERNAL.match(out_globs[n][1])}
+    calls_c = sorted(n for n in [*out_decls, *external] if n not in kotlin)
     summary = (f'bridges: {sum("knbridge" in n for n in roots)} Kotlin->C bridges, '
                f'{sum("kncfun" in n for n in roots)} C->Kotlin stubs; copied {len(out_defs)} functions, '
-               f'{len(out_globs)} pointers, {len(used)} types; C functions: ' + ' '.join(calls_c))
+               f'{len(set(out_globs) - external)} globals, {len(used)} types; C: ' + ' '.join(calls_c))
     return text, summary
 
 
 def main():
-    lbd, dst = Path(sys.argv[1]), Path(sys.argv[2])
-    text, summary = extract(lbd.read_text(encoding='utf-8'),
-                            lbd.with_name('out.Codegen.ll').read_text(encoding='utf-8'))
-    dst.write_text(text, encoding='utf-8', newline='\n')
+    ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    ap.add_argument('lbd', type=Path, help='out.LinkBitcodeDependencies.ll (kotlinc-native -Xsave-llvm-ir-after)')
+    ap.add_argument('out', type=Path, help='the bridges module to write (textual IR)')
+    ap.add_argument('--codegen', type=Path, help='out.Codegen.ll of the same compile (default: next to lbd)')
+    a = ap.parse_args()
+    codegen = a.codegen or a.lbd.with_name('out.Codegen.ll')
+    for f in (a.lbd, codegen):
+        if not f.is_file():
+            ap.error(f'{f}: no such file')
+    text, summary = extract(a.lbd.read_text(encoding='utf-8'), codegen.read_text(encoding='utf-8'))
+    a.out.write_text(text, encoding='utf-8', newline='\n')
     print(summary)
 
 

@@ -30,3 +30,13 @@ fun sortDescending(): Int = memScoped {                     // a Kotlin comparat
 }
 
 fun varargs(): Int = sum_va(3, 1, 2, 3)
+
+fun inlineLoop(): Int = sum_to(4u).toInt()
+
+fun inlineAsm(): Int = add_one_asm(41u).toInt()
+
+fun inlineString(): Int {
+    val s = slot_name()!!.toKString()
+    println("slot_name() = \"$s\"")
+    return if (s == "slot #1") 1 else 0
+}

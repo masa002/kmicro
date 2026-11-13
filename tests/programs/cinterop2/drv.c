@@ -27,12 +27,17 @@ int32_t sum_va(int32_t n, ...)
     return s;
 }
 
+uint32_t plain_fn(uint32_t v) { return v; }
+
 int32_t kt_global(void) __asm__("kfun:#global(){}kotlin.Int");
 int32_t kt_struct_return(void) __asm__("kfun:#structReturn(){}kotlin.Int");
 int32_t kt_struct_arg(void) __asm__("kfun:#structArg(){}kotlin.Int");
 int32_t kt_callback(void) __asm__("kfun:#callback(){}kotlin.Int");
 int32_t kt_sort_descending(void) __asm__("kfun:#sortDescending(){}kotlin.Int");
 int32_t kt_varargs(void) __asm__("kfun:#varargs(){}kotlin.Int");
+int32_t kt_inline_loop(void) __asm__("kfun:#inlineLoop(){}kotlin.Int");
+int32_t kt_inline_asm(void) __asm__("kfun:#inlineAsm(){}kotlin.Int");
+int32_t kt_inline_string(void) __asm__("kfun:#inlineString(){}kotlin.Int");
 
 static int s_wrong;
 static void check(const char *what, int32_t v, int32_t want)
@@ -52,6 +57,9 @@ int main(void)
     check("callback() = ", kt_callback(), 42);
     check("sortDescending() = ", kt_sort_descending(), 97531);
     check("varargs() = ", kt_varargs(), 6);
+    check("inlineLoop() = ", kt_inline_loop(), 10);
+    check("inlineAsm() = ", kt_inline_asm(), 42);
+    check("inlineString() = ", kt_inline_string(), 1);
     check("drv_counter = ", drv_counter, 15);
     kmicro_puts(s_wrong ? "cinterop2: WRONG\n" : "cinterop2: all OK\n");
     return s_wrong ? 1 : 0;

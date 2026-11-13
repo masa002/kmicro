@@ -1,5 +1,5 @@
 """toolchain/bridges.py extract() on a small module in the shape kotlinc-native saves (no Kotlin compiler needed;
-the last test assembles the result with clang when it is installed).
+one test assembles the result with clang when it is installed).
 
 python -m unittest discover -s tests/unit
 """
@@ -44,6 +44,7 @@ LBD = HEADER + '''
 @"kclass:kotlin.Any" = constant %struct.TypeInfo { ptr @"kclass:kotlin.Any", i32 1 }
 @knifunptr_p_make_0 = local_unnamed_addr global ptr @p_make_wrapper0, align 4
 @knifunptr_p_sum_to_0 = local_unnamed_addr global ptr @p_sum_to_wrapper1, align 4
+@.str = private unnamed_addr constant [8 x i8] c"slot #1\\00", align 1
 @p_count = external local_unnamed_addr global i32, align 4
 
 define void @Kotlin_initRuntimeIfNeeded() #4 {
@@ -87,16 +88,29 @@ declare void @p_make(ptr dead_on_unwind writable sret(%struct._h_1_struct3) alig
 
 define i32 @p_sum_to_wrapper1(i32 noundef %0) #6 {
   %2 = load i32, ptr @p_count, align 4, !tbaa !15
-  %3 = add i32 %2, %0
-  ret i32 %3
+  %3 = tail call i32 asm "add $0, $1, #1", "=r,r"(i32 %2) #9, !srcloc !21
+  %4 = load i8, ptr @.str, align 1
+  br label %5
+
+5:
+  %6 = phi i32 [ %3, %1 ], [ %7, %5 ]
+  %7 = add i32 %6, %0
+  %8 = icmp ugt i32 %7, 100
+  br i1 %8, label %9, label %5, !llvm.loop !1224
+
+9:
+  ret i32 %7
 }
 
 attributes #4 = { nounwind }
 attributes #6 = { nounwind "target-cpu"="generic" }
 attributes #7 = { nounwind }
+attributes #9 = { nounwind }
 attributes #102 = { nounwind }
 
 !15 = !{!"tbaa"}
+!21 = !{i64 1}
+!1224 = distinct !{!1224}
 '''
 
 
@@ -122,9 +136,16 @@ class Extract(unittest.TestCase):
         self.assertNotIn('%struct.unused', self.text)
         self.assertNotIn('%struct.TypeInfo', self.text)
 
-    def test_summary_names_the_c_functions(self):
-        self.assertTrue(self.summary.endswith('C functions: p_make'), self.summary)
-        self.assertIn('copied 5 functions, 3 pointers, 2 types', self.summary)
+    def test_metadata_and_attribute_groups_are_dropped_outside_strings(self):
+        self.assertNotIn('!', self.text)
+        self.assertNotIn(') #', self.text)
+        self.assertIn('asm "add $0, $1, #1", "=r,r"(i32 %2)\n', self.text)
+        self.assertIn('c"slot #1\\00"', self.text)
+        self.assertIn('br i1 %8, label %9, label %5\n', self.text)
+
+    def test_summary_names_the_c_functions_and_globals(self):
+        self.assertTrue(self.summary.endswith('C: p_count p_make'), self.summary)
+        self.assertIn('copied 5 functions, 3 globals, 2 types', self.summary)
 
     def test_clang_accepts_the_module(self):
         try:
@@ -138,6 +159,13 @@ class Extract(unittest.TestCase):
             r = subprocess.run([str(clang), *paths.TARGET_M4F, '-Wno-override-module', '-c', '-x', 'ir', str(ll),
                                 '-o', str(Path(d) / 'bridges.o')], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class CommandLine(unittest.TestCase):
+    def test_no_arguments_prints_usage(self):
+        r = subprocess.run([sys.executable, str(Path(bridges.__file__))], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('usage: bridges.py', r.stderr)
 
 
 if __name__ == '__main__':
