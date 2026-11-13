@@ -81,7 +81,13 @@ void kmicro_on_uncaught(ObjHeader *exception);       /* an uncaught exception, a
 int64_t kmicro_time_ns(void);                        /* monotonic, any origin: measureTime, TimeSource.Monotonic */
 int64_t kmicro_wall_time_ns(void);                   /* since 1970-01-01 UTC: Clock.System */
 uint64_t kmicro_random_seed(void);                   /* the seed of Random.Default */
-/* [here: console input, output with a length, and entropy (kmicro_getc, kmicro_write, kmicro_random_bytes)] */
+/* console input, output with a length, and entropy (defaults in runtime/system.c and runtime/strings.c) */
+int kmicro_getc(void);                               /* the next input byte, waiting if needed; -1 at the end of input
+                                                        (default: no input) */
+void kmicro_write(const char *buf, size_t n);        /* UTF-8 text with a length, may hold NUL (default: kmicro_puts
+                                                        per println chunk, NULs dropped) */
+void kmicro_random_bytes(void *buf, size_t n);       /* n bytes from a true entropy source for Uuid.random() (default:
+                                                        stops the program with a panic that names the hook) */
 
 /* Provided by the runtime, for the board and any C code. */
 void kmicro_init(void);                              /* = Kotlin_initRuntimeIfNeeded for the single thread */
