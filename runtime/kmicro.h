@@ -76,7 +76,11 @@ __attribute__((noreturn)) void kmicro_exit(int code);   /* stop with this status
 /* Optional board hooks: the runtime has a weak default for each, so a board defines only the ones it has. */
 void kmicro_on_uncaught(ObjHeader *exception);       /* an uncaught exception, after its report and before the panic
                                                         (default: nothing), e.g. to keep it for post-mortem */
-/* [here: the clock and random seed hooks of kotlin.time and kotlin.random (runtime/time.c)] */
+/* kotlin.time and kotlin.random (defaults in runtime/time.c: the two clocks stop the program with a panic that
+ * names the hook, the seed is a constant) */
+int64_t kmicro_time_ns(void);                        /* monotonic, any origin: measureTime, TimeSource.Monotonic */
+int64_t kmicro_wall_time_ns(void);                   /* since 1970-01-01 UTC: Clock.System */
+uint64_t kmicro_random_seed(void);                   /* the seed of Random.Default */
 /* [here: console input, output with a length, and entropy (kmicro_getc, kmicro_write, kmicro_random_bytes)] */
 
 /* Provided by the runtime, for the board and any C code. */
@@ -133,11 +137,5 @@ static inline int km_in_interrupt(void)
     return 0;
 #endif
 }
-
-/* Board hooks for kotlin.time and kotlin.random. runtime/time.c has weak defaults: the two clocks stop the program
- * with a panic that names the hook, the seed is a constant. */
-int64_t kmicro_time_ns(void);                        /* monotonic, any origin: measureTime, TimeSource.Monotonic */
-int64_t kmicro_wall_time_ns(void);                   /* since 1970-01-01 UTC: Clock.System */
-uint64_t kmicro_random_seed(void);                   /* the seed of Random.Default */
 
 #endif
