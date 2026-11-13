@@ -1,0 +1,1 @@
+coroutine: presses sum = 45150 expect 45150  gcs={N} allocs=1086  OK

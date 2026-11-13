@@ -1,0 +1,2 @@
+[kernel log] poked 7
+cinterop: poke(7) = 1003  OK

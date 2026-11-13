@@ -1,0 +1,1 @@
+gc test: sum=551995 expect=551995  heap=5120 allocs=6119 gcs={N} freed={N} peak={N}  OK

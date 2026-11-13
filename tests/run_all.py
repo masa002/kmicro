@@ -1,78 +1,234 @@
-"""kmicro regression suite: every Kotlin test program, on the emulated STM32L475 (QEMU), with the kmicro runtime.
+"""kmicro regression suite: the test programs and the examples, built the way a user builds them and run on QEMU.
 
-usage: python tests/run_all.py [name ...] [--kotlin] [--stress]
-       --kotlin: recompile the Kotlin sources even if their IR is current; --stress: collect at every allocation
+usage: python tests/run_all.py [NAME ...] [--kotlin] [--stress] [-v]
 
-Per test: toolchain/kn.py build() (kotlinc-native 2.4.21 only when a source is newer than its saved IR, retarget,
-clang -flto) -> tools/qbuild.py (runtime + C driver) -> QEMU. A test passes when the program exits as expected (the
-uncaught-exception test expects 98) and its output holds the expected text. The examples/ programs run here too.
+    NAME      a test (an unknown name lists them); default: every test
+    --kotlin  recompile the Kotlin sources even when their saved IR is current
+    --stress  the runtime collects garbage at every allocation (KM_GC_STRESS)
+    -v        print what each test builds and runs: the build messages and the program's output
+
+Each test builds its Kotlin sources with toolchain/kn.py build(), as tools/kbuild.py does (kotlinc-native runs only
+when a source or an option changed), links them with its C files and the runtime with tools/qbuild.py, runs the image
+on QEMU's STM32L475 and checks:
+
+- the exit code;
+- the output, line by line against tests/expected/<name>.txt. There {N} stands for a number, {X} for hex digits and
+  {*} for any text within a line, and a line {...} for any number of lines: they mark what differs between runs or
+  under --stress, such as heap statistics, addresses and times;
+- that qbuild stubbed no runtime native (a board link would fail on it).
+
+A test can instead expect its link to fail, with qbuild's message in its expected file. What a test is compared on
+is written to build/t/<name>/run.log, with the checkout's folder written as $ROOT. To add a test: add it to TESTS,
+run it, read its run.log, and copy that to tests/expected/<name>.txt with {N} where a number may vary.
 """
+import argparse
+import contextlib
+import difflib
+import io
+import re
 import subprocess
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'toolchain'))
 import kn  # noqa: E402
 
-HELLO = dict(c_api=['examples/hello/hello.h'], package='hello')
-SELFTEST = dict(c_api=['examples/selftest/selftest.h'], package='selftest')
-KERNEL = dict(defs=['tests/cinterop/kernel.def'])
-SHAPES = dict(defs=['tests/cinterop_shapes/drv.def'])
-# name, kotlin sources, C driver, kn.build() options, heap bytes, expected exit, text that must appear
+BUILD = ROOT / 'build/t'
+EXPECTED = ROOT / 'tests/expected'
+
+
+@dataclass
+class Kotlin:
+    """Kotlin sources and kn.build() options (paths relative to the checkout), built in build/t/<folder>."""
+    folder: str
+    srcs: list
+    opts: dict = field(default_factory=dict)
+
+
+@dataclass
+class Test:
+    name: str
+    kotlin: Kotlin = None               # None: a program of C files only
+    c: list = field(default_factory=list)   # C files, the driver first
+    heap: int = 16384                   # KM_HEAP_BYTES
+    exit: int = 0                       # the program's exit code (QEMU's), or qbuild's when the link must fail
+    fails: bool = False                 # the link must fail
+
+
+HELLO = Kotlin('hello', ['examples/hello/hello.kt'], dict(c_api=['examples/hello/hello.h'], package='hello'))
+SELFTEST = Kotlin('selftest', ['examples/selftest/selftest.kt'],
+                  dict(c_api=['examples/selftest/selftest.h'], package='selftest'))
+GC = Kotlin('gc', ['tests/gc/gc.kt'])
+
 TESTS = [
-    ('add', ['tests/add/add.kt'], 'tests/add/main.c', {}, 16384, 0, 'add(40, 2) = 42'),
-    ('cname', ['tests/cname/cname.kt'], 'tests/cname/main.c', {}, 16384, 0, 'cname: OK'),
-    ('objects', ['tests/objects/objects.kt'], 'tests/objects/main.c', {}, 16384, 0, 'OK'),
-    ('gc16k', ['tests/gc/gc.kt'], 'tests/gc/main.c', {}, 16384, 0, 'OK'),
-    ('gc5k', ['tests/gc/gc.kt'], 'tests/gc/main.c', {}, 5120, 0, 'OK'),
-    ('strings', ['tests/strings/strings.kt'], 'tests/strings/main.c', {}, 16384, 0, 'mask = 0  OK'),
-    ('exceptions', ['tests/exceptions/exceptions.kt'], 'tests/exceptions/main.c', {}, 8192, 98,
-     'Uncaught Kotlin exception: PanelError: panel error -5'),
-    ('coroutines', ['tests/coroutines/coroutines.kt'], 'tests/coroutines/main.c', {}, 4096, 0, 'OK'),
-    ('app', ['tests/app/app.kt'], 'tests/app/main.c', {}, 32768, 0, 'OK'),
-    ('cinterop', ['tests/cinterop/cinterop.kt'], 'tests/cinterop/main.c', KERNEL, 16384, 0, 'poke(7) = 1003  OK'),
-    ('cinterop_shapes', ['tests/cinterop_shapes/shapes.kt'], 'tests/cinterop_shapes/drv.c', SHAPES, 16384, 0,
-     'cinterop_shapes: all OK'),
-    ('event_loop', ['tests/event_loop/event_loop.kt'], 'tests/event_loop/main.c', {}, 8192, 0,
-     'ticks*100+presses = 502'),
-    ('hello', ['examples/hello/hello.kt'], 'examples/hello/main.c', HELLO, 16384, 0,
-     'Hello from Kotlin #1, Kotlin #2, Kotlin #3 on a bare Cortex-M4'),
-    ('selftest', ['examples/selftest/selftest.kt'], 'examples/selftest/main.c', SELFTEST, 16384, 0, 'result: ALL PASS'),
+    Test('add', Kotlin('add', ['tests/add/add.kt']), ['tests/add/main.c']),
+    Test('cname', Kotlin('cname', ['tests/cname/cname.kt']), ['tests/cname/main.c']),
+    Test('objects', Kotlin('objects', ['tests/objects/objects.kt']), ['tests/objects/main.c']),
+    Test('gc16k', GC, ['tests/gc/main.c']),
+    Test('gc5k', GC, ['tests/gc/main.c'], heap=5120),
+    Test('strings', Kotlin('strings', ['tests/strings/strings.kt']), ['tests/strings/main.c']),
+    Test('exceptions', Kotlin('exceptions', ['tests/exceptions/exceptions.kt']), ['tests/exceptions/main.c'],
+         heap=8192, exit=98),
+    Test('coroutines', Kotlin('coroutines', ['tests/coroutines/coroutines.kt']), ['tests/coroutines/main.c'],
+         heap=4096),
+    Test('app', Kotlin('app', ['tests/app/app.kt']), ['tests/app/main.c'], heap=32768),
+    Test('cinterop', Kotlin('cinterop', ['tests/cinterop/cinterop.kt'], dict(defs=['tests/cinterop/kernel.def'])),
+         ['tests/cinterop/main.c']),
+    Test('cinterop_shapes', Kotlin('cinterop_shapes', ['tests/cinterop_shapes/shapes.kt'],
+                                   dict(defs=['tests/cinterop_shapes/drv.def'])), ['tests/cinterop_shapes/drv.c']),
+    Test('event_loop', Kotlin('event_loop', ['tests/event_loop/event_loop.kt']), ['tests/event_loop/main.c'],
+         heap=8192),
+    Test('hello', HELLO, ['examples/hello/main.c']),
+    Test('selftest', SELFTEST, ['examples/selftest/main.c']),
 ]
+PATH_OPTIONS = ('c_api', 'defs', 'libs', 'deps', 'include_dirs')
+QBUILD_SIZE = re.compile(r'^qbuild: .*  text (\d+)  data (\d+)  bss (\d+).*\n', re.M)
+QBUILD_STUBS = re.compile(r'^qbuild: warning: \d+ runtime symbols stubbed .*$', re.M)
+QEMU_END = re.compile(r'qemu: (?:exit -?\d+|timed out after .*)\n?\Z')
 
 
-def kotlin(name, srcs, opts, force):
-    c_api = [ROOT / h for h in opts.get('c_api', [])]
-    defs = [ROOT / d for d in opts.get('defs', [])]
-    return kn.build([ROOT / s for s in srcs], ROOT / 'build/t' / name, c_api=c_api, package=opts.get('package'),
-                    defs=defs, force=force)
+class Failed(Exception):
+    """A test failed: the first line says why, the others show the evidence."""
+
+
+def normalized(text):
+    """Text as it is compared: LF line ends, and each path in the checkout as $ROOT/... with forward slashes."""
+    text = text.replace('\r\n', '\n')
+    for root in sorted({str(ROOT), ROOT.as_posix()}, key=len, reverse=True):
+        text = re.sub(re.escape(root) + r'([^\s\'"():,]*)', lambda m: '$ROOT' + m.group(1).replace('\\', '/'), text)
+    return text
+
+
+def pattern(expected):
+    """The expected text as one regular expression (see the module docstring for {N}, {X}, {*} and {...})."""
+    parts = []
+    for line in expected.splitlines():
+        if line == '{...}':
+            parts.append(r'(?:[^\n]*\n)*?')
+            continue
+        p = re.escape(line)
+        for mark, rx in ((re.escape('{N}'), r'-?\d+(?:\.\d+)?'), (re.escape('{X}'), r'[0-9a-fA-F]+'),
+                         (re.escape('{*}'), r'[^\n]*')):
+            p = p.replace(mark, rx)
+        parts.append(p + r'\n')
+    return re.compile(''.join(parts))
+
+
+def compare(name, got):
+    """got against tests/expected/<name>.txt; raises Failed with a diff when they differ."""
+    path = EXPECTED / f'{name}.txt'
+    shown = path.relative_to(ROOT).as_posix()
+    if not path.exists():
+        raise Failed(f'{shown} is missing (the output is in build/t/{name}/run.log)')
+    expected = path.read_text(encoding='utf-8')
+    if pattern(expected).fullmatch(got if got.endswith('\n') or not got else got + '\n'):
+        return
+    diff = difflib.unified_diff(expected.splitlines(), got.splitlines(), shown, 'output', lineterm='', n=1)
+    raise Failed(f'the output differs from {shown}\n' + '\n'.join(list(diff)[:40]))
+
+
+_built = {}                             # build folder -> (the options of the last build there, its objects)
+_forced = set()
+
+
+def build_kotlin(k, force, log):
+    """kn.build() for k, once per run and set of options. Its messages (compiler warnings, retarget's notes) go to
+    log, shown with -v or when the build fails."""
+    out = BUILD / k.folder
+    key = repr((k.srcs, sorted(k.opts.items())))
+    if out in _built and _built[out][0] == key:
+        return _built[out][1]
+    opts = {o: [ROOT / p for p in v] if o in PATH_OPTIONS else v for o, v in k.opts.items()}
+    messages = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(messages):
+            objs = kn.build([ROOT / s for s in k.srcs], out, force=force and out not in _forced, **opts)
+    finally:
+        log.append(normalized(messages.getvalue()))
+    _forced.add(out)
+    _built[out] = (key, objs)
+    return objs
+
+
+def qbuild(t, d, objs, args):
+    """tools/qbuild.py for test t, into folder d: (exit code, its output)."""
+    defs = ['-D', f'KM_HEAP_BYTES={t.heap}', *(['-D', 'KM_GC_STRESS=1'] if args.stress else [])]
+    cmd = [sys.executable, ROOT / 'tools/qbuild.py', d / f'{t.name}.elf', *(ROOT / c for c in t.c), *objs, *defs,
+           *([] if t.fails else ['--run'])]
+    r = subprocess.run([str(a) for a in cmd], capture_output=True, timeout=3600)
+    return r.returncode, normalized((r.stdout + r.stderr).decode('utf-8', 'replace'))
+
+
+def indented(text):
+    return ''.join('      ' + line + '\n' for line in text.rstrip('\n').splitlines())
+
+
+def run_test(t, args):
+    """One test: returns the note for its PASS line, or raises Failed."""
+    d = BUILD / t.name
+    d.mkdir(parents=True, exist_ok=True)
+    log = []
+    try:
+        objs = build_kotlin(t.kotlin, args.kotlin, log) if t.kotlin else []
+    except SystemExit as e:
+        raise Failed('the Kotlin build failed\n' + ''.join(log) + normalized(str(e))) from None
+    rc, out = qbuild(t, d, objs, args)
+    if args.verbose:
+        print(indented(''.join(log) + out), end='')
+    if t.fails:
+        got, note = out, 'the link fails as expected'
+    else:
+        size, end = QBUILD_SIZE.search(out), QEMU_END.search(out)
+        if not size or not end:
+            raise Failed(f'qbuild failed (exit {rc})\n' + out[-3000:])
+        got = out[size.end():end.start()]
+        stubs = QBUILD_STUBS.search(out)
+        if stubs:
+            raise Failed('qbuild stubbed runtime natives that kmicro does not implement\n' + stubs.group(0))
+        text, data, bss = map(int, size.groups())
+        note = f'flash {(text + data) / 1024:5.1f} KB  RAM {(data + bss) / 1024:4.1f} KB'
+    (d / 'run.log').write_text(got, encoding='utf-8', newline='\n')
+    if rc != t.exit:
+        raise Failed(f'exit {rc}, expected {t.exit}\n' + '\n'.join(got.splitlines()[-15:]))
+    compare(t.name, got)
+    return note
+
+
+def parse_args():
+    names = [t.name for t in TESTS]
+    head, usage, *rest = __doc__.split('\n\n')
+    ap = argparse.ArgumentParser(usage=usage.split('usage: ', 1)[1], description='\n\n'.join([head, *rest]),
+                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog='tests: ' + ' '.join(names))
+    ap.add_argument('names', nargs='*', help=argparse.SUPPRESS)
+    ap.add_argument('--kotlin', action='store_true', help=argparse.SUPPRESS)
+    ap.add_argument('--stress', action='store_true', help=argparse.SUPPRESS)
+    ap.add_argument('-v', '--verbose', action='store_true', help=argparse.SUPPRESS)
+    args = ap.parse_args()
+    unknown = [n for n in args.names if n not in names]
+    if unknown:
+        ap.error(f'no such test: {", ".join(unknown)} (tests: {" ".join(names)})')
+    return args
 
 
 def main():
-    force = '--kotlin' in sys.argv
-    only = [a for a in sys.argv[1:] if not a.startswith('--')]
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
+    args = parse_args()
+    selected = [t for t in TESTS if not args.names or t.name in args.names]
     failed = 0
-    for name, srcs, driver, opts, heap, want_exit, want_text in TESTS:
-        if only and name not in only:
-            continue
+    for t in selected:
         try:
-            objs = kotlin(name, srcs, opts, force)
-            elf = ROOT / 'build/t' / name / f'{name}.elf'
-            stress = ['-D', 'KM_GC_STRESS=1'] if '--stress' in sys.argv else []
-            r = subprocess.run([sys.executable, ROOT / 'tools/qbuild.py', elf, ROOT / driver, *objs, '-D',
-                                f'KM_HEAP_BYTES={heap}', *stress, '--run'], capture_output=True, timeout=1800)
-            out = r.stdout.decode('utf-8', 'replace') + r.stderr.decode('utf-8', 'replace')
-            ok = r.returncode == want_exit and want_text in out
-            size = next((l.split('  ', 1)[1] for l in out.splitlines() if l.startswith('qbuild: ') and ' text ' in l), '')
-            print(f'{"PASS" if ok else "FAIL"}  {name:9s} {size}', flush=True)
-            if not ok:
-                failed += 1
-                print('      ' + '\n      '.join(out.strip().splitlines()[-12:]))
-        except (Exception, SystemExit) as e:          # noqa: BLE001 - report and go on
+            print(f'PASS  {t.name:22s} {run_test(t, args)}')
+        except Failed as e:
             failed += 1
-            print(f'FAIL  {name:9s} {e}')
-    print(f'{len([t for t in TESTS if not only or t[0] in only]) - failed} passed, {failed} failed')
+            first, *rest = str(e).splitlines() or ['']
+            print(f'FAIL  {t.name:22s} {first}')
+            print(indented('\n'.join(rest)), end='')
+        except Exception as e:                    # noqa: BLE001 - report it and go on with the next test
+            failed += 1
+            print(f'FAIL  {t.name:22s} {type(e).__name__}: {e}')
+    print(f'{len(selected) - failed} passed, {failed} failed')
     sys.exit(1 if failed else 0)
 
 
