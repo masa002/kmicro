@@ -24,7 +24,7 @@ compared with the same program without it.
 | one `Regex`: `Regex("[a-z]+[0-9]").containsMatchIn("abc1")` | 315.4 KB (191.6 KB) | 11,768 B | 13,360 B | 4,684 B |
 | three small `Regex` patterns | 316.6 KB (192.1 KB) | 12,080 B | 16,344 B: out of memory on the default 16 KB heap, runs at 20 KB | 4,748 B |
 | `"3.14".toDouble()` | 48.6 KB (42.5 KB), and 1 KB of RAM for the native-memory arena | 48 B | 136 B | 1,380 B |
-| `"Grüße".uppercase()`, `"ÉCOLE".lowercase()`; ASCII text costs the same | 43.4 KB (33.9 KB) | 0 B | 56 B: the result strings | 444 B |
+| `"Grüße".uppercase()`, `"ÉCOLE".lowercase()`; ASCII text takes the same flash | 43.4 KB (33.9 KB) | 0 B | 56 B: the result strings | 444 B |
 | `Char.isLetter()` on `'é'` and `'ж'` | 3.6 KB (3.4 KB) | 0 B | 0 B | 172 B |
 | `Char.category` | 31.0 KB (23.5 KB) | 984 B: the 30 `CharCategory` entries | 984 B | 860 B |
 | `val buf = ByteArray(4096)` in a function | 0.4 KB (0.1 KB) | 0 B | 0 B | 4,148 B |
