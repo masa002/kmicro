@@ -67,22 +67,69 @@ typedef uint32_t _Unwind_Word;
 void EnterFrame(ObjHeader **start, int parameters, int count);
 void LeaveFrame(ObjHeader **start, int parameters, int count);
 
-/* ---- the one exception object in flight (Kotlin catches it immediately, finally rethrows a fresh one) ---- */
+/* ---- the exceptions being thrown or caught: one record per running context ----
+ *
+ * Kotlin catches an exception at once and `finally` rethrows a fresh one, so the thread code has at most one exception
+ * between its throw and the end of its catch. An interrupt handler can throw and catch one of its own in the middle of
+ * that (an exception that already exists: creating one allocates), and a handler of higher priority inside that one.
+ * Each takes the next record and gives it back before the code it interrupted goes on, so the records are a stack:
+ * the top one always belongs to the code that is running. KM_EH_DEPTH is the thread code plus the handlers that can be
+ * nested inside each other while they throw. */
+
+#ifndef KM_EH_DEPTH
+#define KM_EH_DEPTH 4
+#endif
 
 typedef struct {
     _Unwind_Control_Block ucb;                       /* first: r0 at the landing pad points here */
-    ObjHeader *exception;                            /* a GC root while set */
+    ObjHeader *exception;                            /* from ThrowException to __cxa_begin_catch: a GC root */
+    ObjHeader *caught;                               /* from __cxa_begin_catch to __cxa_end_catch: a GC root */
+    uint32_t context;                                /* who threw it: 0 the thread code, else the handler's number */
 } km_exception_t;
 
-static km_exception_t s_exc __attribute__((aligned(8)));
-static ObjHeader *s_caught;                          /* between __cxa_begin_catch and __cxa_end_catch */
-static _Unwind_Control_Block *s_cleanup_ucb;         /* the exception whose cleanup pad is running */
+static km_exception_t s_recs[KM_EH_DEPTH] __attribute__((aligned(8)));
+static int s_depth;                                  /* records in use: s_recs[0 .. s_depth) */
+/* &s_recs[s_depth - 1], or NULL. Not static: __cxa_end_cleanup reads it by name in assembly. */
+__attribute__((used)) km_exception_t *km_eh_current;
 const void *const _ZTI18ExceptionObjHolder[2] = { 0, "18ExceptionObjHolder" };   /* identity only */
+
+/* A handler that interrupts push or pop takes and returns records above the ones in use and leaves s_depth and
+ * km_eh_current as it found them, so neither needs interrupts masked: push raises s_depth before it writes the
+ * record. */
+static km_exception_t *push_record(void)
+{
+    int n = s_depth;
+    s_depth = n + 1;
+    km_eh_current = &s_recs[n];
+    return &s_recs[n];
+}
+
+static void pop_record(void)
+{
+    int n = s_depth - 1;
+    s_recs[n].exception = s_recs[n].caught = NULL;
+    s_depth = n;
+    km_eh_current = n > 0 ? &s_recs[n - 1] : NULL;
+}
+
+/* The Cortex-M exception number of the running code (IPSR): 0 in thread code. */
+static uint32_t running_context(void)
+{
+#if defined(__ARM_ARCH_7EM__) || defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_6M__) || defined(__ARM_ARCH_8M_MAIN__)
+    uint32_t ipsr;
+    __asm volatile("mrs %0, ipsr" : "=r"(ipsr));
+    return ipsr & 0x1FFu;
+#else
+    return 0;
+#endif
+}
 
 void kmicro_eh_roots(void (*visit)(ObjHeader *))
 {
-    visit(s_exc.exception);
-    visit(s_caught);
+    for (int i = 0; i < s_depth; i++) {
+        visit(s_recs[i].exception);
+        visit(s_recs[i].caught);
+    }
 }
 
 /* ---- LSDA reading (GCC exception table format, as LLVM emits it after the EHABI opcodes) ---- */
@@ -214,9 +261,8 @@ _Unwind_Reason_Code __gxx_personality_v0(_Unwind_State state, _Unwind_Control_Bl
             if (s.filter > 0) {
                 if (ucbp->barrier_cache.sp == _Unwind_GetGR(ctx, 13))
                     return install(ucbp, ctx, s.lp, s.filter);
-            } else {
-                s_cleanup_ucb = ucbp;                /* __cxa_end_cleanup resumes with it */
-                return install(ucbp, ctx, s.lp, 0);
+            } else {                                 /* a cleanup pad: __cxa_end_cleanup resumes with ucbp, */
+                return install(ucbp, ctx, s.lp, 0);  /* the top record while the pad runs */
             }
         }
         return continue_unwinding(ucbp, ctx);
@@ -228,30 +274,33 @@ _Unwind_Reason_Code __gxx_personality_v0(_Unwind_State state, _Unwind_Control_Bl
     }
 }
 
-/* End of a cleanup pad. Tail-call with the pad's own registers: _Unwind_Resume snapshots them, and the PC
- * comes from the control block (UCB_SAVED_CALLSITE_ADDR). */
+/* End of a cleanup pad: resume the exception whose pad ran, the top record (its control block is its first member).
+ * Tail-call with the pad's own registers: _Unwind_Resume snapshots them, and the PC comes from the control block
+ * (UCB_SAVED_CALLSITE_ADDR). */
 __attribute__((naked)) void __cxa_end_cleanup(void)
 {
-    __asm volatile("ldr r0, =s_cleanup_ucb\n"
+    __asm volatile("ldr r0, =km_eh_current\n"
                    "ldr r0, [r0]\n"
                    "b _Unwind_Resume\n"
                    ".ltorg\n");
 }
 
+/* The record stays in use until __cxa_end_catch: a handler that interrupts the catch takes the one above it. */
 void *__cxa_begin_catch(void *exn)
 {
     km_exception_t *e = exn;
-    s_caught = e->exception;
+    e->caught = e->exception;
     e->exception = NULL;
     return e;
 }
-KM_NOTHROW void __cxa_end_catch(void) { s_caught = NULL; }
-KM_NOTHROW ObjHeader *kmicro_caught_exception(void) { return s_caught; }   /* for C++ catch(...) in the runtime */
+KM_NOTHROW void __cxa_end_catch(void) { pop_record(); }
+/* for C++ catch(...) in the runtime */
+KM_NOTHROW ObjHeader *kmicro_caught_exception(void) { return km_eh_current != NULL ? km_eh_current->caught : NULL; }
 
 KM_NOTHROW ObjHeader *Kotlin_getExceptionObject(void *holder, ObjHeader **result)
 {
-    (void)holder;
-    return km_return(result, s_caught);
+    (void)holder;                                    /* what __cxa_begin_catch returned: the top record */
+    return km_return(result, kmicro_caught_exception());
 }
 
 /* ---- throwing ---- */
@@ -401,17 +450,24 @@ __attribute__((noreturn)) static void terminate(ObjHeader *e, bool hook)
 
 __attribute__((noreturn)) void ThrowException(ObjHeader *exception)
 {
-    if (s_exc.exception != NULL)
+    uint32_t context = running_context();
+    /* The same code throwing again before its own exception reached a catch: a cleanup pad that throws. */
+    if (s_depth > 0 && s_recs[s_depth - 1].exception != NULL && s_recs[s_depth - 1].context == context)
         kmicro_panic("exception thrown while another one is being unwound");
-    memset(&s_exc.ucb, 0, sizeof s_exc.ucb);
-    memcpy(s_exc.ucb.exception_class, "KMICROKT", 8);
-    s_exc.exception = exception;
-    _Unwind_Reason_Code rc = _Unwind_RaiseException(&s_exc.ucb);
+    if (s_depth == KM_EH_DEPTH)
+        kmicro_panic("interrupt handlers that throw are nested deeper than KM_EH_DEPTH");
+    km_exception_t *r = push_record();
+    memset(&r->ucb, 0, sizeof r->ucb);
+    memcpy(r->ucb.exception_class, "KMICROKT", 8);
+    r->caught = NULL;
+    r->context = context;
+    r->exception = exception;
+    _Unwind_Reason_Code rc = _Unwind_RaiseException(&r->ucb);
     /* Only returns when no handler was found (end of stack, or a frame without unwind tables). The hook and the
      * report run Kotlin code that may throw and catch exceptions of its own, so this one is no longer in flight. */
     (void)rc;
-    ObjHeader *e = s_exc.exception;
-    s_exc.exception = NULL;
+    ObjHeader *e = r->exception;
+    pop_record();
     terminate(e, true);
 }
 

@@ -10,7 +10,7 @@
 #define ROUNDS 2000
 #endif
 
-static volatile int s_done, s_ticks;
+static volatile int s_done, s_ticks, s_handled;
 
 void SysTick_Handler(void)
 {
@@ -28,6 +28,8 @@ void SysTick_Handler(void)
 #elif defined(TEST_LAZY) || defined(TEST_INIT_ALL)
     if (s_ticks <= 5) read_settings();
     if (s_ticks == 5) s_done = 1;
+#elif defined(TEST_THROW)
+    s_handled += throw_in_handler();
 #elif defined(TEST_SWAP_FIELDS)
     swap_fields();
 #elif defined(TEST_SWAP_SLOTS)
@@ -79,6 +81,26 @@ int main(void)
     kmicro_put_int((int32_t)(b.alloc_count - a.alloc_count));
     kmicro_puts("\n");
     return settings == 48 && b.alloc_count == a.alloc_count ? 0 : 1;
+#elif defined(TEST_THROW)
+    kt_init_all();                      /* creates the exception the handler throws */
+    systick(RVR);
+    int32_t thrown = 0, caught = 0;
+    while (s_ticks < 20 && thrown < 200000) {   /* until 20 handler calls came, most of them during a throw */
+        caught += throw_in_thread(500);
+        thrown += 500;
+    }
+    systick(0);
+    int ok = caught == thrown && s_ticks >= 20 && s_handled == s_ticks;
+    kmicro_puts("thread code: thrown ");
+    kmicro_put_int(thrown);
+    kmicro_puts(", caught ");
+    kmicro_put_int(caught);
+    kmicro_puts("; handler: calls ");
+    kmicro_put_int(s_ticks);
+    kmicro_puts(", caught ");
+    kmicro_put_int(s_handled);
+    kmicro_puts(ok ? "  OK\n" : "  BROKEN\n");
+    return !ok;
 #elif defined(TEST_SWAP_FIELDS) || defined(TEST_SWAP_SLOTS)
     swap_setup();
     systick(RVR);

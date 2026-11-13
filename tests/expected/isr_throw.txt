@@ -1,0 +1,1 @@
+thread code: thrown {N}, caught {N}; handler: calls {N}, caught {N}  OK

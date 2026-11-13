@@ -191,6 +191,7 @@ TESTS = [
     isr('isr_schedule', 'TEST_SCHEDULE', exit=0),
     isr('isr_lazy_globals', 'TEST_LAZY'),
     isr('isr_init_all', 'TEST_INIT_ALL', exit=0),
+    isr('isr_throw', 'TEST_THROW', exit=0),
     Test('isr_init_window', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98),
     isr('isr_swap_fields', 'TEST_SWAP_FIELDS', exit=0, heap=32768, defs=['KM_GC_STRESS=1'],
         case={'RVR': '200u', 'ROUNDS': 40000}),
