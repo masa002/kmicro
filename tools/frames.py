@@ -65,9 +65,9 @@ def frames(disasm):
 
 def main():
     p = argparse.ArgumentParser(prog='frames.py', description=__doc__.split('\n\n')[0])
-    p.add_argument('elf', type=Path)
-    p.add_argument('--top', type=int, default=10)
-    p.add_argument('--limit', type=int, metavar='BYTES')
+    p.add_argument('elf', type=Path, help='the linked image (qbuild output or your board build)')
+    p.add_argument('--top', type=int, default=10, metavar='N', help='how many functions to list (default 10)')
+    p.add_argument('--limit', type=int, metavar='BYTES', help='exit 1 when a frame is larger than BYTES')
     a = p.parse_args()
     if not a.elf.exists():
         p.error(f'{a.elf}: not found')
