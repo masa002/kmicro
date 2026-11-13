@@ -106,6 +106,7 @@ void Kotlin_interop_free(void *ptr)
     if ((uint8_t *)ptr < s_arena + 8 || off >= s_top || (off & 7u) != 0 || !(hdr(off)[0] & USED))
         kmicro_panic("interop free: not an allocated native block (freed twice?)");
     uint32_t size = bsize(off);
+    hdr(off)[0] = size;                              /* a second free of ptr panics, also once merged below */
     if (off + size < s_top && !(hdr(off + size)[0] & USED)) {   /* merge the free block above */
         size += bsize(off + size);
         s_holes--;
