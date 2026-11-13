@@ -130,7 +130,7 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | calling C functions with scalars and pointers, C strings | works | `kbuild.py --def FILE.def` runs cinterop |
 | C globals, #define constants, enums, struct fields, sizeOf | works | |
 | variadic C functions | works | |
-| memScoped, usePinned/addressOf, readBytes, cValuesOf | works | |
+| memScoped, usePinned/addressOf (on a String too), readBytes, cValuesOf, vectorOf | works | `d_natives` |
 | nativeHeap alloc/free in any order | works | freed blocks are reused and merged with their neighbours |
 | native memory beyond `KM_INTEROP_BYTES` (1 KB) | partly | throws OutOfMemoryError; raise the arena with `-D KM_INTEROP_BYTES=N` |
 | structs by value (CValue, useContents, cValue{}) | works | [tests/cinterop_shapes](../tests/cinterop_shapes) |
