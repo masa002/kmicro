@@ -170,3 +170,29 @@ KM_NOTHROW __attribute__((pure)) ObjHeader **Kotlin_arrayGetElementAddress(ObjHe
 {
     return km_array_refs((ArrayHeader *)a) + index;
 }
+
+/* ByteArray.get/set{Char,Short,Int,Long,Float,Double}At (Arrays.cpp): little-endian values at any byte index, so
+ * memcpy (the M4 traps unaligned LDRD/LDM and VLDR). */
+static inline uint8_t *byte_at(const ObjHeader *a, int32_t index, uint32_t width)
+{
+    if (index < 0 || (uint32_t)index + (width - 1u) >= ((const ArrayHeader *)a)->count_)
+        ThrowArrayIndexOutOfBoundsException();
+    return (uint8_t *)km_array_data((ArrayHeader *)a) + index;
+}
+#define KM_BYTE_ARRAY_AT(Name, T)                                                                              \
+    T Kotlin_ByteArray_get##Name##At(const ObjHeader *a, int32_t index)                                        \
+    {                                                                                                          \
+        T v;                                                                                                   \
+        memcpy(&v, byte_at(a, index, sizeof(T)), sizeof(T));                                                  \
+        return v;                                                                                              \
+    }                                                                                                          \
+    void Kotlin_ByteArray_set##Name##At(ObjHeader *a, int32_t index, T v)                                      \
+    {                                                                                                          \
+        memcpy(byte_at(a, index, sizeof(T)), &v, sizeof(T));                                                  \
+    }
+KM_BYTE_ARRAY_AT(Char, uint16_t)
+KM_BYTE_ARRAY_AT(Short, int16_t)
+KM_BYTE_ARRAY_AT(Int, int32_t)
+KM_BYTE_ARRAY_AT(Long, int64_t)
+KM_BYTE_ARRAY_AT(Float, float)
+KM_BYTE_ARRAY_AT(Double, double)
