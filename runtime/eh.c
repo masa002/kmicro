@@ -370,6 +370,25 @@ ObjHeader *Kotlin_getCurrentStackTrace(ObjHeader **result)
     return a;
 }
 
+/* NativePtrArray (Arrays.cpp), the type of a stack trace: printStackTrace() of an exception with a cause or a
+ * suppressed exception compares its frames with the top exception's. Elements are 4-byte addresses. */
+KM_NOTHROW int32_t Kotlin_NativePtrArray_getArrayLength(const ObjHeader *a)
+{
+    return (int32_t)((const ArrayHeader *)a)->count_;
+}
+void *Kotlin_NativePtrArray_get(const ObjHeader *a, int32_t i)
+{
+    if ((uint32_t)i >= ((const ArrayHeader *)a)->count_)
+        ThrowArrayIndexOutOfBoundsException();
+    return ((void **)km_array_data((ArrayHeader *)a))[i];
+}
+void Kotlin_NativePtrArray_set(ObjHeader *a, int32_t i, void *v)
+{
+    if ((uint32_t)i >= ((const ArrayHeader *)a)->count_)
+        ThrowArrayIndexOutOfBoundsException();
+    ((void **)km_array_data((ArrayHeader *)a))[i] = v;
+}
+
 /* Addresses as text: the host tool turns them into Kotlin function names from the ELF symbols. */
 ObjHeader *CreateStringFromCString(const char *c, ObjHeader **result);
 ObjHeader *Kotlin_getStackTraceStrings(const ObjHeader *trace, ObjHeader **result)
