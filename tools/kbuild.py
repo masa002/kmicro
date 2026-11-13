@@ -35,9 +35,10 @@ def parser():
                    help='a folder the C headers include from (for --c-api); repeatable')
     p.add_argument('--package', metavar='NAME', help='the Kotlin package of the --c-api and --init-all functions')
     p.add_argument('--init-all', metavar='NAME',
-                   help='generate `void NAME(void)`, which initialises every file-level global of --package: call it '
-                        'at boot, before interrupts are enabled, and no interrupt handler ever runs a first-use '
-                        'initialisation')
+                   help='generate `void NAME(void)`, which initialises the globals of --package and its sub-packages '
+                        '(file-level ones and those of objects); call it at boot, before interrupts are enabled, and '
+                        'no interrupt handler runs a first-use initialisation of that code (the standard library '
+                        'still initialises its own objects on first use)')
     p.add_argument('--size', action='store_true', help='optimise all Kotlin code for size (minsize)')
     p.add_argument('--hot', metavar='REGEX', help='with --size: keep full speed for the functions whose symbol '
                                                   'matches REGEX')

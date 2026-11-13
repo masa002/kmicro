@@ -7,7 +7,7 @@
     bridges()      the cinterop call bridges (toolchain/bridges.py), when the program calls C through cinterop
     cinterop()     a .def file -> klib (C declarations Kotlin can call)
     add_c_aliases()   C names for Kotlin functions (`crc32_update` -> app.crc32Update): C calls Kotlin directly
-    add_init_all()    one C-callable function that initialises every Kotlin file's globals at boot
+    add_init_all()    one C-callable function that initialises a package's globals (files, objects) at boot
     build()        all of the above in order: Kotlin sources -> the objects to link (tools/kbuild.py is its command line)
 
 A program built this way runs on the kmicro runtime (runtime/): see docs/how-it-works.md.
@@ -374,11 +374,18 @@ def add_c_aliases(ll_text, cnames, package, prefix='', c_sigs=None, c_texts=None
 
 
 def add_init_all(ll_text, package, name='kt_init_all'):
-    """`void <name>(void)`: every file-level global of `package` created now. Kotlin initialises a file on first use;
-    called at boot (thread context, before interrupts), no interrupt handler ever does that allocation."""
+    """`void <name>(void)`: the globals of `package` and its sub-packages created now, file-level ones and those of
+    object declarations (and companion objects). Kotlin initialises each on first use; called at boot (thread context,
+    before interrupts), no interrupt handler ever does that allocation. A package with no Kotlin code is an error."""
+    if package:
+        mine = re.escape(package) + r'[.$][^"]*'
+    else:                                      # the root package: its files, and classes outside any package
+        mine = r'(?:<root>\$[^"]*|[A-Z][^"$]*)'
     pairs = sorted(set(re.findall(
-        r'call void @CallInitGlobalPossiblyLock\(ptr noundef (@"state_global\$' + re.escape(package) + r'\$[^"]*"), '
-        r'ptr noundef (@"kfun:' + re.escape(package) + r'\.\$init_global\$[^"]*")\)', ll_text)))
+        r'call void @CallInitGlobalPossiblyLock\(ptr noundef (@"state_global\$' + mine + r'"), '
+        r'ptr noundef (@"kfun:[^"]*\$init_global[^"]*")\)', ll_text)))
+    if not pairs and not re.search(r'^define [^\n]*@"kfun:' + re.escape(package) + r'[#.]', ll_text, re.M):
+        sys.exit(f'kmicro: init_all (--init-all): no Kotlin code in package {package or "<root>"} (--package)')
     return [f'define void @{name}() {{',
             *[f'  call void @CallInitGlobalPossiblyLock(ptr {st}, ptr {fn})' for st, fn in pairs],
             '  ret void', '}']
@@ -454,8 +461,9 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
     c_api    C headers whose prototypes the Kotlin code implements: `int32_t gc_chains(int32_t)` becomes a C name for
              the Kotlin function <package>.gcChains, so C calls Kotlin by plain names (a prototype without its
              Kotlin function is an error; the init_all name may be declared there too)
-    init_all the name of a generated C function `void <init_all>(void)` that initialises every file-level global of
-             <package>: called at boot, before interrupts, it leaves no first-use initialisation to a handler
+    init_all the name of a generated C function `void <init_all>(void)` that initialises the globals of <package> and
+             its sub-packages, objects included: called at boot, before interrupts, it leaves no first-use
+             initialisation of that code to a handler (add_init_all)
     size     minsize for every Kotlin function except those whose symbol matches the regex `hot`
     kotlinc_args  more kotlinc-native options (-Xbinary=latin1Strings=true, -opt-in=..., -language-version ...)
     include_dirs  folders the c_api headers include from (besides their own, runtime/, support/ and newlib)
