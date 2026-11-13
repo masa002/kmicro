@@ -14,12 +14,23 @@ usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot
 - --drop-ctors empties @llvm.global_ctors (measures the program without eager module initializers)
 - kotlin.random: Random.Default takes its seed from the board hook kmicro_random_seed() instead of the clock
   (runtime/time.c), so Random needs no clock
+- String.toDouble()/toFloat(): the hexadecimal parser calls runtime/hexfloat.c instead of compiling regular
+  expressions, so number parsing does not link the Regex engine
 """
 import re
 import sys
 
 EXPECT_DL = 'e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64'
 TLS_RE = re.compile(r'\bthread_local(?:\([a-z]+\))? ')
+
+
+def replace_body(text, name, params, body):
+    """`text` with the body of the function `name`(`params`) replaced; its define line stays, without a !dbg
+    attachment (the new body has no debug locations). Unchanged when there is no such function."""
+    pat = re.compile(r'^(define [^\n]*@"' + re.escape(name) + '"' + re.escape(params) + r'[^\n]*?)(?: !dbg ![0-9]+)? \{$'
+                     r'.*?^\}$', re.M | re.S)
+    return pat.sub(lambda m: m.group(1) + ' {\n' + body + '}', text, count=1)
+
 
 args = sys.argv[1:]
 src, dst = args[0], args[1]
@@ -83,6 +94,20 @@ text = re.sub(r'^define [^\n]*@"kfun:kotlin\.random[.#][^\n]*\{$.*?^\}$',
               text, flags=re.M | re.S)
 if '@kmicro_random_seed(' in text:
     text += '\ndeclare i64 @kmicro_random_seed()\n'
+# String.toDouble()/toFloat(): FloatingPointParser hands hexadecimal text to HexStringParser. Its companion compiles a
+# Regex when it is created, which happens before the hex test, so decimal text pays too (about 19 KB of heap kept),
+# and its parse() uses more regular expressions. parseDouble/parseFloat become calls to runtime/hexfloat.c, the same
+# algorithm without them, and the companion's initialiser does nothing: a program that does not use Regex itself
+# links no Regex engine.
+HEX = 'kfun:kotlin.native.internal.HexStringParser.Companion'
+text = replace_body(text, HEX + '.<init>#internal', '(ptr %0)', '  ret void\n')
+text = replace_body(text, HEX + '#parseDouble(kotlin.String){}kotlin.Double', '(ptr %0, ptr %1)',
+                    '  %r = call double @kmicro_hex_to_double(ptr %1)\n  ret double %r\n')
+text = replace_body(text, HEX + '#parseFloat(kotlin.String){}kotlin.Float', '(ptr %0, ptr %1)',
+                    '  %r = call float @kmicro_hex_to_float(ptr %1)\n  ret float %r\n')
+for fn, ty in (('kmicro_hex_to_double', 'double'), ('kmicro_hex_to_float', 'float')):
+    if f'@{fn}(' in text:
+        text += f'\ndeclare {ty} @{fn}(ptr)\n'
 open(dst, 'w', encoding='utf-8', newline='\n').write(text)
 
 if stubs:
