@@ -65,7 +65,7 @@ fun main() {
     // comparison
     println("compareTo: ${"a".compareTo("z")} ${"z".compareTo("a")} ${"abc".compareTo("ab")} ${"ab".compareTo("abcd")} ${"".compareTo("x")} ${"A".compareTo("a")} ${"é".compareTo("e")} ${"日本".compareTo("日")}")
     println("compareTo ignoreCase: ${"Apple".compareTo("apple", ignoreCase = true)} ${"apple".compareTo("BANANA", true)} ${"a".compareTo("B")} equalsIC=${"Straße".equals("STRASSE", true)} ${"ÄÖ".equals("äö", ignoreCase = true)} ${"Kotlin".equals("KOTLIN", true)} ${"ǅ".equals("ǆ", true)}")
-    println("hashCode: ${"".hashCode()} ${"a".hashCode()} ${"Kotlin Fest".hashCode()} ${"日本語".hashCode()} ${"😀".hashCode()} ${"polygenelubricants".hashCode()} ${"a".repeat(100).hashCode()}")
+    println("hashCode: ${"".hashCode()} ${"a".hashCode()} ${"Hello Kotlin".hashCode()} ${"日本語".hashCode()} ${"😀".hashCode()} ${"polygenelubricants".hashCode()} ${"a".repeat(100).hashCode()}")
     println("chars: ${"abc".toCharArray().contentToString()} ${charArrayOf('h', 'i').concatToString()} ${"hello".toCharArray(1, 3).concatToString()} ${"x😀".toList()} ${"ab".asIterable().joinToString("|")}")
     println("misc: ${"a-b-c".count { it == '-' }} ${"Hello".all { it.isLetter() }} ${"ab12".filter { it.isDigit() }} ${"abc".map { it.code }} ${"hello".toSet().size} ${"kotlin".chunked(4)} ${"kotlin".windowed(3)} ${"aab".groupingBy { it }.eachCount()} ${"abc".zip("xyz")} ${"a.b".split('.').joinToString("/")}")
     println("isBlank: ${"  ".isBlank()} ${"".isEmpty()} ${" a".isNotBlank()} ${(null as String?).isNullOrEmpty()} ${"x".ifEmpty { "e" }} ${"".ifBlank { "b" }} orEmpty=[${(null as String?).orEmpty()}] commonPrefix=${"kotlinx".commonPrefixWith("kotlin native")} commonSuffix=${"ending".commonSuffixWith("pending")}")

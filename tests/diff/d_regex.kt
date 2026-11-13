@@ -11,5 +11,5 @@ fun main() {
     println(Regex("HELLO", RegexOption.IGNORE_CASE).matches("hello"))
     println(Regex("""(\w)=(\d+)""").findAll("x=12 y=345").joinToString { it.destructured.toList().toString() })
     println(Regex("""^\s*(\d{1,3})\.(\d{1,3})\s*$""").matchEntire(" 10.250 ")?.groupValues)
-    println("Kotlin Fest".replace(Regex("""(\w+) (\w+)"""), "$2 $1"))
+    println("Hello Kotlin".replace(Regex("""(\w+) (\w+)"""), "$2 $1"))
 }
