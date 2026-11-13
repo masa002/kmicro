@@ -7,8 +7,10 @@
     bridges()      the cinterop call bridges (toolchain/bridges.py), when the program calls C through cinterop
     cinterop()     a .def file -> klib (C declarations Kotlin can call)
     add_c_aliases()   C names for Kotlin functions (`crc32_update` -> app.crc32Update): C calls Kotlin directly
+    add_cname_aliases()  the same for the functions marked @CName("name")
     add_init_all()    one C-callable function that initialises a package's globals (files, objects) at boot
-    build()        all of the above in order: Kotlin sources -> the objects to link (tools/kbuild.py is its command line)
+    build()        all of the above in order: Kotlin sources -> the objects to link (tools/kbuild.py is its
+                   command line)
 
 A program built this way runs on the kmicro runtime (runtime/): see docs/how-it-works.md.
 """
@@ -373,6 +375,38 @@ def add_c_aliases(ll_text, cnames, package, prefix='', c_sigs=None, c_texts=None
     return lines, missing
 
 
+def add_cname_aliases(lbd_text, ll_text):
+    """`@<name> = alias ...` for every @CName("name") function. kotlinc-native puts the @CName export only into its C
+    adapter (LinkBitcodeDependencies: `define i32 @name(...)`, which calls @_konan_function_N), and kmicro links only
+    Codegen, where @_konan_function_N calls the Kotlin function: the alias gives that function the C name. Only plain
+    C types can cross (the adapter's conversions of strings and objects are not linked): anything else is an error."""
+    lines, errors, done = [], [], set()
+    for m in re.finditer(r'(?:call|invoke) [^\n]*?@_konan_function_(\d+)\(', lbd_text):
+        start = lbd_text.rfind('\ndefine ', 0, m.start()) + 1
+        d = re.match(r'define ([^@\n]*)@([A-Za-z_]\w*)\(([^)]*)\)', lbd_text[start:start + 4000])
+        if not d or m.group(1) in done or set(d.group(1).split()) & {'internal', 'private', 'linkonce_odr', 'weak'}:
+            continue
+        done.add(m.group(1))
+        cname = d.group(2)
+        body = re.search(r'^define [^\n]*@_konan_function_' + m.group(1) + r'\([^\n]*\n(.*?)^\}', ll_text, re.M | re.S)
+        sym = re.search(r'@"(kfun:[^"]+)"\(', body.group(1)) if body else None
+        k = sym and re.search(r'^define ([^@\n]*?)@"' + re.escape(sym.group(1)) + r'"\(([^)]*)\)', ll_text, re.M)
+        if not k:
+            errors.append(f'@CName("{cname}"): its Kotlin function was not found in the IR')
+            continue
+        e = check_c_signature(f'@CName("{cname}")', sym.group(1), ir_signature(k.group(1), k.group(2)),
+                              ir_signature(d.group(1), d.group(3)), 'that kotlinc-native exports')
+        if e:
+            errors += [x + ' (--c-api has the same rule)' for x in e]
+            continue
+        if re.search(r'^(?:define [^\n@]*@|@)' + re.escape(cname) + r'[( ]', ll_text, re.M):
+            errors.append(f'@CName("{cname}"): the name is already defined in the program')
+            continue
+        ret = [w for w in k.group(1).split() if w in IR_TYPES][-1]
+        lines.append(f'@{cname} = alias {ret} ({_type_list(k.group(2))}), ptr @"{sym.group(1)}"')
+    return lines, errors
+
+
 def add_init_all(ll_text, package, name='kt_init_all'):
     """`void <name>(void)`: the globals of `package` and its sub-packages created now, file-level ones and those of
     object declarations (and companion objects). Kotlin initialises each on first use; called at boot (thread context,
@@ -455,7 +489,7 @@ def c_declarations(*headers, include_dirs=(), defines=()):
 def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, size=False, hot=None, force=False,
           kotlinc_args=(), include_dirs=()):
     """Kotlin sources -> [out/k.o] (+ out/bridges.o when the program calls C through cinterop), ready to link with
-    the kmicro runtime.
+    the kmicro runtime. A function marked @CName("name") gets that C name (add_cname_aliases).
 
     libs     klibs the sources use (cinterop output); deps: other files whose change means a recompile
     c_api    C headers whose prototypes the Kotlin code implements: `int32_t gc_chains(int32_t)` becomes a C name for
@@ -476,10 +510,10 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
         print(w, file=sys.stderr)             # (stdout is kbuild's list of objects)
     ll = retarget(out / 'ir/out.Codegen.ll', out / 'm4.ll', '--no-tls', '--single-core',
                   *(['--size', *(['--hot', hot] if hot else [])] if size else []))
+    text, lines = ll.read_text(encoding='utf-8'), []
     if c_api or init_all:
         if package is None:
             sys.exit('kmicro: c_api and init_all (--c-api, --init-all) need the Kotlin package (--package)')
-        text = ll.read_text(encoding='utf-8')
         decls = c_declarations(*c_api, include_dirs=include_dirs)
         names = [n for n in decls if n != init_all]
         lines, missing = add_c_aliases(text, names, package, c_sigs=c_signatures(c_api, names, include_dirs, work=out),
@@ -489,5 +523,13 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
                      + ', '.join(f'{c} (expected {camel(c)})' for c in missing))
         if init_all:
             lines += add_init_all(text, package, init_all)
+    lbd = out / 'ir/out.LinkBitcodeDependencies.ll'
+    if lbd.exists():
+        cname_lines, errors = add_cname_aliases(lbd.read_text(encoding='utf-8', errors='replace'), text)
+        if errors:
+            sys.exit('kmicro: ' + '\nkmicro: '.join(errors))
+        have = {line.split(' ', 1)[0] for line in lines}
+        lines += [line for line in cname_lines if line.split(' ', 1)[0] not in have]   # (also a --c-api name)
+    if lines:
         ll.write_text(text + '\n' + '\n'.join(lines) + '\n', encoding='utf-8', newline='\n')
     return [lto_object(ll, out / 'k.o'), *bridges(out)]
