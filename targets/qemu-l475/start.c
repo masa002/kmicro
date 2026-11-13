@@ -1,14 +1,13 @@
 /* Bare-metal start for the QEMU harness: vector table, FPU on, .data/.bss init, MPU null and stack guards,
- * init_array, main, semihosting output and exit, a fault report. */
+ * init_array, main, semihosting output, exit and clocks, a fault report. */
 #include <stdint.h>
 #include <string.h>
+#include "kmicro.h"
 
 extern uint32_t _estack, _sidata, _sdata, _edata, _sbss, _ebss, _sguard, _eguard;
 extern void (*__init_array_start[])(void), (*__init_array_end[])(void);
 int main(void);
 void kmicro_exit(int code);
-void kmicro_puts(const char *s);
-void kmicro_put_int(int32_t v);
 extern const void *const vectors[16];
 
 #define SCB_VTOR  (*(volatile uint32_t *)0xE000ED08)
@@ -172,3 +171,27 @@ void kmicro_exit(int code)
     for (;;) {
     }
 }
+
+/* ---- clocks for kotlin.time and kotlin.random (the hooks in kmicro.h): the host's clocks through semihosting, so
+ * SysTick stays free for the program ---- */
+int64_t kmicro_time_ns(void)
+{
+    static uint32_t s_hz;
+    uint32_t t[2];
+    if (s_hz == 0u)
+        s_hz = (uint32_t)semi(0x31, 0);                         /* SYS_TICKFREQ */
+    if (s_hz == 0u || s_hz == 0xFFFFFFFFu || semi(0x30, t) != 0)   /* SYS_ELAPSED */
+        kmicro_panic("semihosting SYS_ELAPSED / SYS_TICKFREQ failed");
+    uint64_t ticks = (uint64_t)t[1] << 32 | t[0];
+    return (int64_t)(ticks / s_hz * 1000000000u + ticks % s_hz * 1000000000u / s_hz);
+}
+
+int64_t kmicro_wall_time_ns(void)
+{
+    static int64_t s_offset;                                    /* wall clock minus monotonic clock, taken once */
+    if (s_offset == 0)
+        s_offset = (int64_t)(uint32_t)semi(0x11, 0) * 1000000000 - kmicro_time_ns();   /* SYS_TIME: whole seconds */
+    return s_offset + kmicro_time_ns();
+}
+
+uint64_t kmicro_random_seed(void) { return (uint64_t)kmicro_time_ns(); }   /* a different Random.Default each run */

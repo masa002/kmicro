@@ -1,16 +1,16 @@
 /* Bare-metal start for QEMU mps2-an386, the target with megabytes of memory: Kotlin modules compiled exactly as for
  * the device, linked with C code that needs more RAM than the device has (a test that models a large peripheral in
  * memory, for example). Vector table, FPU on, .data/.bss, constructors, newlib's semihosting stdio (rdimon), the
- * kmicro runtime, the program's main(), a fault report, and an exit that carries the status back to QEMU
- * (SYS_EXIT_EXTENDED). */
+ * kmicro runtime, the program's main(), a fault report, an exit that carries the status back to QEMU
+ * (SYS_EXIT_EXTENDED), and the host's clocks for kotlin.time. */
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "kmicro.h"
 
 extern uint32_t _estack, _sidata, _sdata, _edata, _sbss, _ebss;
 extern void (*__init_array_start[])(void), (*__init_array_end[])(void);
 extern void initialise_monitor_handles(void);
-void kmicro_init(void);
 int main(void);
 void kmicro_exit(int code) __attribute__((noreturn));
 
@@ -133,6 +133,30 @@ void kmicro_exit(int code)
     for (;;) {
     }
 }
+
+/* ---- clocks for kotlin.time and kotlin.random (the hooks in kmicro.h): the host's clocks through semihosting, so
+ * SysTick stays free for the program ---- */
+int64_t kmicro_time_ns(void)
+{
+    static uint32_t s_hz;
+    uint32_t t[2];
+    if (s_hz == 0u)
+        s_hz = (uint32_t)semi(0x31, 0);                         /* SYS_TICKFREQ */
+    if (s_hz == 0u || s_hz == 0xFFFFFFFFu || semi(0x30, t) != 0)   /* SYS_ELAPSED */
+        kmicro_panic("semihosting SYS_ELAPSED / SYS_TICKFREQ failed");
+    uint64_t ticks = (uint64_t)t[1] << 32 | t[0];
+    return (int64_t)(ticks / s_hz * 1000000000u + ticks % s_hz * 1000000000u / s_hz);
+}
+
+int64_t kmicro_wall_time_ns(void)
+{
+    static int64_t s_offset;                                    /* wall clock minus monotonic clock, taken once */
+    if (s_offset == 0)
+        s_offset = (int64_t)(uint32_t)semi(0x11, 0) * 1000000000 - kmicro_time_ns();   /* SYS_TIME: whole seconds */
+    return s_offset + kmicro_time_ns();
+}
+
+uint64_t kmicro_random_seed(void) { return (uint64_t)kmicro_time_ns(); }   /* a different Random.Default each run */
 
 /* newlib's __libc_init_array / __libc_fini_array call these (crti/crtn are not linked). */
 void _init(void) {}

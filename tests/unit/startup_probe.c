@@ -45,5 +45,10 @@ int main(void)
     return (int)probe_deep(0, bss_sum());
 #elif PROBE == 4
     return (int)probe_null_read();
+#elif PROBE == 5
+    int64_t a = kmicro_time_ns(), b = kmicro_time_ns(), wall_s = kmicro_wall_time_ns() / 1000000000;
+    kmicro_puts(b > a ? "monotonic: ok\n" : "monotonic: not increasing\n");
+    kmicro_puts(wall_s > 1577836800 ? "wall clock: ok\n" : "wall clock: before 2020\n");
+    return 0;
 #endif
 }

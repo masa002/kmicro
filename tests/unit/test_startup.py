@@ -1,4 +1,5 @@
-"""The QEMU l475 start code: fault report, stack guard and null guard. C programs only (startup_probe.c), no Kotlin compile.
+"""The QEMU l475 start code: fault report, stack guard, null guard and clocks. C programs only (startup_probe.c), no
+Kotlin compile.
 
 usage: python -m unittest discover tests/unit       (skipped when LLVM, arm-none-eabi-gcc or QEMU is not installed)
 """
@@ -54,6 +55,12 @@ class StartupTest(unittest.TestCase):
         m = re.search(r'kmicro fault: null pointer access \(MemManage\) at (0x[0-9a-f]{8})\n.* mmfar 0x0000000c', out)
         self.assertTrue(m, out)
         self.assertIn('probe_null_read+', self.symbol_at(elf, m.group(1)))
+
+    def test_clocks(self):
+        _, rc, out = self.run_probe(5)
+        self.assertEqual(rc, 0, out)
+        self.assertIn('monotonic: ok', out)
+        self.assertIn('wall clock: ok', out)
 
 
 if __name__ == '__main__':
