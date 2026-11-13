@@ -2,6 +2,8 @@
 
 // Smaller stdlib natives: vectorOf, String pinning, associated objects, and a Regex without CANON_EQ (it links the
 // Unicode decomposition natives, which only CANON_EQ calls).
+// difftest: heap 32768 -- the Regex engine builds its tables on the heap: the default 16 KB runs out
+// difftest: large -- the Regex engine is about 240 KB of flash
 
 import kotlin.reflect.AssociatedObjectKey
 import kotlin.reflect.KClass
