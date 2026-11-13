@@ -95,6 +95,7 @@ The files are `runtime/*.c`, `runtime/*.cpp` and `runtime/dtoa/*.cpp`.
 | `-ffunction-sections -fdata-sections` | `--gc-sections` drops what the program does not use |
 | `-fexceptions -funwind-tables` | a Kotlin exception unwinds through runtime functions (`ThrowException`, the array functions). Without unwind tables they get `[cantunwind]` entries, the unwinder stops there, and every exception is reported as uncaught, exit 98. `runtime/eh.c` stops the build without `-fexceptions` |
 | `-std=c++17 -fno-rtti` | the `.cpp` files only |
+| `-g` (optional) | debug information, which takes no flash: with `kbuild.py --kotlinc -g`, `tools/symbolize.py` then names the Kotlin functions that LTO inlined into C functions, with file and line ([how-it-works.md](how-it-works.md#reading-a-stack-trace)). The exc test below, its Kotlin built with `--kotlinc -g`, is 55,436 bytes of text with or without `-g` on the C side |
 | `-I runtime` | `kmicro.h` |
 | `-D KM_HEAP_BYTES=32768`, ... | the sizes ([how-it-works.md](how-it-works.md#sizes)) |
 
@@ -234,6 +235,7 @@ purpose. For a board, replace `start.c` and `l475.ld` with its own and write the
       sp 0x...  lr 0x...  cfsr 0x...  hfsr 0x...  mmfar 0x...  bfar 0x...
   ```
 
+  The other exceptions that the vector table sends there (SVCall, DebugMonitor, PendSV) are named `exception N`.
   When the stacked frame cannot be read, `, no stacked frame` replaces ` at 0x<PC>` and the `lr` field is left out.
   [how-it-works.md](how-it-works.md#reading-a-stack-trace) shows a report and how `tools/symbolize.py` names its
   address.
