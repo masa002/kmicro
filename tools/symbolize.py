@@ -6,6 +6,8 @@ Every trace address is a return address, so the name is looked up for the call i
 often ends a function with a call that never returns, and its return address is already the next function's first
 instruction. The offset printed is the return address's. Kotlin/Native symbol names are readable as they are:
 kfun:<package>.<Class>#<name>(<params>){}<return type>.
+When the ELF has debug line information, each frame is followed by the functions LTO inlined at that call, innermost
+first, and the function that contains them, each with its file:line (arm-none-eabi-addr2line -i).
 """
 import argparse
 import bisect
@@ -18,7 +20,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'toolchain'))
 import paths  # noqa: E402
 
 NM = str(paths.gcc_bin('nm'))
+READELF = str(paths.gcc_bin('readelf'))
+ADDR2LINE = str(paths.gcc_bin('addr2line'))
 HEX = re.compile(r'(0x)?[0-9a-fA-F]+')
+AT = re.compile(r'at (0x[0-9a-fA-F]{8})')
 
 
 def load(elf):
@@ -47,12 +52,48 @@ def name_of(addrs, names, a):
     return f'{pretty}+0x{ret - addrs[i]:x}' if call - addrs[i] < max(size, 1) or size == 0 else f'? (after {pretty})'
 
 
-def rewrite(lines, addrs, names, out):
+def has_lines(elf):
+    r = subprocess.run([READELF, '-S', '-W', elf], capture_output=True, text=True, errors='replace')
+    return '.debug_line' in r.stdout
+
+
+def source_lines(elf, trace):
+    """{return address: [(function, file:line), ...]} for the call before each address, innermost inlined function
+    first. Only code built with -g has lines; other frames get none."""
+    if not trace:
+        return {}
+    calls = list(dict.fromkeys(f'0x{(a & ~1) - 1:x}' for a in trace))
+    r = subprocess.run([ADDR2LINE, '-a', '-f', '-i', '-s', '-e', elf, *calls], capture_output=True, text=True,
+                       errors='replace')
+    out, cur = {}, None
+    lines = iter(r.stdout.splitlines())
     for line in lines:
-        m = re.search(r'at (0x[0-9a-fA-F]{8})', line)
-        if m:
-            line = line.rstrip('\n') + f'  {name_of(addrs, names, int(m.group(1), 16))}\n'
-        out.write(line)
+        if line.startswith('0x'):
+            cur = out.setdefault(int(line, 16) + 1, [])
+            continue
+        loc = re.sub(r' \(discriminator \d+\)$', '', next(lines, '??:0'))
+        if cur is not None and re.search(r':[1-9]\d*$', loc):   # code built without -g: no line, nothing to add
+            cur.append((line[5:] if line.startswith('kfun:') else line, loc))
+    return out
+
+
+def detail(levels):
+    last = len(levels) - 1
+    return [f'        {fn} ({loc}){" [inlined]" if i < last else ""}\n' for i, (fn, loc) in enumerate(levels)]
+
+
+def rewrite(lines, elf, addrs, names, out):
+    dwarf = has_lines(elf)
+    for line in lines:                               # line by line: a live log keeps flowing
+        m = AT.search(line)
+        if not m:
+            out.write(line)
+            continue
+        a = int(m.group(1), 16)
+        out.write(line.rstrip('\n') + f'  {name_of(addrs, names, a)}\n')
+        if dwarf:
+            out.writelines(detail(source_lines(elf, [a]).get(a & ~1, [])))
+        out.flush()
 
 
 def main():
@@ -70,17 +111,20 @@ def main():
             ap.error('give one log file, or addresses only')
         addrs, names = load(a.elf)
         with open(files[0], encoding='utf-8', errors='replace') as f:
-            rewrite(f, addrs, names, sys.stdout)
+            rewrite(f, a.elf, addrs, names, sys.stdout)
         return
     bad = [x for x in a.inputs if not HEX.fullmatch(x)]
     if bad:
         ap.error(f'not a hex address and no such file: {bad[0]}')
     addrs, names = load(a.elf)
     if a.inputs:
-        for x in a.inputs:
-            print(f'{x}  {name_of(addrs, names, int(x, 16))}')
+        trace = [int(x, 16) for x in a.inputs]
+        src = source_lines(a.elf, trace) if has_lines(a.elf) else {}
+        for x, t in zip(a.inputs, trace):
+            print(f'{x}  {name_of(addrs, names, t)}')
+            sys.stdout.writelines(detail(src.get(t & ~1, [])))
         return
-    rewrite(sys.stdin, addrs, names, sys.stdout)
+    rewrite(sys.stdin, a.elf, addrs, names, sys.stdout)
 
 
 if __name__ == '__main__':
