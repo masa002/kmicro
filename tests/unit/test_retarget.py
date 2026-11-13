@@ -198,6 +198,16 @@ class RetargetTest(unittest.TestCase):
         self.assertRegex(text, r'define void @bridge\(\) #9999 \{')       # a definition without attributes gets them
         self.assertIn('target triple = "thumbv7em-unknown-none-eabihf"', text)
 
+    def test_cut_off_attribute_cache_is_rebuilt(self):
+        self.retarget()
+        cache = OUT / 'target_attributes.txt'
+        full = cache.read_text(encoding='utf-8')
+        cache.write_text(full[:-40], encoding='utf-8')                   # a write stopped part-way
+        r, text = self.retarget()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(cache.read_text(encoding='utf-8'), full)
+        self.assertIn(full.splitlines()[2], text)
+
     def test_output_compiles(self):
         for opts in ((), ('--no-tls', '--single-core', '--size', '--hot', 'fast')):
             r, _ = self.retarget(*opts)
