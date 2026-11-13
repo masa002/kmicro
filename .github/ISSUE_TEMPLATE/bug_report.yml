@@ -1,0 +1,74 @@
+name: Bug report
+description: A program that builds, links or runs wrongly with kmicro, or a tool that fails.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. A small program that shows the problem helps most.
+        A security problem goes through private vulnerability reporting instead (SECURITY.md).
+  - type: input
+    id: commit
+    attributes:
+      label: kmicro commit
+      description: "`git rev-parse --short HEAD` in your kmicro checkout."
+      placeholder: ea98edb
+    validations:
+      required: true
+  - type: textarea
+    id: tools
+    attributes:
+      label: Tools
+      description: "The output of `python toolchain/paths.py`: Kotlin/Native, LLVM, xPack GCC, QEMU and Java versions."
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Host operating system
+      placeholder: Windows 11 x64, Ubuntu 24.04 x64, macOS 15 arm64 ...
+    validations:
+      required: true
+  - type: dropdown
+    id: target
+    attributes:
+      label: Where it runs
+      options:
+        - QEMU, qemu-l475 (the default of qbuild)
+        - QEMU, qemu-an386 (qbuild --target an386)
+        - a board (say which in the description)
+        - it does not get that far (build or link)
+    validations:
+      required: true
+  - type: textarea
+    id: program
+    attributes:
+      label: The program
+      description: The Kotlin code and, if there is one, the C driver, as small as it can be.
+      render: kotlin
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: The commands
+      description: Every command you ran, as you ran it (kbuild, qbuild, run_all, difftest ...).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: The full output
+      description: Everything the commands printed, the exit code included (qbuild prints `qemu: exit N`).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: For a difference from stock Kotlin/Native, what the program prints there.
+    validations:
+      required: true

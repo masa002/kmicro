@@ -173,7 +173,13 @@ figure will be measured again.
 | [tools/](tools) | `kbuild.py`, `qbuild.py`, `gen_regs.py` (CMSIS to Kotlin), `isr_check.py`, `symbolize.py`, `frames.py`, `missing_natives.py`, `difftest.py`, `measure.py`, `irstat.py`, `port_dtoa.py` |
 | [examples/](examples) | `hello`, `irq` (a Kotlin SysTick handler on registers), `selftest` (with its STM32L431 board files) |
 | [tests/](tests) | `run_all.py`, the test programs, the differential tests, `unit/` for the tools |
-| [docs/](docs) | [Kotlin support](docs/kotlin-support.md), [how it works](docs/how-it-works.md), [writing Kotlin for a microcontroller](docs/writing-kotlin.md), [design notes](docs/research) |
+| [docs/](docs) | [Kotlin support](docs/kotlin-support.md), [how it works](docs/how-it-works.md), [writing Kotlin for a microcontroller](docs/writing-kotlin.md), [porting to a board](docs/porting.md), [roadmap](docs/roadmap.md), [design notes](docs/research) |
+
+## Contributing
+
+Bug reports, fixes and tests are welcome: [CONTRIBUTING.md](CONTRIBUTING.md) says how to build, test and send a
+change, and [docs/roadmap.md](docs/roadmap.md) where the open work is. Report a security problem privately, as
+[SECURITY.md](SECURITY.md) describes.
 
 ## Origin
 

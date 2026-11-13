@@ -1,0 +1,35 @@
+name: Missing Kotlin feature or tool
+description: A Kotlin language or standard-library feature that does not work on kmicro, or a tool that would help.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        docs/kotlin-support.md lists what works, partly works, and is not supported by design (threads, an OS).
+        Please check it first.
+  - type: textarea
+    id: feature
+    attributes:
+      label: The feature
+      description: The Kotlin API or language feature, or the tool, and what you need it for.
+    validations:
+      required: true
+  - type: textarea
+    id: program
+    attributes:
+      label: A program that uses it
+      description: As small as it can be.
+      render: kotlin
+  - type: textarea
+    id: output
+    attributes:
+      label: What happens now
+      description: >-
+        The commands and the full output. Quote the message the program stopped with, such as
+        `kmicro panic: ... is not supported on kmicro` or `kmicro panic: unimplemented runtime symbol: ...`.
+      render: text
+  - type: input
+    id: commit
+    attributes:
+      label: kmicro commit
+      description: "`git rev-parse --short HEAD` in your kmicro checkout."

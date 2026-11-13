@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/masa002/kmicro/security/advisories/new
+    about: Report it privately, as SECURITY.md describes, not in a public issue.
+  - name: What works on kmicro
+    url: https://github.com/masa002/kmicro/blob/main/docs/kotlin-support.md
+    about: The Kotlin features that work, partly work, or are not supported by design.
