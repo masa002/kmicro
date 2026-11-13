@@ -128,6 +128,7 @@ such as `kmicro panic: too many globals (raise KM_GLOBALS, now 160)`.
 | `KM_GLOBALS` | 160 | 4 B each | reference globals, the standard library's included |
 | `KM_C_ROOTS` | 16 | 4 B each | `kmicro_root()` slots: objects that C code holds |
 | `KM_STABLE_REFS` | 16 | 8 B each | StableRefs alive at once |
+| `KM_EH_DEPTH` | 4 | 104 B each | exceptions between their throw and the end of their catch at once: one for the thread code, one for each interrupt handler that throws while it has interrupted another throw |
 | `KM_TLS_KEYS` | 8 | 12 B each | modules with thread-local globals |
 | `KM_TLS_SLOTS` | 64 | 4 B each | thread-local reference slots, all modules together |
 | `KM_MARK_STACK` | 96 | 4 B each | the collector's mark stack; not a limit: an overflow costs a rescan of the heap |

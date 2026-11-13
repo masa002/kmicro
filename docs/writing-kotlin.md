@@ -152,6 +152,10 @@ What a handler may do:
 - **Use native memory** with `nativeHeap.alloc` and `nativeHeap.free`: the arena masks interrupts. Not `memScoped` or
   `cstr`, which may create Kotlin objects.
 - **Print a string that already exists**: `println` of it does not allocate.
+- **Throw and catch an exception that already exists**, such as an `object` that is an exception, created before
+  interrupts are enabled. It reaches its catch also when the handler interrupted the thread code between a throw
+  and its catch: the runtime keeps one exception record for the thread code and one for each nested handler
+  (`KM_EH_DEPTH`, 4). A new exception allocates, like any object.
 
 What a handler must not do:
 
