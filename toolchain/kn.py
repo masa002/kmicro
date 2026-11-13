@@ -99,13 +99,50 @@ def compile_ir(srcs, out, extra=(), deps=(), force=False):
     (out / 'tmp').mkdir(exist_ok=True)
     (out / 'ir/key.txt').unlink(missing_ok=True)
     argfile(out / 'args.txt', args)
+    print(f'kotlinc-native: compiling {len(files)} file{"s" if len(files) != 1 else ""}...', file=sys.stderr,
+          flush=True)
     r = paths.run_kn('kotlinc-native', ['@' + (out / 'args.txt').as_posix()])
-    msgs = [l for l in (r.stdout + r.stderr).splitlines()
-            if ('error:' in l or 'warning:' in l) and 'deprecated' not in l.lower() and 'api.cpp' not in l]
+    errors, warnings = compiler_messages(r.stdout + r.stderr)
     if r.returncode != 0:
-        sys.exit('kotlinc-native FAILED:\n' + '\n'.join(msgs or (r.stdout + r.stderr).splitlines()[-30:]))
+        sys.exit('kotlinc-native FAILED:\n' + '\n'.join(errors + warnings or
+                                                        (r.stdout + r.stderr).splitlines()[-30:]))
     (out / 'ir/key.txt').write_text(key, encoding='utf-8')
-    return msgs
+    return warnings
+
+
+TARGET_NOTICE = 'warning: target linux_arm32_hfp is deprecated'   # kmicro's choice, not the program's
+MESSAGE = re.compile(r'^(?:\S.*?:\d+:\d+: )?(error|warning|note|exception): ')
+API_CPP_HINT = ("kmicro: kotlinc-native's C export (-p static) cannot handle the name of a public declaration (see "
+                'api.cpp above): make it internal or private, or give it a plain name')
+
+
+def compiler_messages(output):
+    """kotlinc-native's output -> (errors, warnings): each message with the lines that follow it (source line and
+    caret), without the linux_arm32_hfp notice, the C adapter's (api.cpp) warnings and Java stack traces. A failure
+    of the C adapter keeps clang's errors and adds a hint."""
+    blocks = []
+    for line in output.splitlines():
+        m = MESSAGE.match(line)
+        if m and blocks and blocks[-1][0] == 'exception':
+            m = None                           # the exception's own copy of the messages
+        if m and m.group(1) == 'exception' and any(b[0] == 'error' for b in blocks):
+            break                              # the failure already reported, again with a stack trace
+        if m:
+            blocks.append([m.group(1), line])
+        elif blocks and line.strip() and not line.startswith(('\tat ', ' * ', 'output:')):
+            blocks[-1].append(line)
+    api_cpp = [b for b in blocks if 'api.cpp:' in b[1]]
+    errors, warnings = [], []
+    for kind, *lines in blocks:
+        text = '\n'.join(lines)
+        if lines[0].startswith(TARGET_NOTICE) or ('api.cpp:' in lines[0] and kind == 'warning'):
+            continue
+        if kind == 'note' and not any(k == 'error' for k, *_ in api_cpp):
+            continue
+        (warnings if kind == 'warning' else errors).append(text)
+    if any(k == 'error' for k, *_ in api_cpp):
+        errors.append(API_CPP_HINT)
+    return list(dict.fromkeys(errors)), list(dict.fromkeys(warnings))
 
 
 def retarget(ir, ll_out, *opts):
@@ -235,7 +272,8 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
     size     minsize for every Kotlin function except those whose symbol matches the regex `hot`
     """
     out = Path(out)
-    compile_ir(srcs, out, [x for lib in libs for x in ('-l', lib)], [*libs, *deps], force)
+    for w in compile_ir(srcs, out, [x for lib in libs for x in ('-l', lib)], [*libs, *deps], force):
+        print(w, file=sys.stderr)             # (stdout is kbuild's list of objects)
     ll = retarget(out / 'ir/out.Codegen.ll', out / 'm4.ll', '--no-tls', '--single-core',
                   *(['--size', *(['--hot', hot] if hot else [])] if size else []))
     if c_api or init_all:
