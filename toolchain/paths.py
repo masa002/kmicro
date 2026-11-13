@@ -224,7 +224,8 @@ def arg_path(p, relative=True, fail=True):
             return t
     if fail:
         sys.exit(f'kmicro: {s}: this path cannot be passed to the tool ({cp} only) and has no short name: move it to '
-                 'a folder whose name has no such characters, or run from a folder above it.')
+                 'a folder whose name has no such characters, or run the build from inside the folder that has them '
+                 '(a relative path avoids them).')
     return None
 
 
