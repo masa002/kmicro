@@ -1,0 +1,1 @@
+kmicro panic: Uuid.random() needs an entropy source: define void kmicro_random_bytes(void *buf, size_t n)

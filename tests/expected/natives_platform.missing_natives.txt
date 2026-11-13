@@ -1,0 +1,3 @@
+{N} natives in the Kotlin/Native stdlib: {N} implemented, {N} unsupported, {N} Objective-C, 0 missing
+{...}
+{N} functions declared by 1 IR file(s): 0 with a signature that differs from runtime/, 0 not defined anywhere (stdlib natives are counted above)

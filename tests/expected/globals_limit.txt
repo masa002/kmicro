@@ -1,0 +1,1 @@
+kmicro panic: too many globals (raise KM_GLOBALS, now 160)

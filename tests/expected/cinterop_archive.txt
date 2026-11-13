@@ -1,0 +1,5 @@
+qbuild: link failed
+  undefined symbol: k_button_count (referenced by $ROOT/build/t/cinterop_archive/kotlin.a)
+  undefined symbol: k_log_text (referenced by $ROOT/build/t/cinterop_archive/kotlin.a)
+  undefined symbol: k_now_ms (referenced by $ROOT/build/t/cinterop_archive/kotlin.a)
+  undefined symbol: k_sound_play (referenced by $ROOT/build/t/cinterop_archive/kotlin.a)

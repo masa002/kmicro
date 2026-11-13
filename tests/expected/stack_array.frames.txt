@@ -1,0 +1,3 @@
+largest stack frames of stack_array.elf (bytes a call takes, LTO-merged):
+   {N}  run_main
+frames.py: run_main takes {N} bytes of stack, more than --limit 8192

@@ -1,0 +1,2 @@
+qbuild: link failed
+  undefined symbol: sensor_offset (referenced by $ROOT/tests/qbuild/undefined.c)

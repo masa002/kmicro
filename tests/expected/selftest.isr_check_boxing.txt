@@ -1,0 +1,3 @@
+2 interrupt handler(s) checked: no path to an allocation
+BOX    main -> kfun:kotlin#<Int-box>(kotlin.Int){}kotlin.Any
+--boxing: 1 boxing call(s) outside the standard library

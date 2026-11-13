@@ -1,0 +1,2 @@
+kmicro: out of memory: wanted {N} B, live after GC {N} of 16384 B, largest free {N} B in {N} free blocks
+kmicro panic: out of memory

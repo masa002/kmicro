@@ -1,5 +1,5 @@
 /* The C side of the cinterop_shapes test: implements drv.h and checks every call shape of shapes.kt, calling the
- * Kotlin functions by their @CName names. */
+ * Kotlin functions by their @CName names. Built with TEST_CALLBACK_THROWS, it runs a callback that throws instead. */
 #include "kmicro.h"
 #include <stdarg.h>
 #include <stdlib.h>
@@ -40,6 +40,7 @@ int32_t kt_inline_loop(void);
 int32_t kt_inline_asm(void);
 int32_t kt_inline_string(void);
 int32_t kt_inline_restrict(void);
+int32_t kt_callback_throws(void);
 
 static int s_wrong;
 static void check(const char *what, int32_t v, int32_t want)
@@ -53,6 +54,10 @@ static void check(const char *what, int32_t v, int32_t want)
 int main(void)
 {
     kmicro_init();
+#if defined(TEST_CALLBACK_THROWS)              /* the case run_all builds with TEST_CALLBACK_THROWS: exit 98 */
+    check("callbackThrows() = ", kt_callback_throws(), -7);
+    return 1;
+#endif
     check("global() = ", kt_global(), 15);
     check("structReturn() = ", kt_struct_return(), 34);
     check("structArg() = ", kt_struct_arg(), 42);

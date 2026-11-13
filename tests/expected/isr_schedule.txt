@@ -1,0 +1,1 @@
+collections by GC.schedule(): in a handler 0, in thread mode 1

@@ -1,0 +1,1 @@
+IntArray(100000): OutOfMemoryError

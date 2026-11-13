@@ -1,0 +1,2 @@
+16 live refs, the first reused the disposed slot: true
+kmicro panic: too many StableRefs (raise KM_STABLE_REFS, now 16)

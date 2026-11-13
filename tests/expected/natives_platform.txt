@@ -1,0 +1,6 @@
+os UNKNOWN cpu ARM32 le true unaligned false debug false cpus 1 name null
+lastGCInfo null finalizer processor false
+readlnOrNull null readLine null
+readln ReadAfterEOFException
+nul: [ab] end
+still running

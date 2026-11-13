@@ -59,3 +59,11 @@ fun inlineRestrict(): Int = memScoped {
     for (i in 0 until 4) src[i] = i * 3
     copy_sum(dst, src, 4)
 }
+
+// An exception thrown inside a staticCFunction does not reach a Kotlin try around the C call that ran it: as on stock
+// Kotlin/Native, the program stops with the uncaught-exception report. (Catch it inside the callback instead.)
+@CName("kt_callback_throws")
+fun callbackThrows(): Int {
+    drv_set_cb(staticCFunction { x: Int -> if (x > 0) throw IllegalStateException("from callback $x"); x })
+    return try { drv_fire(1) } catch (e: IllegalStateException) { println("caught: ${e.message}"); -7 }
+}

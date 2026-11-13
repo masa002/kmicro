@@ -1,0 +1,3 @@
+start
+kmicro fault: null pointer access (MemManage) at 0x{X}
+    sp 0x{X}  lr 0x{X}  cfsr 0x00000082  hfsr 0x00000000  mmfar 0x0000000c  bfar 0x00000000

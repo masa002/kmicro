@@ -1,0 +1,2 @@
+qbuild: link failed
+  the cinterop bridges of $ROOT/tests/cinterop/cinterop.kt are missing: link the bridges.o that kbuild printed next to k.o
