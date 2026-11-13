@@ -106,8 +106,5 @@ __attribute__((noreturn)) void kmicro_panic(const char *what)
         kmicro_puts(b);
     }
     kmicro_puts("\n");
-    extern void kmicro_exit(int);
     kmicro_exit(98);
-    for (;;) {
-    }
 }

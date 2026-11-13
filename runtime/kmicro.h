@@ -67,9 +67,27 @@ static inline void *km_array_data(ArrayHeader *a) { return (void *)(a + 1); }  /
 /* OBJ_GETTER convention (Memory.h): the result also goes to the caller's frame slot. */
 static inline ObjHeader *km_return(ObjHeader **slot, ObjHeader *obj) { *slot = obj; return obj; }
 
-/* ---- runtime API for the C side ---- */
+/* ---- the board contract ----
+ * Provided by the board (the C kernel; targets/qemu-* start.c for the emulator). A board file that includes this
+ * header needs no other declaration. */
+void kmicro_puts(const char *s);                     /* write a NUL-terminated UTF-8 string to the console */
+__attribute__((noreturn)) void kmicro_exit(int code);   /* stop with this status: kmicro_panic gives 98; never returns */
+
+/* Optional board hooks: the runtime has a weak default for each, so a board defines only the ones it has. */
+void kmicro_on_uncaught(ObjHeader *exception);       /* an uncaught exception, after its report and before the panic
+                                                        (default: nothing), e.g. to keep it for post-mortem */
+/* [here: the clock and random seed hooks of kotlin.time and kotlin.random (runtime/time.c)] */
+/* [here: console input, output with a length, and entropy (kmicro_getc, kmicro_write, kmicro_random_bytes)] */
+
+/* Provided by the runtime, for the board and any C code. */
 void kmicro_init(void);                              /* = Kotlin_initRuntimeIfNeeded for the single thread */
-void kmicro_gc(void);                                /* full collection now */
+void kmicro_gc(void);                                /* full collection now (never from an interrupt handler) */
+void kmicro_put_int(int32_t v);                      /* decimal, through kmicro_puts */
+__attribute__((noreturn)) void kmicro_panic(const char *what);   /* "kmicro panic: <what>[ at 0x...]", exit 98 */
+extern void *km_fault_pc;                            /* set before a panic: the return address of the faulting call,
+                                                        printed by kmicro_panic (tools/symbolize.py names it) */
+void kmicro_root(ObjHeader **slot);                  /* keep the object in *slot alive while C holds it (KM_C_ROOTS) */
+void kmicro_unroot(ObjHeader **slot);                /* stop that; from Kotlin, StableRef does the same */
 typedef struct {
     uint32_t heap_bytes;                             /* the arena (KM_HEAP_BYTES) */
     uint32_t used_bytes;                             /* in use now, garbage included until the next collection */
@@ -103,12 +121,6 @@ __attribute__((noreturn)) void ThrowIllegalArgumentException(void);
 __attribute__((noreturn)) void ThrowFileFailedToInitializeException(ObjHeader *cause);
 void checkRangeIndexes(int32_t from, int32_t to, int32_t size);
 extern const TypeInfo *theArrayTypeInfo, *theStringTypeInfo, *theCharArrayTypeInfo;
-
-/* platform hooks (the C kernel / the QEMU harness provides them) */
-void kmicro_puts(const char *s);
-void kmicro_put_int(int32_t v);
-__attribute__((noreturn)) void kmicro_panic(const char *what);
-extern void *km_fault_pc;                            /* set before a panic: the return address of the faulting call */
 
 /* True inside an exception/interrupt handler (Cortex-M IPSR != 0); always false where there is no IPSR. */
 static inline int km_in_interrupt(void)
