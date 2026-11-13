@@ -32,7 +32,14 @@ __attribute__((noreturn)) void Kotlin_system_exitProcess(int32_t status)
 
 /* ---- GC (Memory.cpp, GCStatistics.cpp) ---- */
 
-void Kotlin_native_internal_GC_schedule(ObjHeader *thiz) { (void)thiz; kmicro_gc(); }   /* one thread: collect now */
+/* One thread: collect now. Inside an interrupt handler the request is dropped: a collection there would miss the
+ * references the interrupted code holds only in registers (the heap collects anyway when it runs out). */
+void Kotlin_native_internal_GC_schedule(ObjHeader *thiz)
+{
+    (void)thiz;
+    if (!km_in_interrupt())
+        kmicro_gc();
+}
 /* kmicro keeps no GC statistics: the builder stays empty and GC.lastGCInfo is null. */
 void Kotlin_Internal_GC_GCInfoBuilder_Fill(ObjHeader *builder, int32_t id) { (void)builder; (void)id; }
 /* There is no main-thread run loop to process finalizers on (as on every non-Apple target). */
