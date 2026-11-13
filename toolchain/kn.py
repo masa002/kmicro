@@ -625,7 +625,7 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
         lines, missing = add_c_aliases(text, names, package, c_sigs=c_signatures(c_api, names, include_dirs, work=out),
                                        c_texts=decls)
         if missing:
-            sys.exit(f'kmicro: no Kotlin function in package {package} for: '
+            sys.exit(f'kmicro: no Kotlin function in package {package or "<root>"} for: '
                      + ', '.join(f'{c} (expected {camel(c)})' for c in missing))
         if init_all:
             lines += add_init_all(text, package, init_all)
