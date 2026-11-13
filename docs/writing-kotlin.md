@@ -193,7 +193,9 @@ Allocations hide in these places:
     cycles in C and 714 in Kotlin written this way (990 before).
 17. **Build with `--size --hot REGEX`:** minimum size everywhere, full speed for the functions the regex matches
     (interrupt handlers and the code they call). The regex matches the symbol as Kotlin/Native writes it
-    (`kfun:app#sysTickHandler(){}`), so `^` and `$` work; kbuild stops when it matches nothing.
+    (`kfun:app#sysTickHandler(){}`), so `^` and `$` work. kbuild stops when it matches nothing or is not a valid
+    regular expression; otherwise it prints how many functions keep full speed, such as
+    `size: minsize everywhere except 1 hot functions`.
 
 ## Size
 
