@@ -8,7 +8,7 @@
 A frame is what a function's prologue takes from the stack: the registers it pushes (push/stmdb, vpush) and the
 space it reserves (sub sp). This is counted after linking because LTO inlines functions into their callers and
 merges their frames: a Kotlin `fun main()` with a local `IntArray(14000)` shows up as a 56 KB frame of whatever it
-was inlined into, often Reset_Handler. kbuild warns about such arrays by function name before linking
+was inlined into, often the start code's run_main. kbuild warns about such arrays by function name before linking
 (--stack-array-limit); a frame is the stack a call needs, on top of its callers' frames.
 """
 import argparse
