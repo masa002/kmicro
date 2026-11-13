@@ -62,7 +62,7 @@ fun strings(n: Int): Int {
     return fail
 }
 
-// ---- 4. exceptions ----
+// ---- 4. exceptions: 10 checks; check k sets bit k - 1 of the result when it fails (exceptions(-3) == 0) ----
 class PanelError(val code: Int) : Exception("panel error $code")
 fun check(n: Int) { if (n < 0) throw PanelError(n) }
 fun deep(n: Int, d: Int): Int = if (d == 0) { check(n); 1 } else deep(n, d - 1) + 1
@@ -73,21 +73,27 @@ fun exceptions(n: Int): Int {
     var fail = 0
     var r = 0
     try { check(n); r = 1 } catch (e: PanelError) { r = e.code } finally { r += 100 }
-    if (r != n + 100) fail = fail or 1
-    try { try { check(n) } catch (e: IllegalStateException) { fail = fail or 2 } } catch (e: PanelError) { r = 7 }
-    if (r != 7) fail = fail or 4
-    try { deep(n, 10); fail = fail or 8 } catch (e: PanelError) { if (e.message != "panel error $n") fail = fail or 16 }
-    try { val a = IntArray(3); a[n + 10] = 1; fail = fail or 32 } catch (e: IndexOutOfBoundsException) { }
-    try { val z = 0; val q = 10 / (z * n); if (q != 1) fail = fail or 64 } catch (e: ArithmeticException) { }
-    if (withFinally() != 5 || fin != 1) fail = fail or 128
-    if (runCatching { check(n); 0 }.exceptionOrNull() !is PanelError) fail = fail or 256
+    if (r != n + 100) fail = fail or 1                                  // 1: caught by its type, then finally
+    try { try { check(n) } catch (e: IllegalStateException) { r = 2 } } catch (e: PanelError) { r = 7 }
+    if (r != 7) fail = fail or 2                                        // 2: a catch of another type is passed by
+    try { deep(n, 10); r = 0 } catch (e: PanelError) { r = if (e.message == "panel error $n") 3 else -3 }
+    if (r != 3) fail = fail or 4                                        // 3: ten calls deep, with its message
+    try { val a = IntArray(3); a[n + 10] = 1; r = 0 } catch (e: IndexOutOfBoundsException) { r = 4 }
+    if (r != 4) fail = fail or 8                                        // 4: an array index out of bounds
+    try { val z = 0; r = 10 / (z * n) } catch (e: ArithmeticException) { r = 5 }
+    if (r != 5) fail = fail or 16                                       // 5: a division by zero
+    if (withFinally() != 5 || fin != 1) fail = fail or 32               // 6: finally after a return
+    if (runCatching { check(n); 0 }.exceptionOrNull() !is PanelError) fail = fail or 64   // 7: runCatching
+    r = 0
     try { require(n > 0) { "n must be positive" } } catch (e: IllegalArgumentException) {
-        if (e.message != "n must be positive") fail = fail or 512
+        if (e.message == "n must be positive") r = 8
     }
+    if (r != 8) fail = fail or 128                                      // 8: require, with its message
     var caught = 0
     for (i in 0 until 200) try { check(-i - 1) } catch (e: PanelError) { caught++ }
-    if (caught != 200) fail = fail or 1024
-    try { IntArray(3).fill(1, 0, 10); fail = fail or 2048 } catch (e: IndexOutOfBoundsException) { }
+    if (caught != 200) fail = fail or 256                               // 9: 200 throws in a row
+    try { IntArray(3).fill(1, 0, 10); r = 0 } catch (e: IndexOutOfBoundsException) { r = 10 }
+    if (r != 10) fail = fail or 512                                     // 10: thrown through the runtime's C code
     return fail
 }
 

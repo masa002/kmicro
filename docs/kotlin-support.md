@@ -5,11 +5,11 @@ kmicro on an emulated Cortex-M4 (QEMU), and comparing the output ([tools/difftes
 running it on kmicro alone where the host output naturally differs (time, memory, C interop). The kmicro side runs
 on the default 16 KB heap; a program that needs more says so, with the reason, in a `// difftest: heap` line, and the
 notes below give the costs. The programs are in [tests/diff](../tests/diff); the `d_known_*.kt` ones show what does
-not work yet and run only when named.
+not work and run only when named.
 
 - **works**: behaves as on stock Kotlin/Native; for the standard library, the output is byte-identical.
 - **partly**: works with the limits in the note.
-- **does not work**: not yet.
+- **does not work**: fails as the note says.
 - **not supported**: left out by design (it needs threads or an OS); the note says what happens instead.
 - **not applicable**: not part of Kotlin/Native either, or deprecated with an error.
 
@@ -74,7 +74,7 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | garbage collection, cyclic garbage, wide graphs | works | precise non-moving mark-sweep |
 | GC.collect / collectCyclic | works | not inside an interrupt handler |
 | GC.schedule, GC.lastGCInfo | partly | GC.schedule collects at once (and does nothing inside an interrupt handler); lastGCInfo is always null |
-| GC heap tuning (autotune, targetHeapBytes, ...), Debugging.dumpMemory, ImmutableBlob | not supported | the program stops with '... is not supported on kmicro' |
+| GC heap tuning (autotune, targetHeapBytes, ...), Debugging.dumpMemory, ImmutableBlob, MemoryUsageInfo.peakResidentSetSizeBytes, the settings of GC.MainThreadFinalizerProcessor | not supported | the program stops with '... is not supported on kmicro'; GC.MainThreadFinalizerProcessor.available is false |
 | WeakReference | not supported | the program stops with '... is not supported on kmicro' |
 | createCleaner | not supported | the program stops with 'finalizers (Cleaner, WeakReference) are not supported' |
 | @ThreadLocal objects and properties | works | |
@@ -105,8 +105,8 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | kotlin.math | partly | newlib libm: results within 2 ulp of stock |
 | unsigned types: arithmetic, parsing, printing | works | |
 | **Regex** | | |
-| matches/find/findAll/groups/named groups/replace/split, options | works | a few small patterns need a 32 KB heap; the engine is about 240 KB of flash, too much for the STM32L431 |
-| lookaround, backreferences, lazy/possessive, Unicode classes | works | `\p{L}` needs about 56 KB of heap; many patterns do not fit even in 64 KB |
+| matches/find/findAll/groups/named groups/replace/split, options | works | the first pattern keeps 11.5 KB of the heap and three small ones need a 20 KB heap; a program that uses Regex is about 365 KB of flash (234 KB with `--size`) ([costs](writing-kotlin.md#memory)) |
+| lookaround, backreferences, lazy/possessive, Unicode classes | works | `\p{L}` alone runs on the 16 KB heap (13.4 KB kept); about 30 patterns created in one function run out of memory even at 64 KB (`d_known_regex_heap`) |
 | deep backtracking over long input | does not work | needs ~64 KB of stack; stops with 'kmicro fault: stack overflow' (exit 99) |
 | RegexOption.CANON_EQ | not supported | throws IllegalArgumentException: 'RegexOption.CANON_EQ is not supported on kmicro' |
 | **Time and random** | | |
@@ -121,7 +121,7 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | Uuid.random() | partly | needs the board hook `kmicro_random_bytes` (a hardware random number generator); without it, as on QEMU, the program stops naming the hook |
 | HexFormat, Base64 | works | |
 | Pair/Triple, comparators, lazy, require/check/TODO | works | |
-| kotlin.native.Platform | works | osFamily UNKNOWN, cpuArchitecture ARM32, getAvailableProcessors() 1 |
+| kotlin.native.Platform | works | osFamily UNKNOWN, cpuArchitecture ARM32, isLittleEndian true, canAccessUnaligned false, isDebugBinary false, getAvailableProcessors() 1, programName null |
 | exitProcess | works | calls the board's `kmicro_exit(status)` |
 | readln/readlnOrNull | works | through the board hook `kmicro_getc`; without it the input is empty |
 | ByteArray.getIntAt/setIntAt family | works | |
@@ -130,7 +130,7 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | calling C functions with scalars and pointers, C strings | works | `kbuild.py --def FILE.def` runs cinterop |
 | C globals, #define constants, enums, struct fields, sizeOf | works | |
 | variadic C functions | works | |
-| memScoped, usePinned/addressOf, readBytes, cValuesOf | works | |
+| memScoped, usePinned/addressOf (on a String too), readBytes, cValuesOf, vectorOf | works | `d_natives` |
 | nativeHeap alloc/free in any order | works | freed blocks are reused and merged with their neighbours |
 | native memory beyond `KM_INTEROP_BYTES` (1 KB) | partly | throws OutOfMemoryError; raise the arena with `-D KM_INTEROP_BYTES=N` |
 | structs by value (CValue, useContents, cValue{}) | works | [tests/cinterop_shapes](../tests/cinterop_shapes) |
@@ -144,6 +144,6 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | interrupt handlers written in Kotlin | works | the allocation guard covers the runtime's own allocations and collections; isr_check reads the vector table; [examples/irq](../examples/irq) |
 | --init-all | works | file-level globals, objects, companions and sub-packages |
 | --size --hot | works | |
-| board build | partly | the runtime flags are those of [examples/selftest/stm32l431](../examples/selftest/stm32l431); a porting guide is still to come |
+| board build | works | [porting.md](porting.md): the board contract, start-up, runtime flags, linker script and libraries; [examples/selftest/stm32l431](../examples/selftest/stm32l431) is a complete one |
 | Windows paths with spaces or non-ASCII characters | partly | folders work; a file name outside the ANSI code page fails in the xPack tools |
 | program start with an inlined floating-point main | works | |

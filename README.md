@@ -25,6 +25,9 @@ fun main() {
 
 ```
 $ python tools/kbuild.py build/hello hello.kt
+kotlinc-native: compiling 1 file...
+single-core: 113 init-state loads made plain
+build\hello\k.o
 $ python tools/qbuild.py build/hello/hello.elf targets/common/kotlin_main.c build/hello/k.o --run
 qbuild: hello.elf  text 71228  data 80  bss 18864  stack 79812
 Hello from Kotlin #1, Kotlin #2, Kotlin #3 on a bare Cortex-M4
@@ -57,7 +60,7 @@ feature, is in [docs/kotlin-support.md](docs/kotlin-support.md).
 | `kotlin.random`, `kotlin.time`, `Uuid`, `Platform`, `exitProcess` | clocks and entropy come from board hooks; the QEMU targets provide the clocks |
 | atomics, including the atomic arrays | atomic against interrupt handlers |
 | cinterop: scalars, pointers, strings, globals, enums, structs by value, `staticCFunction` callbacks, varargs, `StableRef` | kbuild runs cinterop for you (`--def`) |
-| interrupt handlers in Kotlin | they must not allocate: [docs/writing-kotlin.md](docs/writing-kotlin.md), [examples/irq](examples/irq) |
+| interrupt handlers in Kotlin | they must not allocate; they may store references and use the atomics: [docs/writing-kotlin.md](docs/writing-kotlin.md#interrupt-handlers), [examples/irq](examples/irq) |
 
 Every standard-library function that calls into the runtime is implemented, or stops the program with
 "... is not supported on kmicro" where it needs threads or an OS (`python tools/missing_natives.py -v` lists them).
@@ -66,20 +69,23 @@ Every standard-library function that calls into the runtime is implemented, or s
 
 The short list; [docs/kotlin-support.md](docs/kotlin-support.md) has every case.
 
-- **Regex is big:** a few small patterns need a 32 KB heap and `\p{L}` about 56 KB, many patterns do not fit even
-  in 64 KB, and the engine adds about 240 KB of flash, so a program using it does not fit the STM32L431. Deep backtracking over long
-  input overflows the stack. `RegexOption.CANON_EQ` throws `IllegalArgumentException`.
+- **Regex is big:** the first pattern keeps 11.5 KB of the heap, three small patterns need a 20 KB heap, and a
+  program that creates about 30 patterns in one function runs out of memory even at 64 KB. A program that uses
+  `Regex` is about 365 KB of flash (234 KB with `--size`), against the STM32L431's 256 KB
+  ([what features cost](docs/writing-kotlin.md#memory)). Deep backtracking over long input overflows the stack.
+  `RegexOption.CANON_EQ` throws `IllegalArgumentException`.
 - **Running out of memory stops the program:** heap exhaustion ends with an out-of-memory report, not a catchable
   `OutOfMemoryError` (one request larger than the whole heap does throw). Kotlin/Native puts constant-size local
   arrays on the stack; kbuild warns about those above 512 bytes.
 - **Faults are not exceptions:** a stack overflow or a null-pointer read stops the program with a fault report
   (exit 99). The QEMU target `qemu-l475` catches both with the MPU; the STM32L431 example reports faults but has no
-  stack guard yet.
+  stack guard.
 - **Board hooks:** without them the clocks (`measureTime`, `TimeSource.Monotonic`, `Clock.System`) and
   `Uuid.random()` stop the program naming the missing hook, `Random.Default` repeats its sequence after every reset,
   and `readln()` sees the end of the input. [runtime/kmicro.h](runtime/kmicro.h) lists the hooks.
 - **Stack traces:** addresses, at most 12 frames; [tools/symbolize.py](tools/symbolize.py) turns them into function
-  names, with file and line when the code is built with `-g`. Functions that LTO inlines fold into their callers.
+  names, with file and line when the code is built with `-g`. Functions that LTO inlines fold into their callers
+  ([reading a stack trace](docs/how-it-works.md#reading-a-stack-trace)).
 - **Smaller limits:** `kotlin.math` results are within 2 ulp of stock (newlib's libm); `nativeHeap`, `memScoped`
   and `cstr` share a 1 KB arena (`KM_INTEROP_BYTES`); a public function whose backtick name contains a space cannot
   be exported to C (make it `internal` or `private`); on Windows, a file name with characters outside the ANSI code
@@ -134,11 +140,11 @@ access and handles SysTick in Kotlin.
 **C calling Kotlin.** `--c-api app.h --package app` gives the Kotlin functions of package `app` the C names of the
 prototypes in `app.h`, so a C `main` can call them after `kmicro_init()`: [examples/hello](examples/hello).
 
-**On a real board**, link `k.o` (and `bridges.o`) with `runtime/`, your startup code and a linker script:
-[examples/selftest/stm32l431](examples/selftest/stm32l431) does this for an STM32L431, and
-[docs/how-it-works.md](docs/how-it-works.md) explains the pieces. Copy the compiler flags and linker-script
-sections of that example: the runtime is compiled with clang and `-fexceptions -funwind-tables`, without which
-`runtime/eh.c` stops the build.
+**On a real board**, link `k.o` (and `bridges.o`) with `runtime/`, your startup code and a linker script.
+[docs/porting.md](docs/porting.md) explains each piece: the functions the board provides, the start-up, the
+runtime's compiler flags (clang, `-fexceptions -funwind-tables`, without which `runtime/eh.c` stops the build), the
+linker-script sections and the libraries. [examples/selftest/stm32l431](examples/selftest/stm32l431) does this for
+an STM32L431.
 
 ## Numbers
 
@@ -156,8 +162,8 @@ sections of that example: the runtime is compiled with clang and `-fexceptions -
 | one full collection | 1.8 ms |
 
 \* Measured before [#3](https://github.com/masa002/kmicro/issues/3) stopped the stack-trace walk from visiting the
-same frame several times. On QEMU one throw-to-catch now takes about 6,100 instructions instead of 17,600; the board
-figure will be measured again.
+same frame several times. On QEMU the same check now executes 9,853 instructions: 7,131 to create the exception with
+its message and stack trace, 2,722 from the throw to the catch.
 
 ## Repository layout
 
@@ -169,8 +175,14 @@ figure will be measured again.
 | [targets/](targets) | startup code and linker scripts for QEMU (`qemu-l475` for programs, `qemu-an386` through `qbuild --target an386` for programs that need more memory), and `common/kotlin_main.c` for `fun main()` |
 | [tools/](tools) | `kbuild.py`, `qbuild.py`, `gen_regs.py` (CMSIS to Kotlin), `isr_check.py`, `symbolize.py`, `frames.py`, `missing_natives.py`, `difftest.py`, `measure.py`, `irstat.py`, `port_dtoa.py` |
 | [examples/](examples) | `hello`, `irq` (a Kotlin SysTick handler on registers), `selftest` (with its STM32L431 board files) |
-| [tests/](tests) | `run_all.py`, the test programs, the differential tests, `unit/` for the tools |
-| [docs/](docs) | [Kotlin support](docs/kotlin-support.md), [how it works](docs/how-it-works.md), [writing Kotlin for a microcontroller](docs/writing-kotlin.md), [design notes](docs/research) |
+| [tests/](tests) | `run_all.py` and one folder per feature, `expected/` (the outputs run_all compares), `diff/` (the differential tests), `unit/` for the tools |
+| [docs/](docs) | [Kotlin support](docs/kotlin-support.md), [how it works](docs/how-it-works.md), [writing Kotlin for a microcontroller](docs/writing-kotlin.md), [porting to a board](docs/porting.md), [roadmap](docs/roadmap.md), [design notes](docs/research) |
+
+## Contributing
+
+Bug reports, fixes and tests are welcome: [CONTRIBUTING.md](CONTRIBUTING.md) says how to build, test and send a
+change, and [docs/roadmap.md](docs/roadmap.md) where the open work is. Report a security problem privately, as
+[SECURITY.md](SECURITY.md) describes.
 
 ## Origin
 

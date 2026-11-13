@@ -20,11 +20,29 @@ static void stat(const char *name, uint32_t v)
     kmicro_put_int((int32_t)v);
 }
 
+/* kmicro_init() runs the module initializers (the compiler registers them through .init_array, which LTO usually
+ * resolves at link time). The standard library's modules register their thread-local slots there, so no slot means
+ * that no initializer ran. */
+static bool runtime_init(void)
+{
+    kmicro_init();
+    return kmicro_tls_slot_count > 0;
+}
+
+/* One collection more, and the garbage left by the checks before it is gone. */
+static bool full_gc(void)
+{
+    kmicro_stats_t before, after;
+    kmicro_stats(&before);
+    kmicro_gc();
+    kmicro_stats(&after);
+    return after.gc_count == before.gc_count + 1 && after.used_bytes < before.used_bytes;
+}
+
 int main(void)
 {
     kmicro_puts("\n=== kmicro self-test: official Kotlin/Native 2.4.21 output on a Cortex-M4 ===\n");
-    kmicro_init();
-    report("runtime init (module initializers)", true);
+    report("runtime init (module initializers)", runtime_init());
     report("println from Kotlin", hello() == 0);
     report("classes, interface, virtual calls (= 45)", shapes(5) == 45);
 
@@ -34,7 +52,7 @@ int main(void)
         expect += k * 1000;
     report("garbage collection, 6000+ objects", gc_chains(rounds) == expect);
     report("strings (10 checks, UTF-16, JVM hashCode)", strings(2500) == 0);
-    report("exceptions (9 checks, 200+ throws)", exceptions(-3) == 0);
+    report("exceptions (10 checks, 200+ throws)", exceptions(-3) == 0);
     report("one throw + catch", throw_once(-1) == 1);
 
     coro_start();                       /* the coroutine suspends at once and waits for events */
@@ -45,13 +63,13 @@ int main(void)
             bad++;
     }
     report("coroutine: 300 suspend/resume cycles", bad == 0);
-    kmicro_gc();
-    report("one full GC", true);
+    report("one full GC", full_gc());
 
     kmicro_stats_t st;
     kmicro_stats(&st);
     stat("\nheap ", st.heap_bytes);
     stat(" B, peak ", st.peak_bytes);
+    stat(" B, live peak ", st.live_peak_bytes);
     stat(" B, objects ", st.alloc_count);
     stat(", collections ", st.gc_count);
     stat(", freed ", st.objects_freed);

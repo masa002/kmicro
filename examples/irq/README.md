@@ -23,7 +23,7 @@ python tools/kbuild.py build/irq examples/irq --def support/hw.def --c-api examp
 python tools/qbuild.py build/irq/irq.elf examples/irq/main.c support/hw.c build/irq/k.o build/irq/bridges.o --run
 ```
 
-Output:
+The program prints, after the lines of the build:
 
 ```
 SysTick: 5 ticks, COUNTFLAG set in 5 of them
