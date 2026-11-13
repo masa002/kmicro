@@ -185,11 +185,28 @@ def cinterop(def_file, out_base, include_dirs=(), deps=(), force=False):
         for d in include_dirs:
             args += ['-compiler-option', '-I' + paths.arg_path(d)]
         args += ['-o', paths.arg_path(out_base)]
+        print(f'cinterop: {def_file} -> {klib}', file=sys.stderr, flush=True)
         r = paths.run_kn('cinterop', args)
         if r.returncode != 0:
-            sys.exit('cinterop FAILED:\n' + (r.stdout + r.stderr)[-3000:])
+            text = r.stdout + r.stderr
+            # the first C error, reported as a Java exception about cinterop's own temporary .c file
+            msgs = [re.sub(r'^.*?java\.lang\.\w+: (?:\S+\.c:\d+:\d+: )?', '', l) for l in text.splitlines()
+                    if re.search(r'\b(?:fatal )?error\b', l) and not l.startswith('\tat ')]
+            hint = ('\n(add the folder of a header that is not found with -I)' if 'file not found' in text else '')
+            sys.exit(f'kmicro: cinterop failed for {def_file}:\n' + '\n'.join(msgs or text.splitlines()[-20:]) + hint)
         keyfile.write_text(key, encoding='utf-8')
     return klib
+
+
+def def_headers(def_file, include_dirs=()):
+    """The files a .def depends on: the headers its `headers =` line names, and every .h directly in its folder and
+    in include_dirs (a header may include another)."""
+    def_file = Path(def_file)
+    text = re.sub(r'\\\n', ' ', def_file.read_text(encoding='utf-8', errors='replace').split('\n---', 1)[0])
+    m = re.search(r'^headers\s*=(.*)$', text, re.M)
+    dirs = [def_file.parent, *map(Path, include_dirs)]
+    named = [next((d / h for d in dirs if (d / h).exists()), None) for h in (m.group(1).split() if m else [])]
+    return list(dict.fromkeys([*(h for h in named if h), *(h for d in dirs for h in sorted(d.glob('*.h')))]))
 
 
 def camel(cname):
@@ -519,7 +536,7 @@ def c_declarations(*headers, include_dirs=(), defines=()):
 
 
 def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, size=False, hot=None, force=False,
-          kotlinc_args=(), include_dirs=(), main=None):
+          kotlinc_args=(), include_dirs=(), main=None, defs=()):
     """Kotlin sources -> [out/k.o] (+ out/bridges.o when the program calls C through cinterop), ready to link with
     the kmicro runtime. A function marked @CName("name") gets that C name (add_cname_aliases), and the program's
     `fun main()` the name kmicro_kotlin_main, which targets/common/kotlin_main.c calls (add_kotlin_main).
@@ -533,13 +550,16 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
              initialisation of that code to a handler (add_init_all)
     size     minsize for every Kotlin function except those whose symbol matches the regex `hot`
     kotlinc_args  more kotlinc-native options (-Xbinary=latin1Strings=true, -opt-in=..., -language-version ...)
-    include_dirs  folders the c_api headers include from (besides their own, runtime/, support/ and newlib)
+    defs     .def files: cinterop makes each a klib in `out` (C declarations the Kotlin code calls), used as a lib
+    include_dirs  folders the .def and c_api headers include from (besides their own, runtime/, support/, newlib)
     main     True: the sources must have one `fun main()` (else an error); False: no kmicro_kotlin_main; None: made
              when there is exactly one main
     """
     out = Path(out)
     if hot and not size:
         sys.exit('kmicro: hot (--hot) needs size (--size)')
+    libs = [*libs, *(cinterop(d, out / Path(d).stem, [Path(d).parent, *include_dirs], def_headers(d, include_dirs),
+                              force) for d in defs)]
     extra = [*(x for lib in libs for x in ('-l', Path(os.path.abspath(lib)).as_posix())), *kotlinc_args]
     for w in compile_ir(srcs, out, extra, [*libs, *deps], force):
         print(w, file=sys.stderr)             # (stdout is kbuild's list of objects)

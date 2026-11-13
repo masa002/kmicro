@@ -39,8 +39,11 @@ def parser():
     p.add_argument('--c-api', action='append', default=[], type=Path, metavar='HEADER.h',
                    help='a C header whose prototypes the Kotlin code implements: `int32_t gc_chains(int32_t)` becomes '
                         'a C name for the Kotlin function <package>.gcChains (needs --package); repeatable')
+    p.add_argument('--def', dest='defs', action='append', default=[], type=Path, metavar='FILE.def',
+                   help='run cinterop on FILE.def (the C functions the Kotlin code calls) and use its klib, '
+                        '<outdir>/FILE.klib; the .def folder and -I folders are on the include path; repeatable')
     p.add_argument('-I', dest='include_dirs', action='append', default=[], type=Path, metavar='DIR',
-                   help='a folder the C headers include from (for --c-api); repeatable')
+                   help='a folder the C headers include from (for --def and --c-api); repeatable')
     p.add_argument('--package', metavar='NAME', help='the Kotlin package of the --c-api and --init-all functions')
     p.add_argument('--init-all', metavar='NAME',
                    help='generate `void NAME(void)`, which initialises the globals of --package and its sub-packages '
@@ -82,7 +85,7 @@ def parse(argv):
         p.error('--hot needs --size (it chooses the functions that --size leaves at full speed)')
     if (args.c_api or args.init_all) and args.package is None:
         p.error('--c-api and --init-all need --package (the Kotlin package that implements them)')
-    for flag, files in (('-l', args.libs), ('--c-api', args.c_api), ('-I', args.include_dirs)):
+    for flag, files in (('-l', args.libs), ('--def', args.defs), ('--c-api', args.c_api), ('-I', args.include_dirs)):
         for f in files:
             if not f.exists():
                 p.error(f'{flag} {f}: not found')
@@ -96,7 +99,7 @@ def main():
     a = parse(sys.argv[1:])
     objs = kn.build(a.sources, a.outdir, libs=a.libs, c_api=a.c_api, package=a.package, init_all=a.init_all,
                     size=a.size, hot=a.hot, force=a.force, kotlinc_args=a.kotlinc_args, include_dirs=a.include_dirs,
-                    main=True if a.main else None)
+                    main=True if a.main else None, defs=a.defs)
     print('\n'.join(str(o) for o in objs))
 
 
