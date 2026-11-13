@@ -50,4 +50,5 @@ python tools/isr_check.py build/irq/irq.elf
 2 interrupt handler(s) checked: no path to an allocation
 ```
 
-QEMU's SysTick counts a 16 MHz clock, so `LOAD = 16000 - 1` gives 1 ms; on a board, compute it from the core clock.
+An STM32L4, and QEMU's model of it, starts with a 4 MHz core clock (MSI), so `LOAD = 4000 - 1` gives 1 ms; once the
+program sets another clock, compute it from that one.

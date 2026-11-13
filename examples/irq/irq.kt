@@ -23,7 +23,7 @@ fun sysTickHandler() {
 // Runs SysTick at 1 kHz for n interrupts, sleeping (WFI) between them, and returns the ticks counted.
 fun runTicks(n: Int): Int {
     last = n
-    hw_wr32(SysTick.LOAD, 16_000u - 1u)                 // 1 ms at the 16 MHz clock QEMU's SysTick counts
+    hw_wr32(SysTick.LOAD, 4_000u - 1u)                  // 1 ms at the 4 MHz clock an STM32L4 starts with
     hw_wr32(SysTick.VAL, 0u)
     hw_wr32(SysTick.CTRL, SysTick_CTRL_CLKSOURCE_Msk or SysTick_CTRL_TICKINT_Msk or SysTick_CTRL_ENABLE_Msk)
     while (true) {
