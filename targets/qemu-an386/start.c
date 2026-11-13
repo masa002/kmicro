@@ -1,5 +1,5 @@
 /* Bare-metal start for unit tests on QEMU mps2-an386: a firmware's C tests linked with its Kotlin modules.
- * Vector table, .data/.bss, FPU on, constructors, newlib's semihosting stdio (rdimon), the kmicro runtime, the
+ * Vector table, FPU on, .data/.bss, constructors, newlib's semihosting stdio (rdimon), the kmicro runtime, the
  * test's main(), and an exit that carries the status back to QEMU (SYS_EXIT_EXTENDED). */
 #include <stdint.h>
 #include <stdio.h>
@@ -12,18 +12,33 @@ void kmicro_init(void);
 int main(void);
 void kmicro_exit(int code) __attribute__((noreturn));
 
-void Reset_Handler(void) __attribute__((noreturn));
-void Reset_Handler(void)
+/* The FPU goes on before any compiled C code runs. With LTO, main and the Kotlin code it calls can be inlined into
+ * the C start function, whose prologue then saves FP registers (vpush): with CP10/CP11 still off that is a fault. */
+__attribute__((naked)) void Reset_Handler(void)
+{
+    __asm volatile("movw r0, #0xED88\n"
+                   "movt r0, #0xE000\n"                         /* CPACR */
+                   "ldr r1, [r0]\n"
+                   "orr r1, r1, #(0xF << 20)\n"                  /* CP10/CP11 full access (FPU) */
+                   "str r1, [r0]\n"
+                   "dsb\n"
+                   "isb\n"
+                   "b start_c\n");
+}
+
+/* main in a function of its own: whatever LTO inlines into it, start_c keeps a small frame, so clearing .bss can
+ * never clear start_c's own stack. */
+__attribute__((noinline)) static int run_main(void) { return main(); }
+
+__attribute__((noinline, used, noreturn)) void start_c(void)
 {
     memcpy(&_sdata, &_sidata, (size_t)((char *)&_edata - (char *)&_sdata));
     memset(&_sbss, 0, (size_t)((char *)&_ebss - (char *)&_sbss));
-    *(volatile uint32_t *)0xE000ED88 |= 0xFu << 20;          /* CPACR: CP10/CP11 full access (FPU) */
-    __asm volatile("dsb\n isb");
     initialise_monitor_handles();
     for (void (**f)(void) = __init_array_start; f < __init_array_end; f++)
         (*f)();
     kmicro_init();
-    int r = main();
+    int r = run_main();
     fflush(stdout);
     fflush(stderr);
     kmicro_exit(r);
