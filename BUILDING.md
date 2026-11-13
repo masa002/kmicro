@@ -6,7 +6,7 @@
 |---|---|---|---|
 | Kotlin/Native, prebuilt | 2.4.21 | `kotlinc-native`, `cinterop` | `KMICRO_KOTLIN_NATIVE`, else `~/toolchains/kotlin-native-prebuilt-*-2.4.21` |
 | LLVM (`clang`, `ld.lld`) | 21, as downloaded by Kotlin/Native | IR to objects, the LTO link | `KMICRO_LLVM`, else `~/.konan/dependencies/llvm-*-essentials-*/bin` on Windows and Linux, `~/.konan/dependencies/llvm-*-dev-*/bin` on macOS |
-| xPack GNU Arm Embedded GCC | 15.2.1-1.1 | newlib-nano, libm, libgcc, `objcopy`, `size`, `nm`, `objdump`, `addr2line` | `KMICRO_ARM_GCC`, else `~/toolchains/xpack-arm-none-eabi-gcc-*` |
+| xPack GNU Arm Embedded GCC | 15.2.1-1.1 | newlib-nano, libm, libgcc, `objcopy`, `size`, `nm`, `objdump`, `readelf`, `addr2line` | `KMICRO_ARM_GCC`, else `~/toolchains/xpack-arm-none-eabi-gcc-*` |
 | xPack QEMU Arm | 9.2.4-1 | running the tests and examples | `KMICRO_QEMU`, else `~/toolchains/xpack-qemu-arm-*` |
 | Java (JDK or JRE) | 21 | runs `kotlinc-native` and `cinterop` | `JAVA_HOME`, else `java` on `PATH` |
 | Python | 3.10 or later (3.11 tested) | the build scripts | `PATH` |
