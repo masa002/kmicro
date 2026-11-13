@@ -53,9 +53,9 @@ def fail(msg):
     sys.exit(msg)
 
 
-def run(args, check=True):
+def run(args, check=True, cwd=None):
     try:
-        r = subprocess.run([str(a) for a in args], capture_output=True, text=True, errors='replace')
+        r = subprocess.run([str(a) for a in args], capture_output=True, encoding='utf-8', errors='replace', cwd=cwd)
     except FileNotFoundError:
         fail(f'qbuild: cannot run {args[0]} (see python toolchain/paths.py)')
     if check and r.returncode != 0:
@@ -156,10 +156,13 @@ def write_stubs(path, names):
 
 
 def size_line(out):
-    """The size line, with the stack: the RAM between the end of .bss and the top of the stack."""
-    t, d, b = run([paths.gcc_bin('size'), out]).stdout.strip().splitlines()[-1].split()[:3]
+    """The size line, with the stack: the RAM between the end of .bss and the top of the stack. On Windows binutils
+    and QEMU open files through the ANSI code page, so a folder named in Japanese is out of their reach: they run in
+    the image's folder and get its bare name."""
+    here = dict(cwd=out.parent)
+    t, d, b = run([paths.gcc_bin('size').resolve(), out.name], **here).stdout.strip().splitlines()[-1].split()[:3]
     syms = {}
-    for line in run([paths.gcc_bin('nm'), out]).stdout.splitlines():
+    for line in run([paths.gcc_bin('nm').resolve(), out.name], **here).stdout.splitlines():
         p = line.split()
         if len(p) == 3 and p[2] in ('_estack', '_ebss'):
             syms[p[2]] = int(p[0], 16)
@@ -183,6 +186,8 @@ def parse_args():
 
 
 def main():
+    for stream in (sys.stdout, sys.stderr):      # UTF-8, as the program's own output: any file name prints
+        stream.reconfigure(encoding='utf-8', errors='replace')
     args = parse_args()
     for f in args.files:
         if not f.is_file():
@@ -233,11 +238,11 @@ def main():
               flush=True)
     print(size_line(out), flush=True)
     if args.run:
-        qemu = [paths.qemu_system_arm(), '-machine', machine, '-nographic', '-semihosting-config',
+        # in the image's folder, as size_line runs binutils
+        qemu = [paths.qemu_system_arm().resolve(), '-machine', machine, '-nographic', '-semihosting-config',
                 'enable=on,target=native', '-kernel', out.name, '-serial', 'none', '-monitor', 'none']
         try:
-            r = subprocess.run([str(a) for a in qemu], capture_output=True, timeout=args.timeout,
-                               cwd=out.parent)         # QEMU opens a non-ASCII path wrongly on Windows
+            r = subprocess.run([str(a) for a in qemu], capture_output=True, timeout=args.timeout, cwd=out.parent)
         except subprocess.TimeoutExpired as e:
             sys.stdout.buffer.write((e.stdout or b'') + (e.stderr or b''))
             sys.stdout.flush()
