@@ -16,6 +16,7 @@ usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot
   (runtime/time.c), so Random needs no clock
 - String.toDouble()/toFloat(): the hexadecimal parser calls runtime/hexfloat.c instead of compiling regular
   expressions, so number parsing does not link the Regex engine
+- the stdlib's Unicode tables stay in flash instead of being copied to the heap on first use
 """
 import re
 import sys
@@ -108,6 +109,14 @@ text = replace_body(text, HEX + '#parseFloat(kotlin.String){}kotlin.Float', '(pt
 for fn, ty in (('kmicro_hex_to_double', 'double'), ('kmicro_hex_to_float', 'float')):
     if f'@{fn}(' in text:
         text += f'\ndeclare {ty} @{fn}(ptr)\n'
+# Unicode tables (Char.category, isLetter, the case mappings...): the initialiser of each generated table file copies
+# its tables from their constants into the heap (intArrayOf semantics), from 2.4 KB for an ASCII uppercase() to
+# 11.7 KB for Char.category, kept for good. These tables are private to the stdlib and never written, so the constant
+# itself is used: a permanent object, which the collector never frees.
+text = re.sub(r'^define internal void @"kfun:kotlin\.text\.\$init_global\$_\w+\.kt#internal"\(\)[^\n]*\{$.*?^\}$',
+              lambda m: re.sub(r'call ptr @"kfun:kotlin\.collections#copyOf__at__[^"]*"\((ptr @[0-9]+), ptr %[0-9]+\)',
+                               r'getelementptr inbounds i8, \1, i32 0', m.group(0)),
+              text, flags=re.M | re.S)
 open(dst, 'w', encoding='utf-8', newline='\n').write(text)
 
 if stubs:
