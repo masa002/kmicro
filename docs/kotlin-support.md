@@ -74,7 +74,7 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | garbage collection, cyclic garbage, wide graphs | works | precise non-moving mark-sweep |
 | GC.collect / collectCyclic | works | not inside an interrupt handler |
 | GC.schedule, GC.lastGCInfo | partly | GC.schedule collects at once (and does nothing inside an interrupt handler); lastGCInfo is always null |
-| GC heap tuning (autotune, targetHeapBytes, ...), Debugging.dumpMemory, ImmutableBlob | not supported | the program stops with '... is not supported on kmicro' |
+| GC heap tuning (autotune, targetHeapBytes, ...), Debugging.dumpMemory, ImmutableBlob, MemoryUsageInfo.peakResidentSetSizeBytes, the settings of GC.MainThreadFinalizerProcessor | not supported | the program stops with '... is not supported on kmicro'; GC.MainThreadFinalizerProcessor.available is false |
 | WeakReference | not supported | the program stops with '... is not supported on kmicro' |
 | createCleaner | not supported | the program stops with 'finalizers (Cleaner, WeakReference) are not supported' |
 | @ThreadLocal objects and properties | works | |
@@ -121,7 +121,7 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | Uuid.random() | partly | needs the board hook `kmicro_random_bytes` (a hardware random number generator); without it, as on QEMU, the program stops naming the hook |
 | HexFormat, Base64 | works | |
 | Pair/Triple, comparators, lazy, require/check/TODO | works | |
-| kotlin.native.Platform | works | osFamily UNKNOWN, cpuArchitecture ARM32, getAvailableProcessors() 1 |
+| kotlin.native.Platform | works | osFamily UNKNOWN, cpuArchitecture ARM32, isLittleEndian true, canAccessUnaligned false, isDebugBinary false, getAvailableProcessors() 1, programName null |
 | exitProcess | works | calls the board's `kmicro_exit(status)` |
 | readln/readlnOrNull | works | through the board hook `kmicro_getc`; without it the input is empty |
 | ByteArray.getIntAt/setIntAt family | works | |
