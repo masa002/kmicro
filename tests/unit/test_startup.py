@@ -25,23 +25,25 @@ class StartupTest(unittest.TestCase):
                            timeout=300)
         return elf, r.returncode, r.stdout + r.stderr
 
-    def symbol_at(self, elf, addr):
-        r = subprocess.run([sys.executable, ROOT / 'tools/symbolize.py', elf, addr], capture_output=True, text=True)
-        return r.stdout
+    def symbolized(self, elf, log):
+        """The fault line of the log as tools/symbolize.py rewrites it: the stacked PC is looked up as it is."""
+        r = subprocess.run([sys.executable, ROOT / 'tools/symbolize.py', elf], input=log, capture_output=True,
+                           text=True, encoding='utf-8', errors='replace')
+        return next((line for line in r.stdout.splitlines() if 'kmicro fault:' in line), r.stdout + r.stderr)
 
     def test_fault_report_names_the_faulting_function(self):
         elf, rc, out = self.run_probe(1)
         self.assertEqual(rc, 99, out)
         m = re.search(r'kmicro fault: BusFault at (0x[0-9a-f]{8})\n    sp 0x[0-9a-f]{8}  lr 0x.*bfar 0x70000000', out)
         self.assertTrue(m, out)
-        self.assertIn('probe_bad_read+', self.symbol_at(elf, m.group(1)))
+        self.assertIn('probe_bad_read+', self.symbolized(elf, out))
 
     def test_usage_fault(self):
         elf, rc, out = self.run_probe(2)
         self.assertEqual(rc, 99, out)
         m = re.search(r'kmicro fault: UsageFault at (0x[0-9a-f]{8})', out)
         self.assertTrue(m, out)
-        self.assertIn('probe_undefined+', self.symbol_at(elf, m.group(1)))
+        self.assertIn('probe_undefined+', self.symbolized(elf, out))
 
     def test_stack_overflow_stops_before_bss(self):
         _, rc, out = self.run_probe(3)
@@ -54,7 +56,7 @@ class StartupTest(unittest.TestCase):
         self.assertEqual(rc, 99, out)
         m = re.search(r'kmicro fault: null pointer access \(MemManage\) at (0x[0-9a-f]{8})\n.* mmfar 0x0000000c', out)
         self.assertTrue(m, out)
-        self.assertIn('probe_null_read+', self.symbol_at(elf, m.group(1)))
+        self.assertIn('probe_null_read+', self.symbolized(elf, out))
 
     def test_clocks(self):
         _, rc, out = self.run_probe(5)

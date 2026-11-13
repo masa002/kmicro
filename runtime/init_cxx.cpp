@@ -3,6 +3,8 @@
  * rethrown wrapped (ThrowFileFailedToInitializeException), exactly as the stock runtime does. The catch(...) runs
  * on kmicro's own personality (runtime/eh.c), which treats every catch clause as catch-all. One thread: a re-entry
  * during initialization ("being initialized") simply returns, as the stock code does for the initializing thread.
+ * kmicro_call_catching does the same catch for eh.c, which runs the unhandled-exception hook and goes on when the
+ * hook throws.
  *
  * GC rules followed here: Kotlin frames left by the unwinding are dropped (SetCurrentFrame to our own frame) before
  * anything can allocate, and the caught exception is kept in a slot of our shadow-stack frame, never only in a C++
@@ -18,6 +20,7 @@ ObjHeader *kmicro_caught_exception(void);       /* runtime/eh.c: the exception b
 void ThrowFileFailedToInitializeException(ObjHeader *reason) __attribute__((noreturn));
 void CallInitGlobalPossiblyLock(uintptr_t *state, void (*init)(void));
 void CallInitThreadLocal(volatile uintptr_t *global_state, uintptr_t *local_state, void (*init)(void));
+ObjHeader *kmicro_call_catching(void (*fn)(ObjHeader *), ObjHeader *arg, ObjHeader **frame, ObjHeader **slot);
 void kmicro_panic(const char *what) __attribute__((noreturn));
 }
 
@@ -91,4 +94,18 @@ void CallInitThreadLocal(volatile uintptr_t *global_state, uintptr_t *local_stat
         ThrowFileFailedToInitializeException(fr.reason);
     }
     LeaveFrame(fr.start(), 0, Frame::kSlots);
+}
+
+/* Calls fn(arg). Returns nullptr when it returns, else the Kotlin exception it threw, kept in *slot, a slot of the
+ * caller's shadow-stack frame `frame` (the frames the unwinding removed are dropped first, as in run_init). */
+ObjHeader *kmicro_call_catching(void (*fn)(ObjHeader *), ObjHeader *arg, ObjHeader **frame, ObjHeader **slot)
+{
+    try {
+        fn(arg);
+        return nullptr;
+    } catch (...) {
+        SetCurrentFrame(frame);
+        *slot = kmicro_caught_exception();
+        return *slot;
+    }
 }
