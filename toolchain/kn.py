@@ -407,6 +407,38 @@ def add_cname_aliases(lbd_text, ll_text):
     return lines, errors
 
 
+MAIN = re.compile(r'^define [^@\n]*@"(kfun:([\w.]*)#main\((kotlin\.Array<kotlin\.String>)?\)\{\})"\(', re.M)
+
+
+def kotlin_mains(ll_text):
+    """The program's `fun main()` / `fun main(args: Array<String>)`: [(package, symbol, takes args)]."""
+    return [(m.group(2), m.group(1), bool(m.group(3))) for m in MAIN.finditer(ll_text)
+            if not m.group(2).startswith(('kotlin.', 'kotlinx.')) and m.group(2) not in ('kotlin', 'kotlinx')]
+
+
+def add_kotlin_main(ll_text, required=False, name='kmicro_kotlin_main'):
+    """`void <name>(void)` that runs the Kotlin `fun main()` (with an empty args array for `main(args)`), for
+    targets/common/kotlin_main.c. Kotlin/Native compiles with -nomain, so nothing else calls main. Returns the IR lines
+    ([] when there is no main and it is not `required`); a missing main (when required) or mains in several packages
+    are errors."""
+    mains = kotlin_mains(ll_text)
+    pkgs = sorted({p or '<root>' for p, _, _ in mains})
+    if len(pkgs) > 1 or len(mains) > 1:
+        msg = f'fun main() is in several places ({", ".join(pkgs)}): keep one'
+        if required:
+            sys.exit(f'kmicro: --main: {msg}')
+        print(f'kmicro: note: {msg} to run it with targets/common/kotlin_main.c', file=sys.stderr)
+        return []
+    if not mains:
+        if required:
+            sys.exit('kmicro: --main: the Kotlin sources have no `fun main()` (a public top-level one)')
+        return []
+    _, sym, args = mains[0]
+    if not args:
+        return [f'@{name} = alias void (), ptr @"{sym}"']
+    return [f'define void @{name}() uwtable {{', f'  call void @"{sym}"(ptr @theEmptyArray)', '  ret void', '}']
+
+
 def add_init_all(ll_text, package, name='kt_init_all'):
     """`void <name>(void)`: the globals of `package` and its sub-packages created now, file-level ones and those of
     object declarations (and companion objects). Kotlin initialises each on first use; called at boot (thread context,
@@ -487,9 +519,10 @@ def c_declarations(*headers, include_dirs=(), defines=()):
 
 
 def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, size=False, hot=None, force=False,
-          kotlinc_args=(), include_dirs=()):
+          kotlinc_args=(), include_dirs=(), main=None):
     """Kotlin sources -> [out/k.o] (+ out/bridges.o when the program calls C through cinterop), ready to link with
-    the kmicro runtime. A function marked @CName("name") gets that C name (add_cname_aliases).
+    the kmicro runtime. A function marked @CName("name") gets that C name (add_cname_aliases), and the program's
+    `fun main()` the name kmicro_kotlin_main, which targets/common/kotlin_main.c calls (add_kotlin_main).
 
     libs     klibs the sources use (cinterop output); deps: other files whose change means a recompile
     c_api    C headers whose prototypes the Kotlin code implements: `int32_t gc_chains(int32_t)` becomes a C name for
@@ -501,6 +534,8 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
     size     minsize for every Kotlin function except those whose symbol matches the regex `hot`
     kotlinc_args  more kotlinc-native options (-Xbinary=latin1Strings=true, -opt-in=..., -language-version ...)
     include_dirs  folders the c_api headers include from (besides their own, runtime/, support/ and newlib)
+    main     True: the sources must have one `fun main()` (else an error); False: no kmicro_kotlin_main; None: made
+             when there is exactly one main
     """
     out = Path(out)
     if hot and not size:
@@ -523,6 +558,8 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
                      + ', '.join(f'{c} (expected {camel(c)})' for c in missing))
         if init_all:
             lines += add_init_all(text, package, init_all)
+    if main is not False:
+        lines += add_kotlin_main(text, required=bool(main))
     lbd = out / 'ir/out.LinkBitcodeDependencies.ll'
     if lbd.exists():
         cname_lines, errors = add_cname_aliases(lbd.read_text(encoding='utf-8', errors='replace'), text)

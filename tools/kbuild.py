@@ -5,6 +5,10 @@ usage: python tools/kbuild.py <outdir> <file.kt or folder>... [options]      (--
 Prints the objects: <outdir>/k.o, plus <outdir>/bridges.o when the program calls C through cinterop. Link them with
 runtime/*.c, runtime/*.cpp, runtime/dtoa/*.cpp and your C code; tools/qbuild.py does that for the QEMU target.
 Compiler warnings and progress go to stderr.
+
+A program with a `fun main()` needs no C code of its own: link targets/common/kotlin_main.c, which calls it.
+    python tools/kbuild.py build/app app.kt
+    python tools/qbuild.py build/app/app.elf targets/common/kotlin_main.c build/app/k.o --run
 """
 import argparse
 import sys
@@ -23,7 +27,11 @@ class Parser(argparse.ArgumentParser):
 
 def parser():
     p = Parser(prog='kbuild.py', description=__doc__.split('\n\n')[0], allow_abbrev=False,
-               epilog='Example: python tools/kbuild.py build/app app.kt --c-api app.h --package app')
+               formatter_class=argparse.RawDescriptionHelpFormatter,
+               epilog='Examples:\n'
+                      '  python tools/kbuild.py build/app app.kt           (fun main(): run it with '
+                      'targets/common/kotlin_main.c)\n'
+                      '  python tools/kbuild.py build/app app.kt --c-api app.h --package app')
     p.add_argument('outdir', type=Path, help='build folder (k.o, the saved IR, ...)')
     p.add_argument('sources', nargs='+', type=Path, metavar='source', help='Kotlin file, or a folder of .kt files')
     p.add_argument('-l', dest='libs', action='append', default=[], type=Path, metavar='LIB.klib',
@@ -45,6 +53,9 @@ def parser():
     p.add_argument('--kotlinc', dest='kotlinc_args', action='append', default=[], metavar='ARG',
                    help='pass ARG to kotlinc-native, e.g. --kotlinc -Xbinary=latin1Strings=true or --kotlinc '
                         '-opt-in=kotlin.ExperimentalUnsignedTypes; repeatable')
+    p.add_argument('--main', action='store_true',
+                   help='require a `fun main()` (an error when there is none); one is found without this flag too '
+                        'and gets the C name kmicro_kotlin_main, which targets/common/kotlin_main.c calls')
     p.add_argument('--kotlin', dest='force', action='store_true',
                    help='recompile even when the saved IR is current')
     return p
@@ -84,7 +95,8 @@ def parse(argv):
 def main():
     a = parse(sys.argv[1:])
     objs = kn.build(a.sources, a.outdir, libs=a.libs, c_api=a.c_api, package=a.package, init_all=a.init_all,
-                    size=a.size, hot=a.hot, force=a.force, kotlinc_args=a.kotlinc_args, include_dirs=a.include_dirs)
+                    size=a.size, hot=a.hot, force=a.force, kotlinc_args=a.kotlinc_args, include_dirs=a.include_dirs,
+                    main=True if a.main else None)
     print('\n'.join(str(o) for o in objs))
 
 
