@@ -515,6 +515,96 @@ ObjHeader *Kotlin_Char_toString(uint16_t c, ObjHeader **result)
     return s;
 }
 
+/* Duration.toString(unit, decimals): the value with exactly `decimals` digits after the point, as printf("%.*f") in
+ * the stock runtime. newlib's float printf would pull in malloc, so the digits are exact integer arithmetic here:
+ * value = m * 2^e, and round-half-even(m * 10^decimals * 2^e) is formed in a 320-bit integer (32-bit words, least
+ * significant first). Duration passes at most 12 decimals and |value| below 2^83. */
+#define FMT_WORDS 10u
+static void fmt_mul10(uint32_t *w)
+{
+    uint64_t carry = 0;
+    for (uint32_t i = 0; i < FMT_WORDS; i++) {
+        carry += (uint64_t)w[i] * 10u;
+        w[i] = (uint32_t)carry;
+        carry >>= 32;
+    }
+}
+static uint32_t fmt_div10(uint32_t *w)               /* w /= 10, returns the remainder */
+{
+    uint64_t r = 0;
+    for (uint32_t i = FMT_WORDS; i-- > 0;) {
+        r = (r << 32) | w[i];
+        w[i] = (uint32_t)(r / 10u);
+        r %= 10u;
+    }
+    return (uint32_t)r;
+}
+static bool fmt_bit(const uint32_t *w, uint32_t i) { return i < FMT_WORDS * 32u && ((w[i / 32u] >> (i % 32u)) & 1u); }
+static bool fmt_zero(const uint32_t *w)
+{
+    for (uint32_t i = 0; i < FMT_WORDS; i++)
+        if (w[i])
+            return false;
+    return true;
+}
+static void fmt_shift(uint32_t *w, int32_t s)        /* w *= 2^s, or w = round-half-even(w / 2^-s) */
+{
+    uint32_t t[FMT_WORDS] = { 0 };
+    if (s >= 0) {
+        for (uint32_t i = FMT_WORDS; i-- > (uint32_t)s / 32u;) {
+            uint32_t j = i - (uint32_t)s / 32u, b = (uint32_t)s % 32u;
+            t[i] = (w[j] << b) | (b && j > 0 ? w[j - 1] >> (32u - b) : 0u);
+        }
+        memcpy(w, t, sizeof t);
+        return;
+    }
+    uint32_t r = (uint32_t)-s;
+    bool half = fmt_bit(w, r - 1u), sticky = false;
+    for (uint32_t i = 0; i + 1u < r && i < FMT_WORDS * 32u; i++)
+        sticky |= fmt_bit(w, i);
+    for (uint32_t i = 0; i < FMT_WORDS * 32u && i + r < FMT_WORDS * 32u; i++)
+        if (fmt_bit(w, i + r))
+            t[i / 32u] |= 1u << (i % 32u);
+    if (half && (sticky || (t[0] & 1u)))
+        for (uint32_t i = 0; i < FMT_WORDS && ++t[i] == 0; i++) {
+        }
+    memcpy(w, t, sizeof t);
+}
+
+ObjHeader *Kotlin_DurationValue_formatToExactDecimals(double value, int32_t decimals, ObjHeader **result)
+{
+    uint64_t bits;
+    memcpy(&bits, &value, sizeof bits);
+    bool negative = bits >> 63;
+    int32_t exp = (int32_t)((bits >> 52) & 0x7FFu);
+    uint64_t m = bits & ((1ull << 52) - 1u);
+    if (exp == 0x7FF)                                /* Duration never passes these; printf's spelling */
+        return CreateStringFromCString(m ? (negative ? "-nan" : "nan") : (negative ? "-inf" : "inf"), result);
+    if (exp != 0)
+        m |= 1ull << 52;
+    else
+        exp = 1;
+    int32_t e = exp - 1075;
+    if (decimals < 0 || decimals > 12 || e > 200)
+        kmicro_panic("Duration.toString(unit, decimals): value out of range");
+    uint32_t w[FMT_WORDS] = { (uint32_t)m, (uint32_t)(m >> 32) };
+    for (int32_t d = 0; d < decimals; d++)
+        fmt_mul10(w);
+    fmt_shift(w, e);
+    char buf[100], *p = buf + sizeof buf;            /* 2^293 has 89 digits */
+    *--p = 0;
+    int32_t nd = 0;
+    do {
+        if (nd == decimals && nd > 0)
+            *--p = '.';
+        *--p = (char)('0' + fmt_div10(w));
+        nd++;
+    } while (!fmt_zero(w) || nd <= decimals);
+    if (negative)
+        *--p = '-';
+    return CreateStringFromCString(p, result);
+}
+
 /* ---- Console.cpp: println goes to the platform's text output ---- */
 
 /* UTF-8 text with a length, so a U+0000 character does not end it. A board whose output can take any byte (a UART,
