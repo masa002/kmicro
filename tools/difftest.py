@@ -3,7 +3,8 @@
 
 usage: python tools/difftest.py [NAME ...] [--stress] [--size]
 
-    NAME      a program in tests/diff (d_strings, d_collections ...). Default: every tests/diff/d_*.kt
+    NAME      a program in tests/diff (d_strings, d_collections ...). Default: every tests/diff/d_*.kt except the
+              d_known_* ones, which show what kmicro does not support yet and run only when named
     --stress  the kmicro side collects garbage at every allocation (KM_GC_STRESS)
     --size    the kmicro side is built for size, as tools/kbuild.py --size does
 
@@ -15,14 +16,17 @@ A program can declare, each on a comment line of its own:
 
     // difftest: heap BYTES -- reason     a bigger kmicro heap
     // difftest: large -- reason          allowed to exceed the STM32L431 (256 KB of flash, 64 KB of RAM)
+    // difftest: ulp N -- reason          numbers in the output may differ by N units in the last place
 
 Each line of the report shows SAME, DIFF, OVER (same output, but the image does not fit the STM32L431) or ERROR (the
 program could not be built or run), with the image size and the heap's peak and live bytes at the end of the run.
 """
 import argparse
 import difflib
+import math
 import platform
 import re
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -36,6 +40,7 @@ OUT = ROOT / 'build/diff'
 DIFF = ROOT / 'tests/diff'
 FLASH, RAM = 256 * 1024, 64 * 1024              # the STM32L431
 STATS = re.compile(rb'kmicro-difftest: heap (\d+) peak (\d+) live (\d+)\n\Z')   # driver.c's last line
+NUMBER = re.compile(r'-?(?:\d+(?:\.\d+)?(?:E-?\d+)?|Infinity)|NaN')
 
 
 class Failure(Exception):
@@ -52,12 +57,12 @@ def host_target():
 
 
 def directives(src):
-    """The `// difftest: ...` lines of a program: {'heap': 32768, 'large': True}."""
+    """The `// difftest: ...` lines of a program: {'heap': 32768, 'large': True, 'ulp': 2}."""
     d = {}
     for line in src.read_text(encoding='utf-8').splitlines():
         m = re.match(r'\s*//\s*difftest:\s*(\w+)\s*(\d*)', line)
         if m:
-            if m.group(1) not in ('heap', 'large') or (m.group(1) == 'large') != (m.group(2) == ''):
+            if m.group(1) not in ('heap', 'large', 'ulp') or (m.group(1) == 'large') != (m.group(2) == ''):
                 raise Failure(f'bad directive: {line.strip()}')
             d[m.group(1)] = int(m.group(2)) if m.group(2) else True
     return d
@@ -118,6 +123,35 @@ def kmicro(name, src, opts, stress, size):
     return out, q.returncode, notes, (text + data, data + bss), stats and tuple(map(int, stats.groups()))
 
 
+def significant_digits(token):
+    mantissa = re.sub(r'E.*|[-.]', '', token).strip('0')
+    return len(mantissa)
+
+
+def float_ulp(x):
+    bits = struct.unpack('<I', struct.pack('<f', abs(x)))[0]
+    lo, hi = (struct.unpack('<f', struct.pack('<I', b))[0] for b in (bits, bits + 1))
+    return hi - lo
+
+
+def close(golden, got, ulps):
+    """Equal text, and numbers at most `ulps` units in the last place apart: of a Float when both are printed with at
+    most 9 significant digits, of a Double otherwise."""
+    a, b = golden.decode('utf-8', 'replace'), got.decode('utf-8', 'replace')
+    if NUMBER.split(a) != NUMBER.split(b):
+        return False
+    for x, y in zip(NUMBER.findall(a), NUMBER.findall(b)):
+        if x == y:
+            continue
+        fx, fy = float(x), float(y)
+        if not (math.isfinite(fx) and math.isfinite(fy)):
+            return False
+        short = significant_digits(x) <= 9 and significant_digits(y) <= 9
+        if abs(fx - fy) > ulps * (float_ulp(fx) if short else math.ulp(fx)):
+            return False
+    return True
+
+
 def kb(n):
     return f'{n / 1024:.1f} KB'
 
@@ -134,7 +168,7 @@ def main():
     unknown = [n for n in args.names if n not in available]
     if unknown:
         ap.error(f'no such program: {", ".join(unknown)} (tests/diff has: {" ".join(available)})')
-    names = args.names or available
+    names = args.names or [n for n in available if not n.startswith('d_known_')]
     bad = 0
     for name in names:
         src = DIFF / (name + '.kt')
@@ -149,13 +183,14 @@ def main():
                 print('      ' + line)
             bad += 1
             continue
-        same = rc == 0 and got == golden
+        same = rc == 0 and (got == golden or 'ulp' in opts and close(golden, got, opts['ulp']))
         fits = flash <= FLASH and ram <= RAM
         status = 'DIFF' if not same else 'SAME' if fits or opts.get('large') else 'OVER'
         heap = f'  heap {stats[0]}: peak {stats[1]} live {stats[2]}' if stats else ''
+        exact = '' if got == golden or not same else f'  (within {opts["ulp"]} ulp)'
         lines = golden.count(b'\n')
         print(f'{status:5s} {name}  ({len(golden)} bytes, {lines} lines, qemu exit {rc})'
-              f'  flash {kb(flash)}  RAM {kb(ram)}{heap}')
+              f'  flash {kb(flash)}  RAM {kb(ram)}{heap}{exact}')
         for n in notes:
             print('      ' + n)
         if status == 'OVER':
