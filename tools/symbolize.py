@@ -4,8 +4,9 @@ usage: python tools/symbolize.py firmware.elf [log.txt]      (rewrites every "at
        python tools/symbolize.py firmware.elf 0x08007ac0 ...
 Every trace address is a return address, so the name is looked up for the call instruction just before it: a throw
 often ends a function with a call that never returns, and its return address is already the next function's first
-instruction. The offset printed is the return address's. Kotlin/Native symbol names are readable as they are:
-kfun:<package>.<Class>#<name>(<params>){}<return type>.
+instruction. The offset printed is the return address's. A "kmicro fault:" line is different: its address is the
+faulting instruction itself (the stacked PC), so it is looked up as it is. Kotlin/Native symbol names are readable as
+they are: kfun:<package>.<Class>#<name>(<params>){}<return type>.
 When the ELF has debug line information, each frame is followed by the functions LTO inlined at that call, innermost
 first, and the function that contains them, each with its file:line (arm-none-eabi-addr2line -i).
 """
@@ -41,9 +42,9 @@ def load(elf):
     return addrs, names
 
 
-def name_of(addrs, names, a):
+def name_of(addrs, names, a, exact=False):
     ret = a & ~1
-    call = ret - 1                                   # inside the call instruction
+    call = ret if exact else ret - 1                 # the faulting instruction, or inside the call instruction
     i = bisect.bisect_right(addrs, call) - 1
     if i < 0:
         return '?'
@@ -57,19 +58,20 @@ def has_lines(elf):
     return '.debug_line' in r.stdout
 
 
-def source_lines(elf, trace):
-    """{return address: [(function, file:line), ...]} for the call before each address, innermost inlined function
-    first. Only code built with -g has lines; other frames get none."""
+def source_lines(elf, trace, exact=False):
+    """{return address: [(function, file:line), ...]} for the call before each address (with exact, for the
+    instruction at it), innermost inlined function first. Only code built with -g has lines; other frames get none."""
     if not trace:
         return {}
-    calls = list(dict.fromkeys(f'0x{(a & ~1) - 1:x}' for a in trace))
+    back = 0 if exact else 1
+    calls = list(dict.fromkeys(f'0x{(a & ~1) - back:x}' for a in trace))
     r = subprocess.run([ADDR2LINE, '-a', '-f', '-i', '-s', '-e', elf, *calls], capture_output=True, text=True,
                        errors='replace')
     out, cur = {}, None
     lines = iter(r.stdout.splitlines())
     for line in lines:
         if line.startswith('0x'):
-            cur = out.setdefault(int(line, 16) + 1, [])
+            cur = out.setdefault(int(line, 16) + back, [])
             continue
         loc = re.sub(r' \(discriminator \d+\)$', '', next(lines, '??:0'))
         if cur is not None and re.search(r':[1-9]\d*$', loc):   # code built without -g: no line, nothing to add
@@ -90,9 +92,10 @@ def rewrite(lines, elf, addrs, names, out):
             out.write(line)
             continue
         a = int(m.group(1), 16)
-        out.write(line.rstrip('\n') + f'  {name_of(addrs, names, a)}\n')
+        exact = 'kmicro fault:' in line              # the stacked PC, not a return address
+        out.write(line.rstrip('\n') + f'  {name_of(addrs, names, a, exact)}\n')
         if dwarf:
-            out.writelines(detail(source_lines(elf, [a]).get(a & ~1, [])))
+            out.writelines(detail(source_lines(elf, [a], exact).get(a & ~1, [])))
         out.flush()
 
 
