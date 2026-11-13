@@ -159,8 +159,8 @@ an STM32L431.
 | one full collection | 1.8 ms |
 
 \* Measured before [#3](https://github.com/masa002/kmicro/issues/3) stopped the stack-trace walk from visiting the
-same frame several times. On QEMU one throw-to-catch now takes about 6,100 instructions instead of 17,600; the board
-figure will be measured again.
+same frame several times. On QEMU the same check now executes 9,853 instructions: 7,131 to create the exception with
+its message and stack trace, 2,722 from the throw to the catch.
 
 ## Repository layout
 

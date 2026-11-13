@@ -180,7 +180,9 @@ Allocations hide in these places:
 ## Speed
 
 12. **Exceptions are for errors.** One throw and catch took about 1.6 ms in the recorded run, which still walked some
-    stack frames more than once; even without that, the unwinder reads its tables from flash.
+    stack frames more than once. On QEMU the same check now executes 9,853 instructions: 7,131 to create the
+    exception with its message and stack trace, 2,722 from the throw to the catch. The unwinder reads its tables
+    from flash.
 13. **Hoist globals and arrays into locals before a loop,** and check the size once before it. LLVM then drops the
     bounds check of every element.
 14. **Mark small per-element helpers `inline`.**
@@ -190,7 +192,8 @@ Allocations hide in these places:
     budget of a few microseconds, use primitives and `hw_*` calls only. One such path in the firmware took 475
     cycles in C and 714 in Kotlin written this way (990 before).
 17. **Build with `--size --hot REGEX`:** minimum size everywhere, full speed for the functions the regex matches
-    (interrupt handlers and the code they call).
+    (interrupt handlers and the code they call). The regex matches the symbol as Kotlin/Native writes it
+    (`kfun:app#sysTickHandler(){}`), so `^` and `$` work; kbuild stops when it matches nothing.
 
 ## Size
 
@@ -205,5 +208,17 @@ Allocations hide in these places:
 
 21. **Reach registers through `hw_rd32` / `hw_wr32`** ([support/hw.h](../support/hw.h)), never through a plain
     `CPointer` read. Kotlin has no volatile memory access: the optimiser may merge or drop an ordinary one.
+    `kbuild.py --def support/hw.def` makes them the Kotlin package `c`, and `support/hw.c` is linked with the program
+    ([examples/irq](../examples/irq)).
 22. **Generate register names from the vendor's CMSIS headers** with [tools/gen_regs.py](../tools/gen_regs.py)
     instead of typing addresses.
+
+## Build
+
+- kbuild shows the compiler's warnings and errors on stderr.
+- A public top-level function whose backtick name contains a space breaks the C export of Kotlin/Native
+  (`-p static`); kbuild shows the error with a hint. Make such a function `internal` or `private`.
+- `kbuild.py --kotlinc ARG` passes an option to kotlinc-native, for example `--kotlinc -opt-in=...`.
+- An API that needs threads or an operating system stops the program with
+  `kmicro panic: <API> is not supported on kmicro` (exit 98). `RegexOption.CANON_EQ` is the exception: it throws an
+  `IllegalArgumentException` that can be caught.

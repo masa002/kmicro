@@ -33,6 +33,18 @@ your C code        ── clang -flto (or gcc without -flto) ──────�
 them from the command line, and [tools/qbuild.py](../tools/qbuild.py) links the result for the QEMU target.
 [porting.md](porting.md) is the same link for a board: the runtime's flags, the linker script and the libraries.
 
+```
+python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--target l475|an386] [--run] [--timeout S]
+```
+
+The files are any number of C, C++ and assembly files and the objects kbuild printed (`k.o`, and `bridges.o` when
+the Kotlin code calls C). `-D` applies to every C file and to the runtime, which is compiled once per set of `-D`
+values, and `-I` to every C file; `runtime/` and `support/` are always on the include path. `--target an386` links
+for QEMU's `mps2-an386` (4 MB of code, 16 MB of RAM) instead of the STM32L475, for a program that needs more memory
+than a microcontroller has. `--run` runs the image and exits with its exit code, 124 after `--timeout` seconds (120
+by default). qbuild prints a size line, `qbuild: app.elf  text N  data N  bss N  stack N`, where the stack is the
+RAM above `.bss`.
+
 Link-time optimisation treats the runtime and the Kotlin code as one program. The runtime's hooks, such as the
 frame push of the garbage collector or an array access, are inlined into the Kotlin functions that call them. For
 that to work, retarget.py stamps the Kotlin functions with exactly the `target-cpu` / `target-features` attributes
@@ -43,10 +55,17 @@ What retarget.py changes:
 | Change | Why |
 |---|---|
 | target triple `thumbv7em-unknown-none-eabihf` | the code generator then emits Thumb-2 for Cortex-M |
-| `target-cpu` / `target-features` = clang's Cortex-M4F values | LTO inlines runtime hooks into Kotlin code |
+| `target-cpu` / `target-features` = clang's values for `TARGET_M4F` ([toolchain/paths.py](../toolchain/paths.py)) | LTO inlines runtime hooks into Kotlin code; the values are read from clang once and kept in `target_attributes.txt` next to the output |
 | `thread_local` removed (`--no-tls`) | one thread; no `__aeabi_read_tp` on bare metal |
 | init-state loads made plain (`--single-core`) | each access to a file's globals checks its init state with an acquire load (a `DMB`); with one core and one thread a plain load is exact and can leave the loop |
 | `minsize` everywhere except `--hot` functions (`--size`) | a firmware keeps real-time code fast and the rest small |
+| `Random.Default` seeded from `kmicro_random_seed()` | `kotlin.random` needs no clock |
+| the hexadecimal branch of `toDouble()` / `toFloat()` calls `runtime/hexfloat.c` | number parsing does not link the Regex engine |
+| the Unicode tables stay in flash | the standard library would copy them to the heap on first use |
+
+kbuild compiles with kotlinc-native again only when its arguments, the compiler or one of the inputs changed;
+`--kotlin` forces it. `python tools/kbuild.py build/app app.kt --kotlinc -g` adds debug information, which
+[tools/symbolize.py](../tools/symbolize.py) uses (below).
 
 ## The runtime
 
@@ -55,14 +74,19 @@ first comment.
 
 | File | What it does |
 |---|---|
-| `mm.c` | Memory: a static arena (`KM_HEAP_BYTES`, default 16 KB), objects 8-byte aligned, no per-object header beyond the type pointer. Precise mark-sweep, stop-the-world, non-moving. Roots are the shadow-stack frames the compiled code pushes, the registered globals, the thread-local slots and an exception in flight. The collector runs only inside an allocation or an explicit `kmicro_gc()`. |
-| `eh.c` | Exceptions: libgcc's ARM EHABI unwinder with kmicro's own personality routine. `try`/`catch`/`finally` work as on the JVM. An uncaught exception prints its type, its whole message, its stack trace and every cause, as `printStackTrace()` does (addresses; [tools/symbolize.py](../tools/symbolize.py) turns them into function names, and LTO folds inlined functions into their callers). |
+| `kmicro.h` | The contract between the compiled code, the runtime and the board: object layouts, the board's functions and hooks, the runtime's C API. |
+| `mm.c` | Memory: a static arena (`KM_HEAP_BYTES`, default 16 KB), objects 8-byte aligned, no per-object header beyond the type pointer. Precise mark-sweep, stop-the-world, non-moving. Roots are the shadow-stack frames the compiled code pushes, the registered globals, the thread-local slots, `kmicro_root` slots, StableRefs and an exception in flight. The collector runs only inside an allocation or an explicit `kmicro_gc()`; an interrupt handler that stores a reference while it marks makes it mark again. |
+| `eh.c` | Exceptions: libgcc's ARM EHABI unwinder with kmicro's own personality routine. `try`/`catch`/`finally` work as on the JVM. An uncaught exception prints its type, its whole message, its stack trace and every cause, as `printStackTrace()` does ([below](#reading-a-stack-trace)). |
 | `init.c`, `init_cxx.cpp` | Startup: the module initializers, the initialisation of file-level globals on first use (a failing initializer behaves as in the stock runtime), `kmicro_panic`. |
-| `strings.c` | `String` (UTF-16; the compiler's Latin-1 string option is implemented too, but no kmicro tool sets it and it is untested), `toString`, `println`. |
-| `types.c` | Type checks, identity hash codes, boxing caches, arrays. |
+| `strings.c` | `String` (UTF-16, and the compiler's Latin-1 option: `kbuild.py --kotlinc -Xbinary=latin1Strings=true`), `toString`, `println`. |
+| `types.c` | Type checks, identity hash codes, boxing caches, arrays, interface dispatch. |
 | `numbers.c`, `kmath.c` | Numeric helpers and `kotlin.math` on newlib's libm. |
-| `dtoa/` | `Double`/`Float` to and from `String` (Apache Harmony code, as in Kotlin/Native). |
-| `interop.c` | What cinterop needs: thread-state switches (nothing to do) and a small arena for `memScoped`, `cstr`, `nativeHeap`. |
+| `dtoa/`, `hexfloat.c` | `Double`/`Float` to and from `String` (Apache Harmony code, as in Kotlin/Native); `hexfloat.c` parses hexadecimal text without the Regex engine. |
+| `time.c` | `kotlin.time` and the seed of `Random.Default`, on the board's clock hooks. |
+| `system.c` | `Platform`, `exitProcess`, `readln`, `GC.schedule`, `Uuid.random`, on the board's input and entropy hooks. |
+| `regex.c` | The natives of `RegexOption.CANON_EQ`, which throw `IllegalArgumentException`. |
+| `unsupported.c` | The standard-library functions that need threads or an OS (`Worker`, `WeakReference`, heap tuning, ...): each stops the program with `... is not supported on kmicro`. `python tools/missing_natives.py` lists them. |
+| `interop.c` | What cinterop needs: thread-state switches (nothing to do) and a small arena for `memScoped`, `cstr`, `nativeHeap` (`KM_INTEROP_BYTES`). |
 | `atomic64.c` | 64-bit atomics (`AtomicLong`, `@Volatile` `Long` fields) on a CPU without 64-bit exclusive loads. |
 
 ## The board
@@ -117,35 +141,59 @@ uncaught-exception report prints at most 8 exceptions of a cause chain (`KM_CAUS
 
 **Kotlin calls C** through cinterop, as on any Kotlin/Native target: a `.def` file lists the headers, and Kotlin
 calls `c.uart_send(...)`. `kbuild.py --def` runs cinterop and uses its klib (`-l` takes a klib made separately). The
-compiler routes each call through a small bridge function; [toolchain/bridges.py](../toolchain/bridges.py) extracts
-those bridges, and the C-callable stubs of `staticCFunction` callbacks, from the saved IR, so they are compiled for
-Cortex-M as well.
+compiler routes each call through a small bridge function. [toolchain/bridges.py](../toolchain/bridges.py) copies
+those bridges out of the saved IR (`out.Codegen.ll` and the `LinkBitcodeDependencies` module), together with the
+C-callable stubs of `staticCFunction` callbacks, the types they use and the metadata they need, so they are compiled
+for Cortex-M as well. For a callback, C calls the stub, which calls the Kotlin side of the bridge in `k.o`.
 
 ```
 python tools/kbuild.py build/app app.kt --def board.def -I include --c-api app.h --package app
 ```
 
 kbuild then prints `bridges.o` next to `k.o`, and both are linked. [tests/cinterop](../tests/cinterop)
-and [tests/cinterop_shapes](../tests/cinterop_shapes) are complete examples.
+and [tests/cinterop_shapes](../tests/cinterop_shapes) are complete examples. An exception thrown inside a
+`staticCFunction` does not reach a Kotlin `try` around the C call: the program stops with
+`Uncaught Kotlin exception: ...` (exit 98), as on stock Kotlin/Native, so catch it inside the callback.
 
 **C calls Kotlin** by symbol. A top-level function `fun gcChains(rounds: Int): Int` in package `selftest` is the
 symbol `kfun:selftest#gcChains(kotlin.Int){}kotlin.Int`. C can declare it with that name as an assembler label, or
 let the build give it a plain C name: `kbuild.py --c-api selftest.h --package selftest` reads the prototypes in the
-header and adds `gc_chains` as an alias of `selftest.gcChains` (snake_case to camelCase;
-`USART1_IRQHandler` becomes `usart1IrqHandler`). A prototype without a Kotlin function stops the build. A firmware can
-keep its C API this way while its implementation moves to Kotlin one module at a time.
+header and adds `gc_chains` as an alias of `selftest.gcChains`. A firmware can keep its C API this way while its
+implementation moves to Kotlin one module at a time.
+
+- C names become lowerCamelCase Kotlin names: `gc_chains` is `gcChains`; `_IRQHandler` becomes `IrqHandler` and
+  `_Handler` becomes `Handler` (`SysTick_Handler` is `sysTickHandler`, `USART1_IRQHandler` is `usart1IrqHandler`);
+  an all-caps word keeps only its first capital (`TIM1_UP_TIM16_IRQHandler` is `tim1UpTim16IrqHandler`); an
+  underscore stays between two numbers (`EXTI15_10_IRQHandler` is `exti15_10IrqHandler`). The spellings of earlier
+  kmicro versions (`SysTickHandler`) still work, with a note. Two C names that give one Kotlin name are an error.
+- clang reads the header with qbuild's flags and the `-I` folders: extern prototypes count, macros expand, `#if` is
+  honoured, and the headers it includes do not count. A prototype without a Kotlin function stops the build.
+- The prototype must match the Kotlin function as C calls it. Only primitives, unsigned numbers, `CPointer` and
+  `NativePtr` can cross, with `Unit` or `Nothing` as the result type where there is none.
+- `@CName("name")` on a Kotlin function gives it a C name the same way, with the same rule; a string or an object
+  parameter is an error.
+- `--init-all NAME` generates `void NAME(void)`, which initialises the globals of the package and its sub-packages:
+  file-level ones, objects and companions. The header may declare it.
+- **C holding a Kotlin object:** `StableRef.create(obj).asCPointer()` gives C a `void *` (callback user data, for
+  example), `asStableRef<T>().get()` turns it back, and `dispose()` releases it. At most `KM_STABLE_REFS` (16) are
+  alive at once. Using a reference after `dispose()` stops the program, as long as no later `StableRef.create` has
+  taken its slot. C code can keep an object alive with `kmicro_root(&slot)` and `kmicro_unroot(&slot)`.
 
 ## Hardware access
 
 Kotlin has no volatile memory access (`@Volatile` applies to properties only) and no inline assembly.
 [support/hw.h](../support/hw.h) provides what is missing, one instruction each after LTO: `hw_rd32` / `hw_wr32`
-(volatile register access), `mem_*` (plain memory shared with C), barriers, `WFI`, `PRIMASK` / `BASEPRI`. Kotlin
-reaches them through cinterop with [support/hw.def](../support/hw.def), and `hw.c` is linked with the program. A call
-such as `hw_wr32(RCC.CR, v)` becomes a single `STR` in the Kotlin function that made it.
+(volatile register access), `mem_*` (plain memory shared with C), barriers, `WFI`, `PRIMASK` / `BASEPRI`, and the DWT
+cycle counter (`hw_cycles_enable()`, `hw_cycles()`; QEMU does not model the DWT, so `hw_cycles()` stays 0 there).
+Kotlin reaches them through cinterop: `kbuild.py --def support/hw.def` makes them the package `c` (`import c.*`).
+`support/hw.c` is linked with the program: on QEMU it is one of qbuild's C files, on a board it is compiled with the
+runtime's flags ([porting.md](porting.md#compiling-the-runtime)). A call such as `hw_wr32(RCC.CR, v)` becomes a single
+`STR` in the Kotlin function that made it.
 
 [tools/gen_regs.py](../tools/gen_regs.py) turns CMSIS device headers into Kotlin constants: register addresses
 (`RCC.CR`), bit fields (`RCC_CR_HSION`) and IRQ numbers, only those the sources use. The addresses are computed from
-the CMSIS struct layouts, so nothing is typed by hand.
+the CMSIS struct layouts, so nothing is typed by hand. `--package` names the Kotlin package, `--sources` includes
+the subfolders of the folder it names, and the folder of `--out` is created when it does not exist.
 
 hw.h and gen_regs.py are part of kmicro. They were first written for the device firmware kmicro grew out of
 ([Origin](../README.md#origin)), which uses them too. [examples/irq](../examples/irq) uses both: registers
@@ -357,7 +405,12 @@ call.
 - [tests/run_all.py](../tests/run_all.py) builds every test program and the examples and runs them on QEMU
   (`b-l475e-iot01a`, an emulated STM32L475).
 - [tools/difftest.py](../tools/difftest.py) runs the programs in `tests/diff/` on the stock Kotlin/Native runtime
-  of the host and on kmicro in QEMU (at the default 16 KB heap unless a program asks for more), and requires
-  byte-identical output: strings including emoji, collections, exceptions, initialisers, number formatting and
-  parsing, sequences.
+  of the host and on kmicro in QEMU, and requires byte-identical output: strings including emoji, collections,
+  exceptions, initialisers, number formatting and parsing, sequences. The kmicro side is built as kbuild builds it,
+  at the default 16 KB heap; a program that needs more says `// difftest: heap BYTES -- reason`, and
+  `// difftest: large -- reason` allows an image above the STM32L431's 256 KB of flash and 64 KB of RAM (the report
+  marks one without it `OVER`). `--stress` collects at every allocation. The `d_known_*.kt` programs show what does
+  not work yet and run only when named.
 - `python -m unittest discover -s tests/unit` tests the tools.
+- `python tools/missing_natives.py` lists the standard library's runtime functions that kmicro implements, does not
+  support, or lacks.
