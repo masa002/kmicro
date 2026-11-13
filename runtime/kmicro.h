@@ -102,4 +102,10 @@ static inline int km_in_interrupt(void)
 #endif
 }
 
+/* Board hooks for kotlin.time and kotlin.random. runtime/time.c has weak defaults: the two clocks stop the program
+ * with a panic that names the hook, the seed is a constant. */
+int64_t kmicro_time_ns(void);                        /* monotonic, any origin: measureTime, TimeSource.Monotonic */
+int64_t kmicro_wall_time_ns(void);                   /* since 1970-01-01 UTC: Clock.System */
+uint64_t kmicro_random_seed(void);                   /* the seed of Random.Default */
+
 #endif

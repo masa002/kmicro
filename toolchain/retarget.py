@@ -12,6 +12,8 @@ usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot
 - --stubs writes a C file defining every external function / global as a trapping stub (for size measurements);
   --eh-stubs adds __cxa_end_cleanup, which the ARM backend emits itself for EHABI cleanups (it is not in the IR)
 - --drop-ctors empties @llvm.global_ctors (measures the program without eager module initializers)
+- kotlin.random: Random.Default takes its seed from the board hook kmicro_random_seed() instead of the clock
+  (runtime/time.c), so Random needs no clock
 """
 import re
 import sys
@@ -73,6 +75,14 @@ if '--single-core' in args:
     print(f'single-core: {n} init-state loads made plain')
 if '--drop-ctors' in args:
     text = re.sub(r'^@llvm\.global_ctors = .*$', '', text, count=1, flags=re.M)
+# kotlin.random: constructing any Random, Random(42) too, creates Random.Default (NativeRandom), which seeds itself
+# from the monotonic clock. Its seed comes from the board hook kmicro_random_seed instead (runtime/time.c), so random
+# numbers work on a board without a clock.
+text = re.sub(r'^define [^\n]*@"kfun:kotlin\.random[.#][^\n]*\{$.*?^\}$',
+              lambda m: m.group(0).replace('@Kotlin_system_getSteadyTimeNanos(', '@kmicro_random_seed('),
+              text, flags=re.M | re.S)
+if '@kmicro_random_seed(' in text:
+    text += '\ndeclare i64 @kmicro_random_seed()\n'
 open(dst, 'w', encoding='utf-8', newline='\n').write(text)
 
 if stubs:
