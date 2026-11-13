@@ -123,7 +123,7 @@ def _exe(lazy, rel):
         env = os.environ.get(lazy.env)
         what = lazy.what.split(' (')[0]
         sys.exit(f'kmicro: {p} not found: ' + (f'{lazy.env}={env} must be the {"bin" if lazy is llvm else "top"} '
-                                                f'folder of {what}' if env else f'the {what} install is incomplete'))
+                                                f'folder of {what}' if env else f'the install of {what} is incomplete'))
     return p
 
 

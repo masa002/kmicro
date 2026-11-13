@@ -17,7 +17,7 @@ HAVE_CLANG = (lambda p: p is not None and (p / f'clang{paths.EXE}').exists())(
     paths._find(paths.llvm.env, paths.llvm.patterns, paths.llvm.what, paths.llvm.tool))
 
 
-@unittest.skipUnless(HAVE_CLANG, "no clang (Kotlin/Native's LLVM)")
+@unittest.skipUnless(HAVE_CLANG, 'no clang (the LLVM of Kotlin/Native)')
 class Prototypes(unittest.TestCase):
     def test_fixture(self):
         self.assertEqual(kn.c_prototypes(HERE / 'fixtures/cproto.h'),

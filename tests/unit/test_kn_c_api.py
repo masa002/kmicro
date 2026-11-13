@@ -1,5 +1,5 @@
 """toolchain/kn.py --c-api type checks: a C prototype must match the Kotlin function it becomes an alias of, and only
-types with a plain C equivalent may cross (the clang part is skipped without Kotlin/Native's LLVM).
+types with a plain C equivalent may cross (the clang part is skipped without the LLVM of Kotlin/Native).
 
 python -m unittest discover -s tests/unit
 """
@@ -71,7 +71,7 @@ class Check(unittest.TestCase):
         self.assertEqual(kn.kotlin_signature('kfun:#main(){}'), ([], ''))
 
 
-@unittest.skipUnless(HAVE_CLANG, "no clang (Kotlin/Native's LLVM)")
+@unittest.skipUnless(HAVE_CLANG, 'no clang (the LLVM of Kotlin/Native)')
 class ClangLowering(unittest.TestCase):
     def test_c_signatures(self):
         with tempfile.TemporaryDirectory() as d:
