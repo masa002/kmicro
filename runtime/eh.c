@@ -24,7 +24,7 @@ typedef enum {
 } _Unwind_Reason_Code;
 typedef int _Unwind_State;
 enum { _US_VIRTUAL_UNWIND_FRAME = 0, _US_UNWIND_FRAME_STARTING = 1, _US_UNWIND_FRAME_RESUME = 2,
-       _US_ACTION_MASK = 3 };
+       _US_ACTION_MASK = 3, _US_FORCE_UNWIND = 8 };
 typedef struct _Unwind_Context _Unwind_Context;
 typedef struct _Unwind_Control_Block {
     char exception_class[8];
@@ -192,6 +192,8 @@ _Unwind_Reason_Code __gxx_personality_v0(_Unwind_State state, _Unwind_Control_Bl
     _Unwind_SetGR(ctx, 12, (_Unwind_Word)(uintptr_t)ucbp);   /* the unwinder reads the LSDA through r12 */
     switch (state & _US_ACTION_MASK) {
     case _US_VIRTUAL_UNWIND_FRAME: {                 /* phase 1: is there a catch here? */
+        if (state & _US_FORCE_UNWIND)                /* _Unwind_Backtrace walking the stack: just step past the frame */
+            return continue_unwinding(ucbp, ctx);
         km_site_t s = find_site(ctx);
         if (s.lp != 0 && s.filter > 0) {
             ucbp->barrier_cache.sp = _Unwind_GetGR(ctx, 13);
@@ -326,14 +328,16 @@ __attribute__((noreturn)) void _ZSt9terminatev(void) { kmicro_panic("std::termin
 /* ---- stack traces: return addresses through the same unwind tables ---- */
 
 #define KM_TRACE_MAX 12
-typedef struct { uint32_t pc[KM_TRACE_MAX + 2]; int n; } km_trace_t;
+typedef struct { uint32_t pc[KM_TRACE_MAX + 2], sp; int n; } km_trace_t;
 
 static _Unwind_Reason_Code trace_fn(_Unwind_Context *ctx, void *arg)
 {
     km_trace_t *t = arg;
-    if (t->n >= KM_TRACE_MAX + 2)
-        return _URC_END_OF_STACK;
-    t->pc[t->n++] = (uint32_t)(_Unwind_GetGR(ctx, 15) & ~1u);
+    uint32_t pc = (uint32_t)(_Unwind_GetGR(ctx, 15) & ~1u), sp = _Unwind_GetGR(ctx, 13);
+    if (t->n >= KM_TRACE_MAX + 2 || (t->n > 0 && pc == t->pc[t->n - 1] && sp == t->sp))
+        return _URC_END_OF_STACK;                    /* full, or the walk did not move: never one frame twice */
+    t->pc[t->n++] = pc;
+    t->sp = sp;
     return _URC_NO_REASON;
 }
 
