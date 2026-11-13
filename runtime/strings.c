@@ -357,33 +357,48 @@ ObjHeader *Kotlin_String_unsafeStringToUtf8OrThrow(const ObjHeader *s, int32_t s
     return to_utf8(s, start, size, true, result);
 }
 
+/* The code point at u[i], decoded as the stock runtime's utfcpp does it (with_replacement::next): sets *used to the
+ * bytes consumed and returns UTF8_BAD for a malformed sequence, which becomes one U+FFFD. An invalid lead byte, or a
+ * value that is overlong, an encoded surrogate or above U+10FFFF (checked once the second byte is read), consumes one
+ * byte. A sequence cut short by a missing continuation byte consumes the lead and the continuation bytes it has. */
+#define UTF8_BAD 0xFFFFFFFFu
+static uint32_t utf8_next(const uint8_t *u, uint32_t i, uint32_t n, uint32_t *used)
+{
+    uint32_t c = u[i];
+    uint32_t len = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : (c >> 3) == 0x1E ? 4 : 0;
+    *used = 1;
+    if (len == 1)
+        return c;
+    if (len == 0)                                    /* a stray continuation byte or 0xF8..0xFF */
+        return UTF8_BAD;
+    c &= 0x7Fu >> len;
+    for (uint32_t k = 1; k < len; k++) {
+        if (i + k >= n || (u[i + k] & 0xC0) != 0x80) {
+            *used = k;                               /* cut short */
+            return UTF8_BAD;
+        }
+        c = (c << 6) | (u[i + k] & 0x3F);
+        if (k == 1) {
+            uint32_t v = c << (6 * (len - 2));       /* the value with the bytes still to come as zeros */
+            if (len == 2 ? v < 0x80 : len == 3 ? v < 0x800 || (v & 0xF800) == 0xD800 : v < 0x10000 || v > 0x10FFFF)
+                return UTF8_BAD;                     /* *used is still 1 */
+        }
+    }
+    *used = len;
+    return c;
+}
+
 /* Decode UTF-8 into UTF-16 units; returns the unit count. out == NULL: count only. */
 static uint32_t utf16_of(const uint8_t *u, uint32_t n, uint16_t *out, bool checked)
 {
     uint32_t o = 0;
     for (uint32_t i = 0; i < n;) {
-        uint32_t c = u[i], need = 0, min = 0;
-        if (c < 0x80) need = 0;
-        else if ((c & 0xE0) == 0xC0) { need = 1; c &= 0x1F; min = 0x80; }
-        else if ((c & 0xF0) == 0xE0) { need = 2; c &= 0x0F; min = 0x800; }
-        else if ((c & 0xF8) == 0xF0) { need = 3; c &= 0x07; min = 0x10000; }
-        else need = 99;                              /* a stray continuation byte or 0xF8..0xFF */
-        bool bad = need == 99;
-        for (uint32_t k = 1; !bad && k <= need; k++) {
-            if (i + k >= n || (u[i + k] & 0xC0) != 0x80)
-                bad = true;
-            else
-                c = (c << 6) | (u[i + k] & 0x3F);
-        }
-        if (!bad && (c < min || c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF)))
-            bad = true;                              /* overlong, out of range or an encoded surrogate */
-        if (bad) {
+        uint32_t used, c = utf8_next(u, i, n, &used);
+        i += used;
+        if (c == UTF8_BAD) {
             if (checked)
                 ThrowCharacterCodingException();
             c = 0xFFFD;
-            i += 1;                                  /* skip one byte, resync */
-        } else {
-            i += need + 1;
         }
         if (c >= 0x10000) {
             if (out) { out[o] = (uint16_t)(0xD800 + ((c - 0x10000) >> 10)); out[o + 1] = (uint16_t)(0xDC00 + ((c - 0x10000) & 0x3FF)); }
