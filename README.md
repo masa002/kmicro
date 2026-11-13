@@ -67,8 +67,8 @@ Every standard-library function that calls into the runtime is implemented, or s
 The short list; [docs/kotlin-support.md](docs/kotlin-support.md) has every case.
 
 - **Regex is big:** the first pattern keeps 11.5 KB of the heap, three small patterns need a 20 KB heap, and a
-  program with about 40 patterns in one function runs out of memory even at 64 KB. A program that uses `Regex` is
-  about 365 KB of flash (234 KB with `--size`), against the STM32L431's 256 KB
+  program that creates about 30 patterns in one function runs out of memory even at 64 KB. A program that uses
+  `Regex` is about 365 KB of flash (234 KB with `--size`), against the STM32L431's 256 KB
   ([what features cost](docs/writing-kotlin.md#memory)). Deep backtracking over long input overflows the stack.
   `RegexOption.CANON_EQ` throws `IllegalArgumentException`.
 - **Running out of memory stops the program:** heap exhaustion ends with an out-of-memory report, not a catchable
