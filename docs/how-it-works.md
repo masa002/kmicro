@@ -23,14 +23,15 @@ out.Codegen.ll                 your code + the parts of the standard library it 
   ▼
 m4.ll ──(C names for Kotlin functions, --c-api)──▶ clang -flto ──▶ k.o (LLVM bitcode)
                                                                      │
-runtime/*.c *.cpp  ── clang -flto ───────────────────────────────────┤
-your C code        ── clang -flto (or gcc) ──────────────────────────┤
+runtime/*.c *.cpp  ── clang -flto -fexceptions -funwind-tables ──────┤
+your C code        ── clang -flto (or gcc without -flto) ────────────┤
                                                                      ▼
                                                     ld.lld --lto-O2 ──▶ firmware.elf
 ```
 
 [toolchain/kn.py](../toolchain/kn.py) holds these steps as functions. [tools/kbuild.py](../tools/kbuild.py) runs
 them from the command line, and [tools/qbuild.py](../tools/qbuild.py) links the result for the QEMU target.
+[porting.md](porting.md) is the same link for a board: the runtime's flags, the linker script and the libraries.
 
 Link-time optimisation treats the runtime and the Kotlin code as one program. The runtime's hooks, such as the
 frame push of the garbage collector or an array access, are inlined into the Kotlin functions that call them. For
@@ -64,22 +65,29 @@ first comment.
 | `interop.c` | What cinterop needs: thread-state switches (nothing to do) and a small arena for `memScoped`, `cstr`, `nativeHeap`. |
 | `atomic64.c` | 64-bit atomics (`AtomicLong`, `@Volatile` `Long` fields) on a CPU without 64-bit exclusive loads. |
 
-The runtime asks the board for two functions:
+## The board
+
+The runtime asks the board for two functions, declared in [runtime/kmicro.h](../runtime/kmicro.h):
 
 ```c
-void kmicro_puts(const char *s);   /* println and error reports: a UART, semihosting, a log buffer */
-void kmicro_exit(int code);        /* the program stopped (98 = kmicro_panic): reset, halt, or report */
+void kmicro_puts(const char *s);                        /* println and error reports: a UART, semihosting, a log */
+__attribute__((noreturn)) void kmicro_exit(int code);   /* the program stopped: reset, halt, or report */
 ```
 
-An uncaught exception also stops with 98. The QEMU start code adds 99 for a CPU fault.
+Optional hooks give the program clocks, a random seed, entropy, console input and output with a length; without
+them the runtime uses a weak default. [porting.md](porting.md#the-board-contract) lists them with their defaults.
 
-Your startup code enables the FPU before any compiled C runs (LTO can inline floating-point code into the startup
-function), copies `.data`, clears `.bss` and runs the constructors in `.init_array` (the compiler registers the
-module initializers there); `kmicro_init()` then comes before the first Kotlin call.
-[examples/selftest/stm32l431/board.c](../examples/selftest/stm32l431/board.c) does this for an STM32L431.
-[targets/qemu-l475/start.c](../targets/qemu-l475/start.c) is the startup for QEMU: a naked `Reset_Handler` enables
-the FPU before any C runs, and it adds a fault report, MPU guards against stack overflow and null reads, and clocks
-through semihosting. The `main()` of every C example begins with `kmicro_init()`;
+Exit codes: `kmicro_panic` stops with 98, for an uncaught exception, an out-of-memory report, an unsupported API or
+an allocation inside an interrupt handler. The QEMU start code stops with 99 for a CPU fault. `exitProcess(n)` and a
+C `main` that returns `n` stop with `n`.
+
+The start code enables the FPU in a naked `Reset_Handler` before any compiled C runs (LTO can inline floating-point
+code into the C start function), copies `.data`, clears `.bss` and runs the constructors in `.init_array` (the
+compiler registers the module initializers there); `kmicro_init()` then comes before the first Kotlin call.
+[porting.md](porting.md#start-up) has the details. [targets/qemu-l475/start.c](../targets/qemu-l475/start.c), the
+start code for QEMU, adds three optional parts: a fault report, MPU guards against stack overflow and null reads, and
+clocks through semihosting. [examples/selftest/stm32l431/board.c](../examples/selftest/stm32l431/board.c) is the
+start code of a real STM32L431. The `main()` of every C example begins with `kmicro_init()`;
 [targets/common/kotlin_main.c](../targets/common/kotlin_main.c) is the C `main` of a Kotlin-only program.
 
 ## Calling between C and Kotlin

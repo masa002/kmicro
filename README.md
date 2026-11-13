@@ -134,11 +134,11 @@ access and handles SysTick in Kotlin.
 **C calling Kotlin.** `--c-api app.h --package app` gives the Kotlin functions of package `app` the C names of the
 prototypes in `app.h`, so a C `main` can call them after `kmicro_init()`: [examples/hello](examples/hello).
 
-**On a real board**, link `k.o` (and `bridges.o`) with `runtime/`, your startup code and a linker script:
-[examples/selftest/stm32l431](examples/selftest/stm32l431) does this for an STM32L431, and
-[docs/how-it-works.md](docs/how-it-works.md) explains the pieces. Copy the compiler flags and linker-script
-sections of that example: the runtime is compiled with clang and `-fexceptions -funwind-tables`, without which
-`runtime/eh.c` stops the build.
+**On a real board**, link `k.o` (and `bridges.o`) with `runtime/`, your startup code and a linker script.
+[docs/porting.md](docs/porting.md) explains each piece: the functions the board provides, the start-up, the
+runtime's compiler flags (clang, `-fexceptions -funwind-tables`, without which `runtime/eh.c` stops the build), the
+linker-script sections and the libraries. [examples/selftest/stm32l431](examples/selftest/stm32l431) does this for
+an STM32L431.
 
 ## Numbers
 

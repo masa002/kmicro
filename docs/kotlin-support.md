@@ -144,6 +144,6 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | interrupt handlers written in Kotlin | works | the allocation guard covers the runtime's own allocations and collections; isr_check reads the vector table; [examples/irq](../examples/irq) |
 | --init-all | works | file-level globals, objects, companions and sub-packages |
 | --size --hot | works | |
-| board build | partly | the runtime flags are those of [examples/selftest/stm32l431](../examples/selftest/stm32l431); a porting guide is still to come |
+| board build | works | [porting.md](porting.md): the board contract, start-up, runtime flags, linker script and libraries; [examples/selftest/stm32l431](../examples/selftest/stm32l431) is a complete one |
 | Windows paths with spaces or non-ASCII characters | partly | folders work; a file name outside the ANSI code page fails in the xPack tools |
 | program start with an inlined floating-point main | works | |
