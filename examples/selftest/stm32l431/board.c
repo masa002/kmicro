@@ -224,10 +224,13 @@ static void report(const char *name, bool ok, uint32_t cycles)
         report(name, ok_, DWT_CYCCNT - t0_);                                                                      \
     } while (0)
 
+/* kmicro_init() runs the module initializers (the compiler registers them through .init_array, which LTO usually
+ * resolves at link time). The standard library's modules register their thread-local slots there, so no slot means
+ * that no initializer ran. */
 static bool runtime_init(void)
 {
     kmicro_init();
-    return true;
+    return kmicro_tls_slot_count > 0;
 }
 
 static bool gc_check(void)
@@ -251,10 +254,14 @@ static bool coroutine_check(void)
     return bad == 0;
 }
 
+/* One collection more, and the garbage left by the checks before it is gone. */
 static bool full_gc(void)
 {
+    kmicro_stats_t before, after;
+    kmicro_stats(&before);
     kmicro_gc();
-    return true;
+    kmicro_stats(&after);
+    return after.gc_count == before.gc_count + 1 && after.used_bytes < before.used_bytes;
 }
 
 static void stat(const char *name, uint32_t v)
@@ -271,7 +278,7 @@ int main(void)
     TIMED("classes, interface, virtual calls (= 45)", shapes(5) == 45);
     TIMED("garbage collection, 6000+ objects", gc_check());
     TIMED("strings (10 checks, UTF-16, JVM hashCode)", strings(2500) == 0);
-    TIMED("exceptions (9 checks, 200+ throws)", exceptions(-3) == 0);
+    TIMED("exceptions (10 checks, 200+ throws)", exceptions(-3) == 0);
     TIMED("one throw + catch", throw_once(-1) == 1);
     TIMED("coroutine: 300 suspend/resume cycles", coroutine_check());
     TIMED("one full GC", full_gc());
@@ -280,6 +287,7 @@ int main(void)
     kmicro_stats(&st);
     stat("\nheap ", st.heap_bytes);
     stat(" B, peak ", st.peak_bytes);
+    stat(" B, live peak ", st.live_peak_bytes);
     stat(" B, objects ", st.alloc_count);
     stat(", collections ", st.gc_count);
     stat(", freed ", st.objects_freed);
