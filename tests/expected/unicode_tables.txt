@@ -1,0 +1,4 @@
+warm-up
+"abc".uppercase(): 0 B kept
+'\u00e9'.isLetter(): 0 B kept
+'\u00e9'.category: 984 B kept

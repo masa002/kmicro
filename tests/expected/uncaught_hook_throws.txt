@@ -1,0 +1,12 @@
+Uncaught Kotlin exception: kotlin.IllegalArgumentException: the hook failed
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+Caused by: kotlin.IllegalStateException: original
+    at 0x{X}
+    at 0x{X}
+    ... and 1 more common stack frames skipped
+kmicro panic: uncaught Kotlin exception

@@ -1,0 +1,151 @@
+# kmicro CI.
+#   unit      the tool tests without any toolchain: the tests that need one skip
+#   qemu      the toolchains of toolchain/versions.txt, then the tool tests with them (the start code's QEMU probes
+#             included) and tests/run_all.py on QEMU, as is and under GC stress
+#   difftest  tools/difftest.py, as is and under GC stress (long), and missing_natives --check on the IR of its
+#             programs: on pushes to main, by hand and weekly
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 4 * * 1'                # Mondays, 04:23 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHONUNBUFFERED: '1'
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.10'
+      - name: python -m unittest discover -s tests/unit
+        run: python -m unittest discover -s tests/unit -v
+
+  qemu:
+    name: QEMU suite (run_all)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Kotlin/Native version
+        id: versions
+        run: |
+          v=$(awk '$1 == "kotlin-native" && $3 == "linux-x64" { print $2; exit }' toolchain/versions.txt)
+          echo "kotlin-native=$v" >> "$GITHUB_OUTPUT"
+      - name: Cache ~/.konan (the LLVM and sysroot that Kotlin/Native downloads)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ steps.versions.outputs.kotlin-native }}-qemu
+      - name: Install Kotlin/Native, xPack GCC and xPack QEMU (toolchain/versions.txt, SHA-256 checked)
+        run: |
+          set -euo pipefail
+          mkdir -p ~/toolchains ~/downloads
+          for tool in kotlin-native arm-gcc qemu; do
+            read -r sha url < <(awk -v t="$tool" \
+              '$1 == t && $3 == "linux-x64" { sha = $4; getline; print sha, $1; exit }' toolchain/versions.txt)
+            file=~/downloads/"$tool.tar.gz"
+            echo "$tool: $url"
+            curl -fsSL --retry 3 -o "$file" "$url"
+            echo "$sha  $file" | sha256sum -c -
+            tar -xzf "$file" -C ~/toolchains
+          done
+          if [ -n "${JAVA_HOME_21_X64:-}" ]; then echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"; fi
+      - name: First compile (downloads the LLVM of Kotlin/Native when ~/.konan is not cached)
+        run: python tests/run_all.py add
+      - name: python toolchain/paths.py
+        run: python toolchain/paths.py
+      - name: python -m unittest discover -s tests/unit (with the toolchains)
+        run: python -m unittest discover -s tests/unit
+      - name: python tests/run_all.py
+        run: python tests/run_all.py
+      - name: python tests/run_all.py --stress
+        run: python tests/run_all.py --stress
+      - name: Keep the test logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: run_all-logs
+          path: build/t/**/*.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  difftest:
+    name: Differential tests (difftest)
+    if: >-
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Kotlin/Native version
+        id: versions
+        run: |
+          v=$(awk '$1 == "kotlin-native" && $3 == "linux-x64" { print $2; exit }' toolchain/versions.txt)
+          echo "kotlin-native=$v" >> "$GITHUB_OUTPUT"
+      - name: Cache ~/.konan (the LLVM and sysroots that Kotlin/Native downloads, the host's included)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ steps.versions.outputs.kotlin-native }}-difftest
+      - name: Install Kotlin/Native, xPack GCC and xPack QEMU (toolchain/versions.txt, SHA-256 checked)
+        run: |
+          set -euo pipefail
+          mkdir -p ~/toolchains ~/downloads
+          for tool in kotlin-native arm-gcc qemu; do
+            read -r sha url < <(awk -v t="$tool" \
+              '$1 == t && $3 == "linux-x64" { sha = $4; getline; print sha, $1; exit }' toolchain/versions.txt)
+            file=~/downloads/"$tool.tar.gz"
+            echo "$tool: $url"
+            curl -fsSL --retry 3 -o "$file" "$url"
+            echo "$sha  $file" | sha256sum -c -
+            tar -xzf "$file" -C ~/toolchains
+          done
+          if [ -n "${JAVA_HOME_21_X64:-}" ]; then echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"; fi
+      - name: First compile (downloads the LLVM of Kotlin/Native when ~/.konan is not cached)
+        run: python tests/run_all.py add
+      - name: python toolchain/paths.py
+        run: python toolchain/paths.py
+      - name: python tools/difftest.py
+        run: python tools/difftest.py
+      - name: python tools/missing_natives.py --check (the runtime functions the difftest programs declare)
+        run: python tools/missing_natives.py --check --ir 'build/diff/kmicro/*/m4.ll'
+      - name: python tools/difftest.py --stress
+        run: python tools/difftest.py --stress
+      - name: Keep the outputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: difftest-outputs
+          path: build/diff/*.txt
+          if-no-files-found: ignore
+          retention-days: 14

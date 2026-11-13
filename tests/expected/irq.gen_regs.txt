@@ -1,0 +1,1 @@
+Regs.kt: 1 peripherals, 4 registers, 4 constants, 1 IRQ numbers

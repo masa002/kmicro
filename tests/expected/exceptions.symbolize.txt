@@ -1,0 +1,9 @@
+exception checks failed mask = 0  OK   (gcs={N})
+now an uncaught one (expected to stop with a report):
+Uncaught Kotlin exception: PanelError: panel error -5
+    at 0x{X}  PanelError#<init>(kotlin.Int){}+0x{X}
+    at 0x{X}  run_main+0x{X}
+        run_main (main.c:{N})
+    at 0x{X}  start_c+0x{X}
+        start_c (start.c:{N})
+kmicro panic: uncaught Kotlin exception

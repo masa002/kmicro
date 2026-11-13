@@ -49,7 +49,7 @@ class Args(unittest.TestCase):
         self.assertIn('--hot needs --size', error('--hot', 'foo'))
         self.assertIn('need --package', error('--c-api', HEADER))
         self.assertIn('nope.klib: not found', error('-l', 'nope.klib'))
-        self.assertIn('ad.kt: not found', error(str(ROOT / 'tests/programs/ad.kt')))
+        self.assertIn('ad.kt: not found', error(str(ROOT / 'tests/add/ad.kt')))
         self.assertIn('unknown option --kotlin-args', error('--kotlin-args', 'x'))
 
 

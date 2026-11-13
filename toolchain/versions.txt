@@ -11,10 +11,10 @@ kotlin-native    2.4.21                                  macos-arm64    bf4edb52
                  https://github.com/JetBrains/kotlin/releases/download/v2.4.21/kotlin-native-prebuilt-macos-aarch64-2.4.21.tar.gz
 kotlin-native    2.4.21                                  macos-x64      741799f163ad240f7fe54fae5334490c5a8a8fca9b9e9d39495db497b4f1763c
                  https://github.com/JetBrains/kotlin/releases/download/v2.4.21/kotlin-native-prebuilt-macos-x86_64-2.4.21.tar.gz
-# LLVM: downloaded by the first kotlinc-native compile into ~/.konan/dependencies (llvmHome.<host> in the Kotlin/Native
-# konan.properties: the essentials build on Windows, the dev build on Linux and macOS)
+# LLVM: downloaded by the first kotlinc-native compile into ~/.konan/dependencies: the essentials build on Windows and
+# Linux; on macOS (untested) the dev build that the konan.properties of Kotlin/Native names
 llvm             llvm-21-x86_64-windows-essentials-150   windows-x64    -
-llvm             llvm-21-x86_64-linux-dev-116            linux-x64      -
+llvm             llvm-21-x86_64-linux-essentials-116     linux-x64      -
 llvm             llvm-21-aarch64-macos-dev-97            macos-arm64    -
 llvm             llvm-21-x86_64-macos-dev-83             macos-x64      -
 arm-gcc          15.2.1-1.1                              windows-x64    bae6a3d1667697ce750c3b13d6d26d80973ecedc2cc87bf04869e83447fd93ea

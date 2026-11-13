@@ -1,0 +1,3 @@
+4 GB: OutOfMemoryError: unable to allocate native memory
+4 KB memScoped: OutOfMemoryError
+finally ran

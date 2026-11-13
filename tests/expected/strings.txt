@@ -1,0 +1,2 @@
+kotlin says: battery 2500 mV, ok=true / 1,2,3,4,5, / é漢字
+string checks failed mask = 0  OK

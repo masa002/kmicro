@@ -1,0 +1,2 @@
+ALLOC  SysTick_Handler: SysTick_Handler{*} -> alloc_block
+2 interrupt handler(s) checked: 1 path(s) to an allocation

@@ -1,0 +1,6 @@
+canon 0 IllegalArgumentException: RegexOption.CANON_EQ is not supported on kmicro churn 13725
+canon 1 IllegalArgumentException: RegexOption.CANON_EQ is not supported on kmicro churn 13725
+canon 2 IllegalArgumentException: RegexOption.CANON_EQ is not supported on kmicro churn 13725
+inline (?c): IAE
+regex [12-34, 12, 34] after churn 13725
+main returned

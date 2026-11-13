@@ -1,4 +1,4 @@
-/* Calls the Kotlin functions of tests/programs/cname.kt by their @CName names. */
+/* Calls the Kotlin functions of cname.kt by their @CName names, with plain C types. */
 #include <stdbool.h>
 #include <stdint.h>
 #include "kmicro.h"

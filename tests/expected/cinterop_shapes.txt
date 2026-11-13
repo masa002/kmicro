@@ -1,0 +1,13 @@
+global() = 15  OK
+structReturn() = 34  OK
+structArg() = 42  OK
+callback() = 42  OK
+sortDescending() = 97531  OK
+varargs() = 6  OK
+inlineLoop() = 10  OK
+inlineAsm() = 42  OK
+slot_name() = "slot #1"
+inlineString() = 1  OK
+inlineRestrict() = 18  OK
+drv_counter = 15  OK
+cinterop_shapes: all OK

@@ -1,6 +1,6 @@
 // Language probe 7: things a Kotlin developer tries next: coroutines builders, use/Result, atomics,
 // exception chaining, arrays, Duration, hashCode/toString of common types. (kotlin.random and the clock:
-// d_known_random_time.kt)
+// d_random_time.kt, d_random_api.kt)
 // difftest: large -- one program with all of the above: about 263 KB of flash
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext

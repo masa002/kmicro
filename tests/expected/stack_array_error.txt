@@ -1,0 +1,2 @@
+kmicro: bigArray() puts arrays on the stack: IntArray(14000) 56000 B (limit 512 B)
+A local array of constant size that never leaves its function lives on the stack (Kotlin/Native, up to 64 KB per function). Keep a big buffer in a top-level val or a class field; --stack-array-limit sets the limit. tools/frames.py shows the frames after linking.

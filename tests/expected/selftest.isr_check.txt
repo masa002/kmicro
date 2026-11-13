@@ -1,0 +1,1 @@
+2 interrupt handler(s) checked: no path to an allocation

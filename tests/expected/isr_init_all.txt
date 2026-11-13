@@ -1,0 +1,1 @@
+settings 48 after 5 handler calls; allocations after kt_init_all: 0

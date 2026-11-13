@@ -1,5 +1,5 @@
 // Delegated properties, KClass and typeOf, references, boxing, value classes, use. (A stack trace with a cause:
-// d_known_stack_trace.kt; exitProcess: d_known_exit_process.kt)
+// d_trace_chain.kt; exitProcess: d_system.kt)
 import kotlin.properties.Delegates
 import kotlin.reflect.typeOf
 

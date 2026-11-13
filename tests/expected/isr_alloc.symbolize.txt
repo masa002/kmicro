@@ -1,0 +1,1 @@
+kmicro panic: allocation inside an interrupt handler at 0x{X}  SysTick_Handler+0x{X}

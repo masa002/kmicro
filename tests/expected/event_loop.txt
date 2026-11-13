@@ -1,0 +1,8 @@
+[{N} ms] tick 1
+[{N} ms] tick 2
+[{N} ms] button pressed (1)
+[{N} ms] tick 3
+[{N} ms] tick 4
+[{N} ms] button pressed (2)
+[{N} ms] tick 5
+event loop: ticks*100+presses = 502   steps {N}, WFI sleeps {N}  OK

@@ -1,0 +1,2 @@
+second free of b
+kmicro panic: interop free: not an allocated native block (freed twice?)

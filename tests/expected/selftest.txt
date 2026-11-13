@@ -1,0 +1,15 @@
+
+=== kmicro self-test: official Kotlin/Native 2.4.21 output on a Cortex-M4 ===
+  PASS  runtime init (module initializers)
+Hello from Kotlin/Native 2.4.21 on a bare Cortex-M4 (no OS, kmicro runtime)
+  PASS  println from Kotlin
+  PASS  classes, interface, virtual calls (= 45)
+  PASS  garbage collection, 6000+ objects
+  PASS  strings (10 checks, UTF-16, JVM hashCode)
+  PASS  exceptions (9 checks, 200+ throws)
+  PASS  one throw + catch
+  PASS  coroutine: 300 suspend/resume cycles
+  PASS  one full GC
+
+heap 16384 B, peak {N} B, objects 9599, collections {N}, freed {N}
+result: ALL PASS

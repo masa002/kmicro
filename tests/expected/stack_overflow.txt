@@ -1,0 +1,4 @@
+depth 100: sum 5050
+depth 300: sum 45150
+kmicro fault: stack overflow (MemManage), no stacked frame
+    sp 0x{X}  cfsr 0x00000092  hfsr 0x00000000  mmfar 0x{X}  bfar 0x00000000

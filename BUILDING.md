@@ -36,7 +36,7 @@ Each variable names the tool's top folder (for LLVM, its `bin` folder).
    QEMU               ~/toolchains/xpack-qemu-arm-9.2.4-1
    ```
 
-6. `python tests/run_all.py` builds and runs everything: 12 programs, `12 passed, 0 failed`.
+6. `python tests/run_all.py` builds and runs everything: 66 tests, `66 passed, 0 failed`.
 
 ## Hosts
 

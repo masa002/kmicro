@@ -1,0 +1,4 @@
+$ROOT/runtime/eh.c:23:2: error: "compile the kmicro runtime with -fexceptions -funwind-tables (docs/porting.md)"
+   23 | #error "compile the kmicro runtime with -fexceptions -funwind-tables (docs/porting.md)"
+      |  ^
+1 error generated.

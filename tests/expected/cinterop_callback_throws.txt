@@ -1,0 +1,5 @@
+Uncaught Kotlin exception: kotlin.IllegalStateException: from callback 1
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+kmicro panic: uncaught Kotlin exception

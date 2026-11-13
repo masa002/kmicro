@@ -1,0 +1,3 @@
+HOOK RAN for kotlin.IllegalStateException: processed with a hook
+after processUnhandledException with a hook: still running
+main returned

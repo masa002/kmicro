@@ -1,6 +1,6 @@
 """toolchain/retarget.py on a small IR module shaped like kotlinc-native's output: the target attributes equal clang's
-for paths.TARGET_M4F, --hot, and the stdlib rewrites (Random seed, hex float parser, Unicode tables). The output must
-compile with clang.
+for paths.TARGET_M4F, --no-tls, --single-core, --hot, and the stdlib rewrites (Random seed, hex float parser, Unicode
+tables). The output must compile with clang.
 
 usage: python -m unittest discover tests/unit       (skipped when the LLVM of Kotlin/Native is not installed)
 """
@@ -23,6 +23,15 @@ target triple = "armv6kz-unknown-linux-gnueabihf"
 @1 = internal unnamed_addr constant [4 x i32] [i32 1, i32 2, i32 3, i32 4]
 @"kvar:kotlin.text.rangeStart#internal" = internal global ptr null
 @"kvar:demo.copied#internal" = internal global ptr null
+@"state_global$demo" = internal global i32 0, align 4
+@"state_thread_local$demo" = internal thread_local global i32 0, align 4
+
+define void @"kfun:state#touch(){}"() #0 {
+entry:
+  %0 = load atomic i32, ptr @"state_global$demo" acquire, align 4
+  store i32 %0, ptr @"state_thread_local$demo", align 4
+  ret void
+}
 
 define internal void @"kfun:kotlin.text.$init_global$_CharCategories.kt#internal"() #0 {
 entry:
@@ -197,6 +206,18 @@ class RetargetTest(unittest.TestCase):
         self.assertEqual(set(re.findall(r'"target-(?:cpu|features)"="[^"]*"', text)), want)
         self.assertRegex(text, r'define void @bridge\(\) #9999 \{')       # a definition without attributes gets them
         self.assertIn('target triple = "thumbv7em-unknown-none-eabihf"', text)
+
+    def test_no_tls_and_single_core(self):
+        r, text = self.retarget()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('@"state_thread_local$demo" = internal thread_local global', text)
+        self.assertIn('load atomic i32, ptr @"state_global$demo" acquire, align 4', text)
+        r, text = self.retarget('--no-tls', '--single-core')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn(' thread_local ', text)
+        self.assertIn('@"state_thread_local$demo" = internal global i32 0, align 4', text)
+        self.assertIn('%0 = load i32, ptr @"state_global$demo", align 4', body(text, 'kfun:state#touch(){}'))
+        self.assertIn('single-core: 1 init-state loads made plain', r.stderr)
 
     def test_cut_off_attribute_cache_is_rebuilt(self):
         self.retarget()

@@ -1,0 +1,7 @@
+line [hello] 5
+line [wörld] 5
+line [] 0
+line [last] 4
+eof null null
+readln ReadAfterEOFException
+main returned

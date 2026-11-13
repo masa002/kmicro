@@ -1,5 +1,5 @@
 // String API: split, replace, substring, pad, trim, number parsing to Int/Long, StringBuilder, comparison.
-// (String.toDouble: d_known_to_double.kt; Regex: d_regex.kt)
+// (String.toDouble: d_to_double.kt; Regex: d_regex.kt)
 // difftest: heap 32768 -- the default 16 KB runs out: the free memory ends up in small pieces
 // difftest: large -- most of the String and StringBuilder API in one program: about 305 KB of flash
 fun err(label: String, block: () -> Any?) {

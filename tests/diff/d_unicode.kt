@@ -1,6 +1,5 @@
 // Unicode: case mapping, Char properties, UTF-8 encoding and strict decoding. (Lenient decoding of
-// invalid UTF-8: d_known_utf8_decode.kt)
-// difftest: heap 32768 -- case mapping and Char.category copy the Unicode tables to the heap (about 14 KB): 16 KB runs out
+// invalid UTF-8: d_utf8_decode.kt)
 fun err(label: String, block: () -> Any?) {
     val r = runCatching(block)
     val e = r.exceptionOrNull()
