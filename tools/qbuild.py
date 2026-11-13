@@ -115,10 +115,14 @@ def missing_symbols(link, stderr, labels, kotlin):
     """Sort the undefined symbols of a failed link: (runtime natives to stub, error lines). ld.lld's own report
     names only the LTO output, so the link runs again with --trace-symbol to find the input that needs each one."""
     missing = sorted(set(re.findall(r'undefined symbol: (.+?)\s*$', stderr, re.M)))
+    if not missing:
+        return [], []
     traced = run([*link, *[f'--trace-symbol={m}' for m in missing]], check=False).stdout
     refs = {m: [] for m in missing}
     for line in traced.splitlines():                # '<input file>: reference to <symbol>'
         f, sep, sym = line.partition(': reference to ')
+        if f not in labels:                         # 'lib.a(member.o)': the archive given on the command line
+            f = re.sub(r'\([^()]*\)$', '', f)
         if sep and sym in refs and f in labels and labels[f] not in refs[sym]:
             refs[sym].append(labels[f])
     stubs, errors, bridges = [], [], set()
