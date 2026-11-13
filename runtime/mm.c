@@ -491,6 +491,8 @@ static void sweep(void)
     if (run != NULL)
         push_free(run, run_size);
     s_st.used_bytes = used;
+    if (used > s_st.live_peak_bytes)
+        s_st.live_peak_bytes = used;
 }
 
 void kmicro_gc(void)

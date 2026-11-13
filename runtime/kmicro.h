@@ -70,7 +70,16 @@ static inline ObjHeader *km_return(ObjHeader **slot, ObjHeader *obj) { *slot = o
 /* ---- runtime API for the C side ---- */
 void kmicro_init(void);                              /* = Kotlin_initRuntimeIfNeeded for the single thread */
 void kmicro_gc(void);                                /* full collection now */
-typedef struct { uint32_t heap_bytes, used_bytes, peak_bytes, gc_count, objects_freed, alloc_count; } kmicro_stats_t;
+typedef struct {
+    uint32_t heap_bytes;                             /* the arena (KM_HEAP_BYTES) */
+    uint32_t used_bytes;                             /* in use now, garbage included until the next collection */
+    uint32_t peak_bytes;                             /* high-water mark of used_bytes, garbage included: the collector
+                                                        runs only when the heap is full, so this soon reaches heap_bytes */
+    uint32_t gc_count, objects_freed, alloc_count;
+    uint32_t live_peak_bytes;                        /* the most live data a collection found (0 before the first);
+                                                        live data between collections can be higher, so size the heap
+                                                        with a margin above it */
+} kmicro_stats_t;
 void kmicro_stats(kmicro_stats_t *out);
 
 /* runtime internals shared between files */
