@@ -115,8 +115,8 @@ such as `hw_wr32(RCC.CR, v)` becomes a single `STR` in the Kotlin function that 
 (`RCC.CR`), bit fields (`RCC_CR_HSION`) and IRQ numbers, only those the sources use. The addresses are computed from
 the CMSIS struct layouts, so nothing is typed by hand.
 
-hw.h and gen_regs.py come from the device firmware kmicro grew out of; no example or test in this repository uses
-them yet.
+hw.h and gen_regs.py are part of kmicro. They were first written for the device firmware kmicro grew out of
+([Origin](../README.md#origin)), which uses them; no example or test in this repository uses them yet.
 
 ## Interrupts
 

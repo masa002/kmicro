@@ -1,8 +1,8 @@
 kmicro
-Copyright 2026 The kmicro authors
+Copyright 2026 Masahiro Obara (masa002) and the kmicro contributors
 
-This product is licensed under the Apache License, Version 2.0 (see LICENSE). "The kmicro authors" are the
-contributors recorded in the Git history of this repository.
+This product is licensed under the Apache License, Version 2.0 (see LICENSE). "The kmicro authors", as named in
+the change notices of this repository, are Masahiro Obara and the contributors recorded in its Git history.
 
 ------------------------------------------------------------------------------------------------------------------
 Kotlin/Native
