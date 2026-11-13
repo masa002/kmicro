@@ -103,6 +103,8 @@ def main():
     ap.add_argument('inputs', nargs='*', default=[], metavar='log.txt | 0xADDRESS',
                     help='a log file to rewrite, or trace addresses to name')
     a = ap.parse_args()
+    for s in (sys.stdin, sys.stdout):                # the log is UTF-8; Windows would use the ANSI code page
+        s.reconfigure(encoding='utf-8', errors='replace')
     if not Path(a.elf).is_file():
         sys.exit(f'symbolize: no such ELF file: {a.elf}')
     files = [x for x in a.inputs if Path(x).is_file()]
