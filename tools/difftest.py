@@ -41,6 +41,7 @@ DIFF = ROOT / 'tests/diff'
 FLASH, RAM = 256 * 1024, 64 * 1024              # the STM32L431
 STATS = re.compile(rb'kmicro-difftest: heap (\d+) peak (\d+) live (\d+)\n\Z')   # driver.c's last line
 NUMBER = re.compile(r'-?(?:\d+(?:\.\d+)?(?:E-?\d+)?|Infinity)|NaN')
+FLOAT_MAX = 3.4028234663852886e38               # Float.MAX_VALUE: a bigger number is a Double
 
 
 class Failure(Exception):
@@ -146,7 +147,7 @@ def close(golden, got, ulps):
         fx, fy = float(x), float(y)
         if not (math.isfinite(fx) and math.isfinite(fy)):
             return False
-        short = significant_digits(x) <= 9 and significant_digits(y) <= 9
+        short = significant_digits(x) <= 9 and significant_digits(y) <= 9 and abs(fx) <= FLOAT_MAX
         if abs(fx - fy) > ulps * (float_ulp(fx) if short else math.ulp(fx)):
             return False
     return True
