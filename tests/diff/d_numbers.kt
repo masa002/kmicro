@@ -1,3 +1,5 @@
+// difftest: heap 32768 -- String.toDouble() goes through the Regex engine, which needs about 27 KB of heap
+// difftest: large -- and links the Regex engine, about 240 KB of flash
 fun Double.pow10(): Double { var r = 1.0; repeat(10) { r *= this }; return r }
 
 fun main() {
