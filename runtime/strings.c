@@ -89,6 +89,14 @@ uint16_t Kotlin_String_get(const ObjHeader *s, int32_t index)
     return at(s, (uint32_t)index);
 }
 
+/* String.refTo / Pinned<String>.addressOf (cinterop): the address of a character in the string's own encoding. */
+const void *Kotlin_Arrays_getStringAddressOfElement(const ObjHeader *s, int32_t index)
+{
+    if ((uint32_t)index >= len(s))
+        ThrowArrayIndexOutOfBoundsException();
+    return SH(s)->data_ + (enc(s) == ENC_LATIN1 ? 1u : 2u) * (uint32_t)index;
+}
+
 ObjHeader *Kotlin_String_plusImpl(const ObjHeader *a, const ObjHeader *b, ObjHeader **result)
 {
     uint32_t la = len(a), lb = len(b);
@@ -357,33 +365,48 @@ ObjHeader *Kotlin_String_unsafeStringToUtf8OrThrow(const ObjHeader *s, int32_t s
     return to_utf8(s, start, size, true, result);
 }
 
+/* The code point at u[i], decoded as the stock runtime's utfcpp does it (with_replacement::next): sets *used to the
+ * bytes consumed and returns UTF8_BAD for a malformed sequence, which becomes one U+FFFD. An invalid lead byte, or a
+ * value that is overlong, an encoded surrogate or above U+10FFFF (checked once the second byte is read), consumes one
+ * byte. A sequence cut short by a missing continuation byte consumes the lead and the continuation bytes it has. */
+#define UTF8_BAD 0xFFFFFFFFu
+static uint32_t utf8_next(const uint8_t *u, uint32_t i, uint32_t n, uint32_t *used)
+{
+    uint32_t c = u[i];
+    uint32_t len = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : (c >> 3) == 0x1E ? 4 : 0;
+    *used = 1;
+    if (len == 1)
+        return c;
+    if (len == 0)                                    /* a stray continuation byte or 0xF8..0xFF */
+        return UTF8_BAD;
+    c &= 0x7Fu >> len;
+    for (uint32_t k = 1; k < len; k++) {
+        if (i + k >= n || (u[i + k] & 0xC0) != 0x80) {
+            *used = k;                               /* cut short */
+            return UTF8_BAD;
+        }
+        c = (c << 6) | (u[i + k] & 0x3F);
+        if (k == 1) {
+            uint32_t v = c << (6 * (len - 2));       /* the value with the bytes still to come as zeros */
+            if (len == 2 ? v < 0x80 : len == 3 ? v < 0x800 || (v & 0xF800) == 0xD800 : v < 0x10000 || v > 0x10FFFF)
+                return UTF8_BAD;                     /* *used is still 1 */
+        }
+    }
+    *used = len;
+    return c;
+}
+
 /* Decode UTF-8 into UTF-16 units; returns the unit count. out == NULL: count only. */
 static uint32_t utf16_of(const uint8_t *u, uint32_t n, uint16_t *out, bool checked)
 {
     uint32_t o = 0;
     for (uint32_t i = 0; i < n;) {
-        uint32_t c = u[i], need = 0, min = 0;
-        if (c < 0x80) need = 0;
-        else if ((c & 0xE0) == 0xC0) { need = 1; c &= 0x1F; min = 0x80; }
-        else if ((c & 0xF0) == 0xE0) { need = 2; c &= 0x0F; min = 0x800; }
-        else if ((c & 0xF8) == 0xF0) { need = 3; c &= 0x07; min = 0x10000; }
-        else need = 99;                              /* a stray continuation byte or 0xF8..0xFF */
-        bool bad = need == 99;
-        for (uint32_t k = 1; !bad && k <= need; k++) {
-            if (i + k >= n || (u[i + k] & 0xC0) != 0x80)
-                bad = true;
-            else
-                c = (c << 6) | (u[i + k] & 0x3F);
-        }
-        if (!bad && (c < min || c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF)))
-            bad = true;                              /* overlong, out of range or an encoded surrogate */
-        if (bad) {
+        uint32_t used, c = utf8_next(u, i, n, &used);
+        i += used;
+        if (c == UTF8_BAD) {
             if (checked)
                 ThrowCharacterCodingException();
             c = 0xFFFD;
-            i += 1;                                  /* skip one byte, resync */
-        } else {
-            i += need + 1;
         }
         if (c >= 0x10000) {
             if (out) { out[o] = (uint16_t)(0xD800 + ((c - 0x10000) >> 10)); out[o + 1] = (uint16_t)(0xDC00 + ((c - 0x10000) & 0x3FF)); }
@@ -500,7 +523,115 @@ ObjHeader *Kotlin_Char_toString(uint16_t c, ObjHeader **result)
     return s;
 }
 
+/* Duration.toString(unit, decimals): the value with exactly `decimals` digits after the point, as printf("%.*f") in
+ * the stock runtime. newlib's float printf would pull in malloc, so the digits are exact integer arithmetic here:
+ * value = m * 2^e, and round-half-even(m * 10^decimals * 2^e) is formed in a 320-bit integer (32-bit words, least
+ * significant first). Duration passes at most 12 decimals and |value| below 2^83. */
+#define FMT_WORDS 10u
+static void fmt_mul10(uint32_t *w)
+{
+    uint64_t carry = 0;
+    for (uint32_t i = 0; i < FMT_WORDS; i++) {
+        carry += (uint64_t)w[i] * 10u;
+        w[i] = (uint32_t)carry;
+        carry >>= 32;
+    }
+}
+static uint32_t fmt_div10(uint32_t *w)               /* w /= 10, returns the remainder */
+{
+    uint64_t r = 0;
+    for (uint32_t i = FMT_WORDS; i-- > 0;) {
+        r = (r << 32) | w[i];
+        w[i] = (uint32_t)(r / 10u);
+        r %= 10u;
+    }
+    return (uint32_t)r;
+}
+static bool fmt_bit(const uint32_t *w, uint32_t i) { return i < FMT_WORDS * 32u && ((w[i / 32u] >> (i % 32u)) & 1u); }
+static bool fmt_zero(const uint32_t *w)
+{
+    for (uint32_t i = 0; i < FMT_WORDS; i++)
+        if (w[i])
+            return false;
+    return true;
+}
+static void fmt_shift(uint32_t *w, int32_t s)        /* w *= 2^s, or w = round-half-even(w / 2^-s) */
+{
+    uint32_t t[FMT_WORDS] = { 0 };
+    if (s >= 0) {
+        for (uint32_t i = FMT_WORDS; i-- > (uint32_t)s / 32u;) {
+            uint32_t j = i - (uint32_t)s / 32u, b = (uint32_t)s % 32u;
+            t[i] = (w[j] << b) | (b && j > 0 ? w[j - 1] >> (32u - b) : 0u);
+        }
+        memcpy(w, t, sizeof t);
+        return;
+    }
+    uint32_t r = (uint32_t)-s;
+    bool half = fmt_bit(w, r - 1u), sticky = false;
+    for (uint32_t i = 0; i + 1u < r && i < FMT_WORDS * 32u; i++)
+        sticky |= fmt_bit(w, i);
+    for (uint32_t i = 0; i < FMT_WORDS * 32u && i + r < FMT_WORDS * 32u; i++)
+        if (fmt_bit(w, i + r))
+            t[i / 32u] |= 1u << (i % 32u);
+    if (half && (sticky || (t[0] & 1u)))
+        for (uint32_t i = 0; i < FMT_WORDS && ++t[i] == 0; i++) {
+        }
+    memcpy(w, t, sizeof t);
+}
+
+ObjHeader *Kotlin_DurationValue_formatToExactDecimals(double value, int32_t decimals, ObjHeader **result)
+{
+    uint64_t bits;
+    memcpy(&bits, &value, sizeof bits);
+    bool negative = bits >> 63;
+    int32_t exp = (int32_t)((bits >> 52) & 0x7FFu);
+    uint64_t m = bits & ((1ull << 52) - 1u);
+    if (exp == 0x7FF)                                /* Duration never passes these; printf's spelling */
+        return CreateStringFromCString(m ? (negative ? "-nan" : "nan") : (negative ? "-inf" : "inf"), result);
+    if (exp != 0)
+        m |= 1ull << 52;
+    else
+        exp = 1;
+    int32_t e = exp - 1075;
+    if (decimals < 0 || decimals > 12 || e > 200)
+        kmicro_panic("Duration.toString(unit, decimals): value out of range");
+    uint32_t w[FMT_WORDS] = { (uint32_t)m, (uint32_t)(m >> 32) };
+    for (int32_t d = 0; d < decimals; d++)
+        fmt_mul10(w);
+    fmt_shift(w, e);
+    char buf[100], *p = buf + sizeof buf;            /* 2^293 has 89 digits */
+    *--p = 0;
+    int32_t nd = 0;
+    do {
+        if (nd == decimals && nd > 0)
+            *--p = '.';
+        *--p = (char)('0' + fmt_div10(w));
+        nd++;
+    } while (!fmt_zero(w) || nd <= decimals);
+    if (negative)
+        *--p = '-';
+    return CreateStringFromCString(p, result);
+}
+
 /* ---- Console.cpp: println goes to the platform's text output ---- */
+
+/* UTF-8 text with a length, so a U+0000 character does not end it. A board whose output can take any byte (a UART,
+ * semihosting SYS_WRITE) defines this; the default passes the text between NUL bytes to kmicro_puts and drops the
+ * NULs. */
+__attribute__((weak)) void kmicro_write(const char *buf, size_t n)
+{
+    char run[65];                                    /* put_string's 64-byte chunk in one call: no character split */
+    size_t k = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (buf[i] != 0)
+            run[k++] = buf[i];
+        if (k > 0 && (k == sizeof run - 1u || i + 1u == n)) {
+            run[k] = 0;
+            kmicro_puts(run);
+            k = 0;
+        }
+    }
+}
 
 static void put_string(const ObjHeader *s)
 {
@@ -512,14 +643,13 @@ static void put_string(const ObjHeader *s)
             uint8_t tmp[4];
             uint32_t u = char_units(s, i, n);        /* a surrogate pair is one character, one UTF-8 sequence */
             uint32_t k = utf8_of(s, i, u, tmp, false);
-            if (o + k + 1 > sizeof buf)
+            if (o + k > sizeof buf)
                 break;
             memcpy(buf + o, tmp, k);
             o += k;
             i += u;
         }
-        buf[o] = 0;
-        kmicro_puts(buf);
+        kmicro_write(buf, o);
     }
 }
 void Kotlin_io_Console_print(const ObjHeader *message) { put_string(message); }
