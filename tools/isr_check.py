@@ -161,10 +161,13 @@ def analyse(disasm, vectors, callbacks=(), boxing=False):
     return lines, bad, len(roots)
 
 
-def objdump(*args):
-    r = subprocess.run([str(paths.gcc_bin('objdump')), *args], capture_output=True, text=True, errors='replace')
+def objdump(elf, *args):
+    """objdump ARGS ELF, run in the ELF's folder: on Windows binutils open files through the ANSI code page, so they
+    cannot reach a folder named in Japanese."""
+    r = subprocess.run([str(paths.gcc_bin('objdump').resolve()), *args, elf.name], cwd=elf.parent,
+                       capture_output=True, text=True, errors='replace')
     if r.returncode != 0:
-        print(f'isr_check: objdump {" ".join(args)} failed: {r.stderr.strip()[-500:]}', file=sys.stderr)
+        print(f'isr_check: objdump {" ".join(args)} {elf} failed: {r.stderr.strip()[-500:]}', file=sys.stderr)
         sys.exit(2)
     return r.stdout
 
@@ -179,9 +182,9 @@ def main():
     if not args.elf.is_file():
         print(f'isr_check: no such file: {args.elf}', file=sys.stderr)
         sys.exit(2)
-    disasm = objdump('-d', '--no-show-raw-insn', str(args.elf))
-    sections = objdump('-h', str(args.elf))
-    vectors = objdump('-s', '-j', '.isr_vector', str(args.elf)) if re.search(r'\s\.isr_vector\s', sections) else ''
+    disasm = objdump(args.elf, '-d', '--no-show-raw-insn')
+    sections = objdump(args.elf, '-h')
+    vectors = objdump(args.elf, '-s', '-j', '.isr_vector') if re.search(r'\s\.isr_vector\s', sections) else ''
     try:
         lines, bad, _ = analyse(disasm, vectors, args.callback, args.boxing)
     except ValueError as e:
