@@ -10,8 +10,9 @@
  * So the personality never matches Kotlin types: a frame with a catch action handles the exception, the selector
  * handed to the pad is the filter of its first action record, and a cleanup-only pad runs and unwinding resumes.
  * Phase 1 finds the handler frame and remembers its SP; phase 2 runs cleanups on the way and installs the handler.
- * If nothing handles the exception (or unwinding reaches code without unwind tables), ThrowException reports it
- * with its Kotlin type, message and the stack trace captured at construction, then stops.
+ * If nothing handles the exception (or unwinding reaches code without unwind tables), ThrowException runs the hook
+ * set by setUnhandledExceptionHook, reports the exception with its Kotlin type, message, the stack trace captured
+ * at construction and its causes, then stops.
  */
 #include <string.h>
 #include "kmicro.h"
@@ -260,6 +261,8 @@ ObjHeader *Kotlin_Throwable_getStackTrace(ObjHeader *throwable, ObjHeader **resu
 void Kotlin_io_Console_print(const ObjHeader *message);   /* strings.c: any length, in chunks, no allocation */
 __attribute__((weak)) ObjHeader *km_throwable_cause(ObjHeader *throwable, ObjHeader **result)
     __asm__("kfun:kotlin.Throwable#<get-cause>(){}kotlin.Throwable?");   /* the virtual getter */
+void Kotlin_runUnhandledExceptionHook(ObjHeader *throwable);   /* stdlib: the hook, or rethrows when none is set */
+ObjHeader *kmicro_call_catching(void (*fn)(ObjHeader *), ObjHeader *arg, ObjHeader **frame, ObjHeader **slot);
 __attribute__((weak)) void kmicro_on_uncaught(ObjHeader *exception) { (void)exception; }
 
 static int s_uncaught;                               /* uncaught exceptions being reported, one inside another */
@@ -361,15 +364,31 @@ void kmicro_report_exception(ObjHeader *e)
     LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
 }
 
-/* Report e and stop. An exception that escapes from the report (a message getter that throws) is reported in turn. */
-__attribute__((noreturn)) static void terminate(ObjHeader *e)
+/* The hook set by setUnhandledExceptionHook (Exceptions.cpp processUnhandledException). Returns NULL when it ran and
+ * returned, else the exception to terminate with: the hook's own when it threw, e itself when no hook is set. Inside an
+ * interrupt handler the hook is skipped (it may allocate); kmicro_on_uncaught is the C hook that runs there too. */
+static ObjHeader *run_hook(ObjHeader *e, ObjHeader **frame, ObjHeader **slot)
 {
-    struct { FrameOverlay f; ObjHeader *e; } fr = { { 0, 0, 0 }, e };
+    if (km_in_interrupt())
+        return e;
+    return kmicro_call_catching(Kotlin_runUnhandledExceptionHook, e, frame, slot);
+}
+
+/* Report e and stop; with hook, as for an exception nothing caught: the Kotlin hook runs first, then the exception it
+ * leaves is reported. An exception that escapes from the report (a message getter that throws) is reported in turn. */
+__attribute__((noreturn)) static void terminate(ObjHeader *e, bool hook)
+{
+    struct { FrameOverlay f; ObjHeader *e, *thrown; } fr = { { 0, 0, 0 }, e, 0 };
     EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
     if (++s_uncaught > 2)
         kmicro_panic("uncaught Kotlin exception while reporting an uncaught exception");
-    if (s_uncaught == 2)
+    if (s_uncaught == 2) {
         kmicro_puts("\n");                           /* the first report stopped mid-line */
+    } else if (hook) {
+        ObjHeader *t = run_hook(fr.e, (ObjHeader **)&fr, &fr.thrown);
+        if (t != NULL)
+            fr.e = t;
+    }
     kmicro_report_exception(fr.e);
     kmicro_on_uncaught(fr.e);
     kmicro_panic("uncaught Kotlin exception");
@@ -383,16 +402,25 @@ __attribute__((noreturn)) void ThrowException(ObjHeader *exception)
     memcpy(s_exc.ucb.exception_class, "KMICROKT", 8);
     s_exc.exception = exception;
     _Unwind_Reason_Code rc = _Unwind_RaiseException(&s_exc.ucb);
-    /* Only returns when no handler was found (end of stack, or a frame without unwind tables). The report calls
-     * Kotlin getters that may throw and catch exceptions of their own, so this one is no longer in flight. */
+    /* Only returns when no handler was found (end of stack, or a frame without unwind tables). The hook and the
+     * report run Kotlin code that may throw and catch exceptions of its own, so this one is no longer in flight. */
     (void)rc;
     ObjHeader *e = s_exc.exception;
     s_exc.exception = NULL;
-    terminate(e);
+    terminate(e, true);
 }
 
-void Kotlin_processUnhandledException(ObjHeader *e) { kmicro_report_exception(e); }
-__attribute__((noreturn)) void Kotlin_terminateWithUnhandledException(ObjHeader *e) { terminate(e); }
+/* kotlin.native.processUnhandledException: the hook, and termination when there is none or it throws. */
+void Kotlin_processUnhandledException(ObjHeader *e)
+{
+    struct { FrameOverlay f; ObjHeader *thrown; } fr = { { 0, 0, 0 }, 0 };
+    EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+    ObjHeader *t = run_hook(e, (ObjHeader **)&fr, &fr.thrown);
+    if (t != NULL)
+        terminate(t, false);
+    LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+}
+__attribute__((noreturn)) void Kotlin_terminateWithUnhandledException(ObjHeader *e) { terminate(e, false); }
 __attribute__((noreturn)) void _ZSt9terminatev(void) { kmicro_panic("std::terminate"); }
 
 /* ---- stack traces: return addresses through the same unwind tables ---- */
