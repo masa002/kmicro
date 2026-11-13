@@ -55,7 +55,7 @@ first comment.
 | File | What it does |
 |---|---|
 | `mm.c` | Memory: a static arena (`KM_HEAP_BYTES`, default 16 KB), objects 8-byte aligned, no per-object header beyond the type pointer. Precise mark-sweep, stop-the-world, non-moving. Roots are the shadow-stack frames the compiled code pushes, the registered globals, the thread-local slots and an exception in flight. The collector runs only inside an allocation or an explicit `kmicro_gc()`. |
-| `eh.c` | Exceptions: libgcc's ARM EHABI unwinder with kmicro's own personality routine. `try`/`catch`/`finally` work as on the JVM. An uncaught exception prints its type, the first 95 bytes of its message and its stack trace, without its cause (addresses; [tools/symbolize.py](../tools/symbolize.py) turns them into function names, and LTO folds inlined functions into their callers). |
+| `eh.c` | Exceptions: libgcc's ARM EHABI unwinder with kmicro's own personality routine. `try`/`catch`/`finally` work as on the JVM. An uncaught exception prints its type, its whole message, its stack trace and every cause, as `printStackTrace()` does (addresses; [tools/symbolize.py](../tools/symbolize.py) turns them into function names, and LTO folds inlined functions into their callers). |
 | `init.c`, `init_cxx.cpp` | Startup: the module initializers, the initialisation of file-level globals on first use (a failing initializer behaves as in the stock runtime), `kmicro_panic`. |
 | `strings.c` | `String` (UTF-16; the compiler's Latin-1 string option is implemented too, but no kmicro tool sets it and it is untested), `toString`, `println`. |
 | `types.c` | Type checks, identity hash codes, boxing caches, arrays. |
@@ -77,24 +77,25 @@ Your startup code enables the FPU before any compiled C runs (LTO can inline flo
 function), copies `.data`, clears `.bss` and runs the constructors in `.init_array` (the compiler registers the
 module initializers there); `kmicro_init()` then comes before the first Kotlin call.
 [examples/selftest/stm32l431/board.c](../examples/selftest/stm32l431/board.c) does this for an STM32L431.
-[targets/qemu-l475/start.c](../targets/qemu-l475/start.c) is the shorter startup for QEMU; it still enables the FPU
-from C, so a floating-point `main` that LTO inlines into it faults. The `main()` of every example begins with
-`kmicro_init()`.
+[targets/qemu-l475/start.c](../targets/qemu-l475/start.c) is the startup for QEMU: a naked `Reset_Handler` enables
+the FPU before any C runs, and it adds a fault report, MPU guards against stack overflow and null reads, and clocks
+through semihosting. The `main()` of every C example begins with `kmicro_init()`;
+[targets/common/kotlin_main.c](../targets/common/kotlin_main.c) is the C `main` of a Kotlin-only program.
 
 ## Calling between C and Kotlin
 
-**Kotlin calls C** through cinterop, as on any Kotlin/Native target: a `.def` file lists the headers, `cinterop`
-makes a klib, and Kotlin calls `c.uart_send(...)`. The compiler routes each call through a small bridge function;
-[toolchain/bridges.py](../toolchain/bridges.py) extracts those bridges from the IR saved after
-`LinkBitcodeDependencies`, so they are compiled for Cortex-M as well.
+**Kotlin calls C** through cinterop, as on any Kotlin/Native target: a `.def` file lists the headers, and Kotlin
+calls `c.uart_send(...)`. `kbuild.py --def` runs cinterop and uses its klib (`-l` takes a klib made separately). The
+compiler routes each call through a small bridge function; [toolchain/bridges.py](../toolchain/bridges.py) extracts
+those bridges, and the C-callable stubs of `staticCFunction` callbacks, from the saved IR, so they are compiled for
+Cortex-M as well.
 
 ```
-cinterop -def board.def -target linux_arm32_hfp -compiler-option -Iinclude -o build/board
-python tools/kbuild.py build/app app.kt -l build/board.klib --c-api app.h --package app
+python tools/kbuild.py build/app app.kt --def board.def -I include --c-api app.h --package app
 ```
 
-`cinterop` is in the `bin` folder of Kotlin/Native (`cinterop.bat` on Windows). kbuild then prints `bridges.o`
-next to `k.o`, and both are linked. [tests/programs/cinterop](../tests/programs/cinterop) is a complete example.
+kbuild then prints `bridges.o` next to `k.o`, and both are linked. [tests/programs/cinterop](../tests/programs/cinterop)
+and [tests/programs/cinterop2](../tests/programs/cinterop2) are complete examples.
 
 **C calls Kotlin** by symbol. A top-level function `fun gcChains(rounds: Int): Int` in package `selftest` is the
 symbol `kfun:selftest#gcChains(kotlin.Int){}kotlin.Int`. C can declare it with that name as an assembler label, or
@@ -108,7 +109,7 @@ keep its C API this way while its implementation moves to Kotlin one module at a
 Kotlin has no volatile memory access (`@Volatile` applies to properties only) and no inline assembly.
 [support/hw.h](../support/hw.h) provides what is missing, one instruction each after LTO: `hw_rd32` / `hw_wr32`
 (volatile register access), `mem_*` (plain memory shared with C), barriers, `WFI`, `PRIMASK` / `BASEPRI`. Kotlin
-reaches them through cinterop, with a `.def` file that names `hw.h`, and `hw.c` is linked with the program. A call
+reaches them through cinterop with [support/hw.def](../support/hw.def), and `hw.c` is linked with the program. A call
 such as `hw_wr32(RCC.CR, v)` becomes a single `STR` in the Kotlin function that made it.
 
 [tools/gen_regs.py](../tools/gen_regs.py) turns CMSIS device headers into Kotlin constants: register addresses
@@ -116,23 +117,25 @@ such as `hw_wr32(RCC.CR, v)` becomes a single `STR` in the Kotlin function that 
 the CMSIS struct layouts, so nothing is typed by hand.
 
 hw.h and gen_regs.py are part of kmicro. They were first written for the device firmware kmicro grew out of
-([Origin](../README.md#origin)), which uses them; no example or test in this repository uses them yet.
+([Origin](../README.md#origin)), which uses them too. [examples/irq](../examples/irq) uses both: registers
+generated by gen_regs.py and a SysTick handler written in Kotlin.
 
 ## Interrupts
 
 A Kotlin function can be an interrupt handler: name it after the vector (`fun usart1IrqHandler()`) and alias it with
 `--c-api`. An interrupt can arrive while the collector is running, so a handler must not allocate. The runtime
-stops with a panic when Kotlin code in a handler allocates; allocations inside runtime functions are not caught yet.
+stops with a panic when a handler allocates or collects, the runtime's own allocations included.
 [tools/isr_check.py](../tools/isr_check.py) finds allocation, boxing and lazy initialisation on the paths from the
-handlers before the code runs. It finds handlers by their C names, and LTO removes the `--c-api` alias of a Kotlin
-handler, so name each Kotlin handler with `--callback` and its compiler symbol, such as
-`--callback 'kfun:app#usart1IrqHandler(){}'`. [writing-kotlin.md](writing-kotlin.md) lists the Kotlin constructs
-that allocate where it is not obvious.
+handlers before the code runs. It takes the handlers from the vector table; `--callback` adds functions reached
+through a pointer. [examples/irq](../examples/irq) is a worked example, and [writing-kotlin.md](writing-kotlin.md)
+lists the Kotlin constructs that allocate where it is not obvious.
 
 ## Testing
 
 - [tests/run_all.py](../tests/run_all.py) builds every test program and the examples and runs them on QEMU
   (`b-l475e-iot01a`, an emulated STM32L475).
 - [tools/difftest.py](../tools/difftest.py) runs the programs in `tests/diff/` on the stock Kotlin/Native runtime
-  of the host and on kmicro in QEMU (with a 64 KB heap), and requires byte-identical output: strings including emoji,
-  collections, exceptions, initialisers, number formatting and parsing, sequences.
+  of the host and on kmicro in QEMU (at the default 16 KB heap unless a program asks for more), and requires
+  byte-identical output: strings including emoji, collections, exceptions, initialisers, number formatting and
+  parsing, sequences.
+- `python -m unittest discover -s tests/unit` tests the tools.

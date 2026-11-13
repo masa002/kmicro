@@ -15,32 +15,24 @@ kmicro runs the output of the unmodified Kotlin/Native 2.4.21 compiler on a Cort
 kilobytes: a precise garbage collector, exceptions, coroutines, strings, and cinterop to call C.
 
 ```kotlin
-// examples/hello/hello.kt
-package hello
-
-fun hello(times: Int): Int {
-    val names = List(times) { "Kotlin #${it + 1}" }
+// hello.kt
+fun main() {
+    val names = List(3) { "Kotlin #${it + 1}" }
     println("Hello from ${names.joinToString()} on a bare Cortex-M4")
-    return names.size
-}
-```
-
-```c
-// examples/hello/main.c
-#include "kmicro.h"
-#include "hello.h"
-
-int main(void)
-{
-    kmicro_init();                      /* heap, garbage collector, exceptions */
-    return hello(3) == 3 ? 0 : 1;       /* the exit code QEMU reports */
 }
 ```
 
 ```
-$ python tests/run_all.py hello
-PASS  hello     text 66892  data 80  bss 18004
+$ python tools/kbuild.py build/hello hello.kt
+$ python tools/qbuild.py build/hello/hello.elf targets/common/kotlin_main.c build/hello/k.o --run
+qbuild: hello.elf  text 71228  data 80  bss 18864  stack 79812
+Hello from Kotlin #1, Kotlin #2, Kotlin #3 on a bare Cortex-M4
+qemu: exit 0
 ```
+
+kbuild compiles the Kotlin code for the Cortex-M4; qbuild links it with the kmicro runtime and runs it on QEMU's
+emulated STM32L475. [examples/hello](examples/hello) does the same from a C `main`, the way a firmware written in C
+starts calling Kotlin.
 
 ## Status
 
@@ -55,44 +47,52 @@ feature, is in [docs/kotlin-support.md](docs/kotlin-support.md).
 | Works | Notes |
 |---|---|
 | classes, interfaces, generics, lambdas, objects, data/sealed/enum/value classes, delegation | |
+| a Kotlin-only program with `fun main()`, or Kotlin functions called from a C `main` | C names through `--c-api` or `@CName` |
 | garbage collection | precise mark-sweep in a fixed arena (`KM_HEAP_BYTES`), non-moving |
-| strings, `StringBuilder`, `println` | UTF-16, output through your `kmicro_puts` |
-| exceptions, `try`/`catch`/`finally`, cause chains, `runCatching` | ARM EHABI unwinding |
+| strings, `StringBuilder`, `println`, `readln` | UTF-16; text goes out through your `kmicro_puts` and comes in through `kmicro_getc` |
+| exceptions, `try`/`catch`/`finally`, cause chains, `runCatching`, `setUnhandledExceptionHook` | ARM EHABI unwinding; the uncaught-exception report prints the causes |
 | coroutines (`kotlin.coroutines`) | suspend, resume, sequence builders, your own event loop |
-| collections, sequences, `Regex`, number formatting and parsing | output byte-identical to stock Kotlin/Native; `Regex` and `toDouble()` need a large heap (below) |
-| cinterop with scalars, pointers, strings, globals, enums | Kotlin calls C; C calls Kotlin by plain names |
-| interrupt handlers in Kotlin | they must not allocate or store object references: [docs/writing-kotlin.md](docs/writing-kotlin.md) |
+| collections, sequences, `Regex`, number formatting and parsing | output byte-identical to stock Kotlin/Native; `Regex` needs a large heap (below) |
+| `kotlin.random`, `kotlin.time`, `Uuid`, `Platform`, `exitProcess` | clocks and entropy come from board hooks; the QEMU targets provide the clocks |
+| atomics, including the atomic arrays | atomic against interrupt handlers |
+| cinterop: scalars, pointers, strings, globals, enums, structs by value, `staticCFunction` callbacks, varargs, `StableRef` | kbuild runs cinterop for you (`--def`) |
+| interrupt handlers in Kotlin | they must not allocate: [docs/writing-kotlin.md](docs/writing-kotlin.md), [examples/irq](examples/irq) |
+
+Every standard-library function that calls into the runtime is implemented, or stops the program with
+"... is not supported on kmicro" where it needs threads or an OS (`python tools/missing_natives.py -v` lists them).
 
 ### Known gaps
 
-These do not work yet; fixes for most of them are in progress. This is the short list:
-[docs/kotlin-support.md](docs/kotlin-support.md) has every case.
+The short list; [docs/kotlin-support.md](docs/kotlin-support.md) has every case.
 
-- **No clock or entropy source:** `kotlin.random` (even `Random(42)`), `measureTime`, `TimeSource.Monotonic`,
-  `Clock.System` and `Uuid.random()` stop the program.
-- **Missing runtime functions:** `kotlin.native.Platform`, `exitProcess`, `readln`, `GC.schedule`, `WeakReference`,
-  `StableRef`, `Duration.toString(unit, decimals)`, `AtomicIntArray`, `ByteArray.getIntAt` and a few others stop the
-  program, most of them with a message naming the missing function; a few end in a misleading exception or a fault
-  instead.
-- **Silently ignored:** `@CName` exports nothing (use `--c-api`), and `setUnhandledExceptionHook` never calls its
-  hook.
-- **Stack traces:** addresses only; a frame can repeat or be missing, and `printStackTrace()` of an exception with a
-  cause stops the program.
-- **Memory:** a stack overflow is not detected, and Kotlin/Native puts large local arrays on the stack;
-  `String.toDouble()` needs more than the default 16 KB heap, and the first `Regex` keeps 12-14 KB of it.
-- **cinterop:** structs by value, `staticCFunction` callbacks and header `static inline` functions with loops do not
-  build yet; `nativeHeap` has a 1 KB arena that is reused only in last-in, first-out order.
-- **Tools:** a program needs a small C `main` (no Kotlin-only `fun main` yet); build paths with spaces or non-ASCII
-  characters fail on Windows.
+- **Regex is big:** a few small patterns need a 32 KB heap and `\p{L}` about 56 KB, many patterns do not fit even
+  in 64 KB, and the engine adds about 240 KB of flash, so a program using it does not fit the STM32L431. Deep backtracking over long
+  input overflows the stack. `RegexOption.CANON_EQ` throws `IllegalArgumentException`.
+- **Running out of memory stops the program:** heap exhaustion ends with an out-of-memory report, not a catchable
+  `OutOfMemoryError` (one request larger than the whole heap does throw). Kotlin/Native puts constant-size local
+  arrays on the stack; kbuild warns about those above 512 bytes.
+- **Faults are not exceptions:** a stack overflow or a null-pointer read stops the program with a fault report
+  (exit 99). The QEMU target `qemu-l475` catches both with the MPU; the STM32L431 example reports faults but has no
+  stack guard yet.
+- **Board hooks:** without them the clocks (`measureTime`, `TimeSource.Monotonic`, `Clock.System`) and
+  `Uuid.random()` stop the program naming the missing hook, `Random.Default` repeats its sequence after every reset,
+  and `readln()` sees the end of the input. [runtime/kmicro.h](runtime/kmicro.h) lists the hooks.
+- **Stack traces:** addresses, at most 12 frames; [tools/symbolize.py](tools/symbolize.py) turns them into function
+  names, with file and line when the code is built with `-g`. Functions that LTO inlines fold into their callers.
+- **Smaller limits:** `kotlin.math` results are within 2 ulp of stock (newlib's libm); `nativeHeap`, `memScoped`
+  and `cstr` share a 1 KB arena (`KM_INTEROP_BYTES`); a public function whose backtick name contains a space cannot
+  be exported to C (make it `internal` or `private`); on Windows, a file name with characters outside the ANSI code
+  page fails in the xPack tools.
 
 Limits by design:
 
 - **One compiler version.** kmicro reads the IR of Kotlin/Native 2.4.21. It builds on the `linux_arm32_hfp` target,
   which JetBrains has deprecated, so a later compiler may not offer it.
-- **One CPU, tested: Cortex-M4F.** The compiler target is hard-float, so the core needs an FPU. A Cortex-M7 should
-  need only other CPU flags in `toolchain/` (untested); a core without an FPU would need the soft-float calling convention.
+- **One CPU, tested: Cortex-M4F.** The compiler target is hard-float, so the core needs an FPU. The CPU is one setting,
+  `TARGET_M4F` in [toolchain/paths.py](toolchain/paths.py), so a Cortex-M7 should need only that (untested); a core
+  without an FPU would need the soft-float calling convention.
 - **One thread.** Interrupts are fine, with the rules in [docs/writing-kotlin.md](docs/writing-kotlin.md). There are
-  no threads and no `Worker`.
+  no threads: `Worker` and `WeakReference` are not supported.
 - **The standard library only.** kotlinx libraries are untested.
 
 ## Getting started
@@ -100,25 +100,44 @@ Limits by design:
 1. Install the tools listed in [BUILDING.md](BUILDING.md): Kotlin/Native 2.4.21 and a Java runtime to run it (its
    first compile downloads LLVM), the xPack Arm GCC (for newlib and libgcc), QEMU for Arm, Python 3.10 or later.
 2. `python toolchain/paths.py` shows what it found.
-3. `python tests/run_all.py` builds every test and example and runs them on an emulated STM32L475.
-   The first run compiles each program with kotlinc-native, about a minute each.
+3. `python tests/run_all.py` builds every test and example and runs them on an emulated STM32L475, and
+   `python -m unittest discover -s tests/unit` tests the tools. The first run compiles each program with
+   kotlinc-native, about a minute each.
 
-Your own program, on the emulator, takes three files like [examples/hello](examples/hello): the Kotlin code with a
-`package` line, a C header whose prototypes name the Kotlin functions C may call, and a C `main` that calls
-`kmicro_init()` first.
+Your own program is the hello world above: kbuild takes Kotlin files or a folder of them, and `fun main()` can be in
+any package (`--main` makes a missing one a build error).
+
+**Calling C.** Name the C headers in a cinterop `.def` file. kbuild runs cinterop and also writes a `bridges.o`,
+which is linked with `k.o`:
 
 ```
-python tools/kbuild.py build/app app.kt --c-api app.h --package app
-python tools/qbuild.py build/app/app.elf main.c build/app/k.o --run
+python tools/kbuild.py build/app app.kt --def sensor.def -I include
+python tools/qbuild.py build/app/app.elf targets/common/kotlin_main.c sensor.c build/app/k.o build/app/bridges.o -I include --run
 ```
 
-When the Kotlin code calls C, `cinterop` makes a klib from a `.def` file, `kbuild.py -l` takes it, and kbuild also
-prints a `bridges.o` to link: [docs/how-it-works.md](docs/how-it-works.md#calling-between-c-and-kotlin).
+```kotlin
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 
-On a real board, link `k.o` with `runtime/`, your startup code and a linker script:
+import sensor.*                 // sensor.def: headers = sensor.h, package = sensor
+
+fun main() {
+    val mv = List(sensor_count()) { sensor_read(it) }
+    println("sensors: ${mv.joinToString { "$it mV" }}, average ${mv.average()} mV")
+}
+```
+
+[tests/programs/cinterop2](tests/programs/cinterop2) shows structs by value, callbacks, globals, varargs and
+static inline header functions. [examples/irq](examples/irq) uses [support/hw.def](support/hw.def) for register
+access and handles SysTick in Kotlin.
+
+**C calling Kotlin.** `--c-api app.h --package app` gives the Kotlin functions of package `app` the C names of the
+prototypes in `app.h`, so a C `main` can call them after `kmicro_init()`: [examples/hello](examples/hello).
+
+**On a real board**, link `k.o` (and `bridges.o`) with `runtime/`, your startup code and a linker script:
 [examples/selftest/stm32l431](examples/selftest/stm32l431) does this for an STM32L431, and
 [docs/how-it-works.md](docs/how-it-works.md) explains the pieces. Copy the compiler flags and linker-script
-sections of that example: without `-fexceptions -funwind-tables` on the runtime, no Kotlin exception is caught.
+sections of that example: the runtime is compiled with clang and `-fexceptions -funwind-tables`, without which
+`runtime/eh.c` stops the build.
 
 ## Numbers
 
@@ -135,20 +154,21 @@ sections of that example: without `-fexceptions -funwind-tables` on the runtime,
 | coroutine: 300 suspend/resume cycles | 49 ms |
 | one full collection | 1.8 ms |
 
-\* Recorded with a stack-trace walk that visits the same frame several times; a fix is in progress, after which the
-time will be measured again.
+\* Measured before [#3](https://github.com/masa002/kmicro/issues/3) stopped the stack-trace walk from visiting the
+same frame several times. On QEMU one throw-to-catch now takes about 6,100 instructions instead of 17,600; the board
+figure will be measured again.
 
 ## Repository layout
 
 | Folder | Contents |
 |---|---|
-| [runtime/](runtime) | the Kotlin runtime, in C and C++ |
-| [toolchain/](toolchain) | the build steps: `paths.py` finds the tools, `kn.py` runs the pipeline, `retarget.py` and `bridges.py` adapt the compiler's IR |
-| [support/](support) | `hw.h`: volatile register access, barriers, interrupt masks for Kotlin |
-| [targets/](targets) | startup code and linker scripts for QEMU (`qemu-l475` for programs, `qemu-an386` for large unit tests) |
-| [tools/](tools) | `kbuild.py`, `qbuild.py`, `gen_regs.py` (CMSIS to Kotlin), `isr_check.py`, `symbolize.py`, `difftest.py`, `measure.py`, `irstat.py`, `port_dtoa.py` |
-| [examples/](examples) | `hello`, `selftest` (with its STM32L431 board files) |
-| [tests/](tests) | `run_all.py`, the test programs, the differential tests |
+| [runtime/](runtime) | the Kotlin runtime, in C and C++; `kmicro.h` is its contract with the board |
+| [toolchain/](toolchain) | the build steps: `paths.py` finds the tools (tested versions in `versions.txt`), `kn.py` runs the pipeline, `retarget.py` and `bridges.py` adapt the compiler's IR |
+| [support/](support) | `hw.h`, `hw.c`, `hw.def`: volatile register access, barriers, interrupt masks for Kotlin |
+| [targets/](targets) | startup code and linker scripts for QEMU (`qemu-l475` for programs, `qemu-an386` through `qbuild --target an386` for programs that need more memory), and `common/kotlin_main.c` for `fun main()` |
+| [tools/](tools) | `kbuild.py`, `qbuild.py`, `gen_regs.py` (CMSIS to Kotlin), `isr_check.py`, `symbolize.py`, `frames.py`, `missing_natives.py`, `difftest.py`, `measure.py`, `irstat.py`, `port_dtoa.py` |
+| [examples/](examples) | `hello`, `irq` (a Kotlin SysTick handler on registers), `selftest` (with its STM32L431 board files) |
+| [tests/](tests) | `run_all.py`, the test programs, the differential tests, `unit/` for the tools |
 | [docs/](docs) | [Kotlin support](docs/kotlin-support.md), [how it works](docs/how-it-works.md), [writing Kotlin for a microcontroller](docs/writing-kotlin.md), [design notes](docs/research) |
 
 ## Origin
