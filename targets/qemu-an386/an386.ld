@@ -1,7 +1,7 @@
-/* QEMU mps2-an386 (Cortex-M4 + FPU): 4 MB SSRAM1 for code at 0, 4 MB SSRAM2/3 at 0x20000000 (the stack), 16 MB
- * PSRAM at 0x21000000 (data, bss, heap, stack). For unit tests that need more memory than the device has: a
- * firmware's C tests run against its Kotlin modules, compiled exactly as for the device, next to mocks of megabytes
- * (an external flash chip, for example). Start code: start.c; link librdimon.a (semihosting stdio) and --wrap=_exit. */
+/* QEMU mps2-an386 (Cortex-M4 + FPU): 4 MB SSRAM1 for code at 0, 4 MB SSRAM2/3 at 0x20000000, 16 MB PSRAM at
+ * 0x21000000 (data, bss, heap, stack). For programs that need more memory than the device has: Kotlin modules
+ * compiled exactly as for the device, next to C code that uses megabytes (a test that models a large peripheral in
+ * memory, for example). Start code: start.c; link librdimon.a (semihosting stdio) and --wrap=_exit. */
 MEMORY
 {
   CODE  (rx)  : ORIGIN = 0x00000000, LENGTH = 4M
