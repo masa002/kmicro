@@ -9,6 +9,8 @@
 
 #define KM_NOTHROW __attribute__((nothrow))
 #define KM_ALIGN 8u                                  /* kObjectAlignment (Alignment.hpp) */
+#define KM_STR_(x) #x
+#define KM_STR(x) KM_STR_(x)                         /* a size macro's value as text, for panic messages */
 
 typedef struct MemoryState MemoryState;             /* opaque to compiled code; kmicro passes NULL */
 typedef struct TypeInfo TypeInfo;
@@ -65,10 +67,41 @@ static inline void *km_array_data(ArrayHeader *a) { return (void *)(a + 1); }  /
 /* OBJ_GETTER convention (Memory.h): the result also goes to the caller's frame slot. */
 static inline ObjHeader *km_return(ObjHeader **slot, ObjHeader *obj) { *slot = obj; return obj; }
 
-/* ---- runtime API for the C side ---- */
+/* ---- the board contract ----
+ * Provided by the board (the C kernel; targets/qemu-* start.c for the emulator). A board file that includes this
+ * header needs no other declaration. */
+void kmicro_puts(const char *s);                     /* write a NUL-terminated UTF-8 string to the console */
+__attribute__((noreturn)) void kmicro_exit(int code);   /* stop with this status: kmicro_panic gives 98; never returns */
+
+/* Optional board hooks: the runtime has a weak default for each, so a board defines only the ones it has. */
+void kmicro_on_uncaught(ObjHeader *exception);       /* an uncaught exception, after its report and before the panic
+                                                        (default: nothing), e.g. to keep it for post-mortem */
+/* kotlin.time and kotlin.random (defaults in runtime/time.c: the two clocks stop the program with a panic that
+ * names the hook, the seed is a constant) */
+int64_t kmicro_time_ns(void);                        /* monotonic, any origin: measureTime, TimeSource.Monotonic */
+int64_t kmicro_wall_time_ns(void);                   /* since 1970-01-01 UTC: Clock.System */
+uint64_t kmicro_random_seed(void);                   /* the seed of Random.Default */
+/* [here: console input, output with a length, and entropy (kmicro_getc, kmicro_write, kmicro_random_bytes)] */
+
+/* Provided by the runtime, for the board and any C code. */
 void kmicro_init(void);                              /* = Kotlin_initRuntimeIfNeeded for the single thread */
-void kmicro_gc(void);                                /* full collection now */
-typedef struct { uint32_t heap_bytes, used_bytes, peak_bytes, gc_count, objects_freed, alloc_count; } kmicro_stats_t;
+void kmicro_gc(void);                                /* full collection now (never from an interrupt handler) */
+void kmicro_put_int(int32_t v);                      /* decimal, through kmicro_puts */
+__attribute__((noreturn)) void kmicro_panic(const char *what);   /* "kmicro panic: <what>[ at 0x...]", exit 98 */
+extern void *km_fault_pc;                            /* set before a panic: the return address of the faulting call,
+                                                        printed by kmicro_panic (tools/symbolize.py names it) */
+void kmicro_root(ObjHeader **slot);                  /* keep the object in *slot alive while C holds it (KM_C_ROOTS) */
+void kmicro_unroot(ObjHeader **slot);                /* stop that; from Kotlin, StableRef does the same */
+typedef struct {
+    uint32_t heap_bytes;                             /* the arena (KM_HEAP_BYTES) */
+    uint32_t used_bytes;                             /* in use now, garbage included until the next collection */
+    uint32_t peak_bytes;                             /* high-water mark of used_bytes, garbage included: the collector
+                                                        runs only when the heap is full, so this soon reaches heap_bytes */
+    uint32_t gc_count, objects_freed, alloc_count;
+    uint32_t live_peak_bytes;                        /* the most live data a collection found (0 before the first);
+                                                        live data between collections can be higher, so size the heap
+                                                        with a margin above it */
+} kmicro_stats_t;
 void kmicro_stats(kmicro_stats_t *out);
 
 /* runtime internals shared between files */
@@ -77,6 +110,14 @@ extern int kmicro_tls_slot_count;
 ObjHeader *kmicro_alloc_object(const TypeInfo *type, ObjHeader **result);
 ObjHeader *kmicro_alloc_array(const TypeInfo *type, int32_t count, ObjHeader **result);
 
+/* The collector marks with interrupts enabled, and an interrupt handler that moves a reference meanwhile could hide
+ * a live object from it. So every store of a reference into an object, an array or a global (UpdateHeapRef, the
+ * reference atomics, the array natives) calls km_ref_stored(): the collector clears the flag before marking and
+ * marks again if a handler set it (mm.c mark()). C code that stores Kotlin references from a handler calls it too. */
+extern volatile uint8_t km_refs_stored;
+static inline void km_ref_stored(void) { km_refs_stored = 1; }
+KM_NOTHROW void UpdateHeapRef(ObjHeader **location, const ObjHeader *object);   /* barrier + store (Memory.h) */
+
 /* Kotlin-side helpers the runtime calls (stdlib RuntimeUtils.kt, exported for the C++ runtime) */
 __attribute__((noreturn)) void ThrowArrayIndexOutOfBoundsException(void);
 __attribute__((noreturn)) void ThrowOutOfMemoryError(void);
@@ -84,11 +125,6 @@ __attribute__((noreturn)) void ThrowIllegalArgumentException(void);
 __attribute__((noreturn)) void ThrowFileFailedToInitializeException(ObjHeader *cause);
 void checkRangeIndexes(int32_t from, int32_t to, int32_t size);
 extern const TypeInfo *theArrayTypeInfo, *theStringTypeInfo, *theCharArrayTypeInfo;
-
-/* platform hooks (the C kernel / the QEMU harness provides them) */
-void kmicro_puts(const char *s);
-void kmicro_put_int(int32_t v);
-__attribute__((noreturn)) void kmicro_panic(const char *what);
 
 /* True inside an exception/interrupt handler (Cortex-M IPSR != 0); always false where there is no IPSR. */
 static inline int km_in_interrupt(void)
@@ -101,11 +137,5 @@ static inline int km_in_interrupt(void)
     return 0;
 #endif
 }
-
-/* Board hooks for kotlin.time and kotlin.random. runtime/time.c has weak defaults: the two clocks stop the program
- * with a panic that names the hook, the seed is a constant. */
-int64_t kmicro_time_ns(void);                        /* monotonic, any origin: measureTime, TimeSource.Monotonic */
-int64_t kmicro_wall_time_ns(void);                   /* since 1970-01-01 UTC: Clock.System */
-uint64_t kmicro_random_seed(void);                   /* the seed of Random.Default */
 
 #endif

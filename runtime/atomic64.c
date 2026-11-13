@@ -1,6 +1,7 @@
 /* 64-bit atomics for ARMv7-M (no LDREXD/STREXD): the libatomic ABI that LLVM calls for i64 atomicrmw/cmpxchg
- * (AtomicLong, kotlin.random). libgcc for v7e-m has none. One core and interrupt handlers never touch Kotlin
- * data, so masking interrupts around the access is enough; PRIMASK is saved and restored, never just enabled. */
+ * (AtomicLong, kotlin.random). libgcc for v7e-m has none. There is one core, so masking interrupts around the
+ * access makes it atomic against interrupt handlers as well, which may use the same atomics; PRIMASK is saved and
+ * restored, never just enabled. */
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -39,10 +40,8 @@ uint64_t __atomic_exchange_8(volatile void *p, uint64_t v, int order)
     return old;
 }
 
-bool __atomic_compare_exchange_8(volatile void *p, void *expected, uint64_t desired, bool weak, int success,
-                                 int failure)
+bool __atomic_compare_exchange_8(volatile void *p, void *expected, uint64_t desired, int success, int failure)
 {
-    (void)weak;
     (void)success;
     (void)failure;
     uint32_t pm = irq_save();

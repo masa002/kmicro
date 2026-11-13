@@ -16,16 +16,27 @@
  *
  * The collector runs only inside an allocation call (or an explicit GC.collect / kmicro_gc). The compiled code
  * keeps every live reference in a frame slot across calls, so nothing live hides in registers (docs/research/R_mm.md).
+ * Interrupt handlers may run while it marks and store references; mark() handles that.
  */
 #include <string.h>
 #include "kmicro.h"
 
+/* Sizes; each can be set from the build (-D NAME=VALUE). A full table stops with a panic naming its macro. */
 #ifndef KM_HEAP_BYTES
 #define KM_HEAP_BYTES (16u * 1024u)
 #endif
-#define KM_MARK_STACK 96
-#define KM_GLOBALS    160
-#define KM_C_ROOTS    16
+#ifndef KM_MARK_STACK
+#define KM_MARK_STACK 96                             /* not a limit: an overflow costs a rescan of the heap */
+#endif
+#ifndef KM_GLOBALS
+#define KM_GLOBALS    160                            /* reference globals (RegisterGlobal), the stdlib's included */
+#endif
+#ifndef KM_C_ROOTS
+#define KM_C_ROOTS    16                             /* kmicro_root slots */
+#endif
+#ifndef KM_GC_REMARKS
+#define KM_GC_REMARKS 3                              /* marking passes an interrupt handler may restart (mark()) */
+#endif
 
 #define FREE_BIT 1u
 #define MARK_BIT 2u
@@ -45,6 +56,26 @@ static ObjHeader **s_croots[KM_C_ROOTS];
 static ObjHeader *s_mark_stack[KM_MARK_STACK];
 static int s_msp;
 static bool s_mark_overflow;
+
+/* Short critical sections against interrupt handlers: PRIMASK is saved and restored, never just enabled. */
+static inline uint32_t irq_save(void)
+{
+#if defined(__thumb__)
+    uint32_t pm;
+    __asm volatile("mrs %0, primask\n cpsid i" : "=r"(pm) : : "memory");
+    return pm;
+#else
+    return 0;
+#endif
+}
+static inline void irq_restore(uint32_t pm)
+{
+#if defined(__thumb__)
+    __asm volatile("msr primask, %0" : : "r"(pm) : "memory");
+#else
+    (void)pm;
+#endif
+}
 
 /* ---------------------------------------------------------------------------------------------------------- */
 /* heap                                                                                                       */
@@ -186,22 +217,43 @@ static void report_oom(uint32_t bytes)
     kmicro_puts(" free blocks\n");
 }
 
+static void collect(void);
+
+/* Interrupt handlers written in Kotlin must not allocate or collect: the handler may have interrupted another
+ * allocation or the collector (the heap is not reentrant), and a collection started there would miss references
+ * the interrupted code holds only in registers. Stop loudly instead of corrupting the heap. Every heap allocation
+ * (the compiled code's and the runtime's own, e.g. Int.toString) and every collection passes one of these checks;
+ * km_fault_pc is the return address into the code that asked, and kmicro_panic prints it. */
+void *km_fault_pc;
+
+__attribute__((noinline, cold, noreturn)) static void isr_fail(void *caller, const char *what)
+{
+    if ((uintptr_t)caller >= 0xF0000000u)            /* EXC_RETURN: the check was inlined into the handler itself, */
+        caller = (char *)__builtin_return_address(0) - 2;   /* so name the call to here (it may end the handler) */
+    km_fault_pc = caller;
+    kmicro_panic(what);
+}
+
+static inline void isr_check(void *caller, const char *what)
+{
+    if (km_in_interrupt())
+        isr_fail(caller, what);
+}
+#define KM_ISR_ALLOC "allocation inside an interrupt handler"
+
 static uint32_t *alloc_block(uint32_t object_bytes)
 {
-    /* Interrupt handlers written in Kotlin must not allocate: the handler may have interrupted another allocation
-     * or the collector (the heap is not reentrant), and a collection started here would miss references the
-     * interrupted code holds only in registers. Stop loudly instead of corrupting the heap. */
     if (s_lo == NULL)
         heap_init();
     if (object_bytes > KM_HEAP_BYTES)
         ThrowOutOfMemoryError();
     uint32_t bytes = round8(object_bytes);
 #ifdef KM_GC_STRESS
-    kmicro_gc();                                     /* stress: a full collection before every allocation */
+    collect();                                       /* stress: a full collection before every allocation */
 #endif
     uint32_t *b = take(bytes);
     if (b == NULL) {
-        kmicro_gc();
+        collect();
         b = take(bytes);
         if (b == NULL) {
             report_oom(bytes);
@@ -211,7 +263,7 @@ static uint32_t *alloc_block(uint32_t object_bytes)
     return b;
 }
 
-ObjHeader *kmicro_alloc_object(const TypeInfo *type, ObjHeader **result)
+static ObjHeader *alloc_object(const TypeInfo *type, ObjHeader **result)
 {
     if (type->flags_ & KM_TF_HAS_FINALIZER)          /* CleanerImpl / RegularWeakReferenceImpl: not in v1 */
         kmicro_panic("finalizers (Cleaner, WeakReference) are not supported");
@@ -220,7 +272,7 @@ ObjHeader *kmicro_alloc_object(const TypeInfo *type, ObjHeader **result)
     return km_return(result, o);
 }
 
-ObjHeader *kmicro_alloc_array(const TypeInfo *type, int32_t count, ObjHeader **result)
+static ObjHeader *alloc_array(const TypeInfo *type, int32_t count, ObjHeader **result)
 {
     if (count < 0)
         ThrowIllegalArgumentException();
@@ -234,62 +286,70 @@ ObjHeader *kmicro_alloc_array(const TypeInfo *type, int32_t count, ObjHeader **r
     return km_return(result, (ObjHeader *)a);
 }
 
-/* Interrupt handlers written in Kotlin must not allocate: the handler may have interrupted another allocation or
- * the collector (the heap is not reentrant), and a collection started here would miss references the interrupted
- * code holds only in registers. Stop loudly instead of corrupting the heap; km_fault_pc tells the platform which
- * code allocated (the return address into the Kotlin caller). */
-void *km_fault_pc;
-
-static void isr_alloc_check(void *caller)
+/* The runtime's own allocations (strings, stack traces) */
+ObjHeader *kmicro_alloc_object(const TypeInfo *type, ObjHeader **result)
 {
-    if (km_in_interrupt()) {
-        km_fault_pc = caller;
-        kmicro_panic("allocation inside an interrupt handler");
-    }
+    isr_check(__builtin_return_address(0), KM_ISR_ALLOC);
+    return alloc_object(type, result);
+}
+ObjHeader *kmicro_alloc_array(const TypeInfo *type, int32_t count, ObjHeader **result)
+{
+    isr_check(__builtin_return_address(0), KM_ISR_ALLOC);
+    return alloc_array(type, count, result);
 }
 
-/* Memory.h */
+/* Memory.h: the compiled code's allocations */
 KM_NOTHROW ObjHeader *AllocInstance(const TypeInfo *type, ObjHeader **result)
 {
-    isr_alloc_check(__builtin_return_address(0));
-    return kmicro_alloc_object(type, result);
+    isr_check(__builtin_return_address(0), KM_ISR_ALLOC);
+    return alloc_object(type, result);
 }
 ObjHeader *AllocArrayInstance(const TypeInfo *type, int32_t elements, ObjHeader **result)
 {
-    isr_alloc_check(__builtin_return_address(0));
-    return kmicro_alloc_array(type, elements, result);
+    isr_check(__builtin_return_address(0), KM_ISR_ALLOC);
+    return alloc_array(type, elements, result);
 }
 
 /* ---------------------------------------------------------------------------------------------------------- */
-/* reference stores (no barriers: the collector never runs concurrently)                                       */
+/* reference stores (the one barrier: km_ref_stored, for interrupt handlers storing while the collector marks)  */
 /* ---------------------------------------------------------------------------------------------------------- */
 
-KM_NOTHROW void UpdateHeapRef(ObjHeader **location, const ObjHeader *object) { *location = (ObjHeader *)object; }
+volatile uint8_t km_refs_stored;
+
+/* Stores into objects and globals (heap stores) go through the barrier. Frame slots (UpdateStackRef, UpdateReturnRef)
+ * do not: a handler only writes its own frames, and storing null (ZeroHeapRef) cannot hide an object. */
+KM_NOTHROW void UpdateHeapRef(ObjHeader **location, const ObjHeader *object)
+{
+    km_ref_stored();
+    *location = (ObjHeader *)object;
+}
 KM_NOTHROW void UpdateStackRef(ObjHeader **location, const ObjHeader *object) { *location = (ObjHeader *)object; }
 KM_NOTHROW void UpdateReturnRef(ObjHeader **slot, const ObjHeader *object) { *slot = (ObjHeader *)object; }
-KM_NOTHROW void UpdateVolatileHeapRef(ObjHeader **location, const ObjHeader *object) { *location = (ObjHeader *)object; }
+KM_NOTHROW void UpdateVolatileHeapRef(ObjHeader **location, const ObjHeader *object)
+{
+    km_ref_stored();
+    *location = (ObjHeader *)object;
+}
 KM_NOTHROW void ZeroHeapRef(ObjHeader **location) { *location = NULL; }
 KM_NOTHROW void ZeroArrayRefs(ArrayHeader *array) { memset(km_array_refs(array), 0, array->count_ * sizeof(ObjHeader *)); }
+/* AtomicReference and @Volatile read-modify-writes: atomic against interrupt handlers too (LDREX/STREX; exception
+ * entry clears the exclusive monitor, so an interrupted update retries), like the Int and Long atomics. */
 KM_NOTHROW bool CompareAndSetVolatileHeapRef(ObjHeader **location, ObjHeader *expected, ObjHeader *value)
 {
-    if (*location != expected)
-        return false;
-    *location = value;
-    return true;
+    km_ref_stored();
+    return __atomic_compare_exchange_n(location, &expected, value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
 }
 KM_NOTHROW ObjHeader *CompareAndSwapVolatileHeapRef(ObjHeader **location, ObjHeader *expected, ObjHeader *value,
                                                     ObjHeader **result)
 {
-    ObjHeader *old = *location;
-    if (old == expected)
-        *location = value;
-    return km_return(result, old);
+    km_ref_stored();
+    __atomic_compare_exchange_n(location, &expected, value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    return km_return(result, expected);              /* the old value, whether or not it was replaced */
 }
 KM_NOTHROW ObjHeader *GetAndSetVolatileHeapRef(ObjHeader **location, ObjHeader *value, ObjHeader **result)
 {
-    ObjHeader *old = *location;
-    *location = value;
-    return km_return(result, old);
+    km_ref_stored();
+    return km_return(result, __atomic_exchange_n(location, value, __ATOMIC_SEQ_CST));
 }
 
 /* ---------------------------------------------------------------------------------------------------------- */
@@ -325,7 +385,7 @@ KM_NOTHROW void CheckCurrentFrame(ObjHeader **frame)
 KM_NOTHROW void RegisterGlobal(ObjHeader **location)
 {
     if (s_nglobals == KM_GLOBALS)
-        kmicro_panic("too many globals");
+        kmicro_panic("too many globals (raise KM_GLOBALS, now " KM_STR(KM_GLOBALS) ")");
     s_globals[s_nglobals++] = location;
 }
 
@@ -339,13 +399,90 @@ void kmicro_root(ObjHeader **slot)
             s_croots[i] = slot;
             return;
         }
-    kmicro_panic("too many C roots");
+    kmicro_panic("too many C roots (raise KM_C_ROOTS, now " KM_STR(KM_C_ROOTS) ")");
 }
 void kmicro_unroot(ObjHeader **slot)
 {
     for (int i = 0; i < KM_C_ROOTS; i++)
         if (s_croots[i] == slot)
             s_croots[i] = NULL;
+}
+
+/* ---------------------------------------------------------------------------------------------------------- */
+/* StableRef: externally reference-counted references (ExternalRCRef.kt; stock mm/cpp ExternalRCRef)           */
+/* ---------------------------------------------------------------------------------------------------------- */
+
+/* StableRef.create(obj).asCPointer() is the address of a slot in this table; C keeps it as a void * (callback user
+ * data) and Kotlin turns it back with asStableRef. While the count is above zero the object is a root (create sets
+ * 1, dispose releases and frees the slot); at zero the slot is weak and the collector clears it once nothing else
+ * keeps the object. A null object has no slot: its reference is NULL. Interrupt handlers may use these too. */
+#ifndef KM_STABLE_REFS
+#define KM_STABLE_REFS 16
+#endif
+typedef struct { ObjHeader *obj; uint16_t rc; bool used; } km_stable_ref_t;
+static km_stable_ref_t s_stable[KM_STABLE_REFS];
+
+static km_stable_ref_t *stable_slot(void *ref)
+{
+    km_stable_ref_t *s = ref;
+    if (s < s_stable || s >= s_stable + KM_STABLE_REFS || !s->used)
+        kmicro_panic("not a live StableRef (used after dispose?)");
+    return s;
+}
+
+static void *stable_create(ObjHeader *obj, uint16_t rc)
+{
+    if (obj == NULL)
+        return NULL;
+    uint32_t pm = irq_save();
+    for (int i = 0; i < KM_STABLE_REFS; i++)
+        if (!s_stable[i].used) {
+            s_stable[i] = (km_stable_ref_t){ obj, rc, true };
+            km_ref_stored();                         /* a new root: a collection that is marking looks again */
+            irq_restore(pm);
+            return &s_stable[i];
+        }
+    kmicro_panic("too many StableRefs (raise KM_STABLE_REFS, now " KM_STR(KM_STABLE_REFS) ")");
+}
+
+KM_NOTHROW void *Kotlin_native_internal_ref_createRetainedExternalRCRef(ObjHeader *obj) { return stable_create(obj, 1); }
+KM_NOTHROW void *Kotlin_native_internal_ref_createUnretainedExternalRCRef(ObjHeader *obj) { return stable_create(obj, 0); }
+
+KM_NOTHROW void Kotlin_native_internal_ref_retainExternalRCRef(void *ref)
+{
+    if (ref == NULL)
+        return;
+    uint32_t pm = irq_save();
+    stable_slot(ref)->rc++;
+    km_ref_stored();                                 /* a weak slot may have become a root */
+    irq_restore(pm);
+}
+KM_NOTHROW void Kotlin_native_internal_ref_releaseExternalRCRef(void *ref)
+{
+    if (ref == NULL)
+        return;
+    uint32_t pm = irq_save();
+    km_stable_ref_t *s = stable_slot(ref);
+    if (s->rc == 0)
+        kmicro_panic("StableRef released more often than retained");
+    s->rc--;
+    irq_restore(pm);
+}
+KM_NOTHROW void Kotlin_native_internal_ref_disposeExternalRCRef(void *ref)
+{
+    if (ref == NULL)
+        return;
+    uint32_t pm = irq_save();
+    *stable_slot(ref) = (km_stable_ref_t){ NULL, 0, false };
+    irq_restore(pm);
+}
+KM_NOTHROW ObjHeader *Kotlin_native_internal_ref_dereferenceExternalRCRef(void *ref, ObjHeader **result)
+{
+    return km_return(result, ref == NULL ? NULL : stable_slot(ref)->obj);
+}
+KM_NOTHROW ObjHeader *Kotlin_native_internal_ref_dereferenceExternalRCRefOrNull(void *ref, ObjHeader **result)
+{
+    return km_return(result, ref == NULL ? NULL : stable_slot(ref)->obj);   /* NULL once a weak slot was cleared */
 }
 
 /* ---------------------------------------------------------------------------------------------------------- */
@@ -436,6 +573,9 @@ static void mark_roots(void)
     for (int i = 0; i < KM_C_ROOTS; i++)
         if (s_croots[i] != NULL)
             root(*s_croots[i]);
+    for (int i = 0; i < KM_STABLE_REFS; i++)
+        if (s_stable[i].rc > 0)
+            root(s_stable[i].obj);
     extern void kmicro_eh_roots(void (*visit)(ObjHeader *));
     kmicro_eh_roots(root);                           /* an exception in flight */
 }
@@ -484,18 +624,59 @@ static void sweep(void)
     if (run != NULL)
         push_free(run, run_size);
     s_st.used_bytes = used;
+    if (used > s_st.live_peak_bytes)
+        s_st.live_peak_bytes = used;
+}
+
+static void remark(void)                            /* the roots and every marked object's fields again */
+{
+    mark_roots();
+    s_mark_overflow = true;
+    drain();
+}
+
+/* Marking runs with interrupts enabled. A handler that moves a reference meanwhile, from a slot not scanned yet to
+ * one already scanned (a buffer swap), would hide a live object, so km_ref_stored() records every reference store
+ * made during marking, and marking repeats until a pass ends without one: then the reference graph did not change
+ * during a complete pass. A pass from the roots alone would not do, since it stops at marked objects whose fields
+ * may have changed. If handlers keep storing, the last pass (after KM_GC_REMARKS) runs with interrupts masked. */
+static void mark(void)
+{
+    s_msp = 0;
+    s_mark_overflow = false;
+    km_refs_stored = 0;                              /* only interrupt handlers store from here on */
+    mark_roots();
+    drain();
+    uint32_t pm = irq_save();
+    for (int pass = 0; km_refs_stored && pass < KM_GC_REMARKS; pass++) {
+        km_refs_stored = 0;
+        irq_restore(pm);
+        remark();
+        pm = irq_save();
+    }
+    if (km_refs_stored)
+        remark();
+    for (int i = 0; i < KM_STABLE_REFS; i++) {      /* weak StableRef slots: forget objects about to be freed */
+        ObjHeader *o = s_stable[i].obj;
+        if (s_stable[i].rc == 0 && o != NULL && in_heap(o) && !(*(uint32_t *)o & MARK_BIT))
+            s_stable[i].obj = NULL;
+    }
+    irq_restore(pm);
+}
+
+static void collect(void)
+{
+    if (s_lo == NULL)
+        heap_init();
+    mark();
+    sweep();
+    s_st.gc_count++;
 }
 
 void kmicro_gc(void)
 {
-    if (s_lo == NULL)
-        heap_init();
-    s_msp = 0;
-    s_mark_overflow = false;
-    mark_roots();
-    drain();
-    sweep();
-    s_st.gc_count++;
+    isr_check(__builtin_return_address(0), "garbage collection inside an interrupt handler");
+    collect();
 }
 
 void kmicro_stats(kmicro_stats_t *out)

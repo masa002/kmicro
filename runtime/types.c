@@ -132,23 +132,25 @@ KM_NOTHROW ObjHeader *Kotlin_Array_get_without_BoundCheck(const ObjHeader *a, in
 void Kotlin_Array_set(ObjHeader *a, int32_t i, const ObjHeader *v)
 {
     bounds((const ArrayHeader *)a, i);
-    km_array_refs((ArrayHeader *)a)[i] = (ObjHeader *)v;
+    UpdateHeapRef(&km_array_refs((ArrayHeader *)a)[i], v);
 }
 KM_NOTHROW void Kotlin_Array_set_without_BoundCheck(ObjHeader *a, int32_t i, const ObjHeader *v)
 {
-    km_array_refs((ArrayHeader *)a)[i] = (ObjHeader *)v;
+    UpdateHeapRef(&km_array_refs((ArrayHeader *)a)[i], v);
 }
 KM_NOTHROW int32_t Kotlin_Array_getArrayLength(const ObjHeader *a) { return (int32_t)((const ArrayHeader *)a)->count_; }
 void Kotlin_Array_fillImpl(ObjHeader *a, int32_t from, int32_t to, ObjHeader *v)
 {
     ArrayHeader *h = (ArrayHeader *)a;
     checkRangeIndexes(from, to, (int32_t)h->count_);
+    km_ref_stored();
     for (int32_t i = from; i < to; i++)
         km_array_refs(h)[i] = v;
 }
 void Kotlin_Array_copyImpl(const ObjHeader *a, int32_t from, ObjHeader *d, int32_t to, int32_t n)
 {
     copy_check((const ArrayHeader *)a, from, (const ArrayHeader *)d, to, n);
+    km_ref_stored();
     memmove(km_array_refs((ArrayHeader *)d) + to, km_array_refs((ArrayHeader *)a) + from, (size_t)n * sizeof(ObjHeader *));
 }
 extern const ArrayHeader theEmptyArray;
