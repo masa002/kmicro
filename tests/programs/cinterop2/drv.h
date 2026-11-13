@@ -19,8 +19,8 @@ int32_t sum_va(int32_t n, ...);                 /* varargs */
 
 uint32_t plain_fn(uint32_t v);
 
-/* static inline helpers, compiled into the program by cinterop: a loop, an immediate in inline assembly and a
- * string constant with a '#' in it */
+/* static inline helpers, compiled into the program by cinterop: a loop, an immediate in inline assembly, a string
+ * constant with a '#' in it, and restrict pointers (inlined, they leave a noalias scope in the code) */
 static inline uint32_t sum_to(uint32_t n)
 {
     uint32_t s = 0;
@@ -37,5 +37,20 @@ static inline uint32_t add_one_asm(uint32_t v)
 }
 
 static inline const char *slot_name(void) { return "slot #1"; }
+
+static inline void copy_n(int32_t *restrict dst, const int32_t *restrict src, int32_t n)
+{
+    for (int32_t i = 0; i < n; i++)
+        dst[i] = src[i];
+}
+
+static inline int32_t copy_sum(int32_t *restrict dst, const int32_t *restrict src, int32_t n)
+{
+    copy_n(dst, src, n);
+    int32_t s = 0;
+    for (int32_t i = 0; i < n; i++)
+        s += dst[i];
+    return s;
+}
 
 #endif

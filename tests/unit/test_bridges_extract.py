@@ -89,7 +89,8 @@ declare void @p_make(ptr dead_on_unwind writable sret(%struct._h_1_struct3) alig
 define i32 @p_sum_to_wrapper1(i32 noundef %0) #6 {
   %2 = load i32, ptr @p_count, align 4, !tbaa !15
   %3 = tail call i32 asm "add $0, $1, #1", "=r,r"(i32 %2) #9, !srcloc !21
-  %4 = load i8, ptr @.str, align 1
+  tail call void @llvm.experimental.noalias.scope.decl(metadata !30)
+  %4 = load i8, ptr @.str, align 1, !alias.scope !30, !noalias !33
   br label %5
 
 5:
@@ -110,6 +111,11 @@ attributes #102 = { nounwind }
 
 !15 = !{!"tbaa"}
 !21 = !{i64 1}
+!30 = !{!31}
+!31 = distinct !{!31, !32, !"p_sum_to: argument 0"}
+!32 = distinct !{!32, !"p_sum_to"}
+!33 = !{!34}
+!34 = distinct !{!34, !32, !"p_sum_to: argument 1"}
 !1224 = distinct !{!1224}
 '''
 
@@ -136,12 +142,18 @@ class Extract(unittest.TestCase):
         self.assertNotIn('%struct.unused', self.text)
         self.assertNotIn('%struct.TypeInfo', self.text)
 
-    def test_metadata_and_attribute_groups_are_dropped_outside_strings(self):
-        self.assertNotIn('!', self.text)
+    def test_metadata_attachments_and_attribute_groups_are_dropped_outside_strings(self):
+        for attachment in ('!tbaa', '!srcloc', '!llvm.loop', '!alias.scope', '!noalias', '!15', '!21', '!1224'):
+            self.assertNotIn(attachment, self.text)
         self.assertNotIn(') #', self.text)
         self.assertIn('asm "add $0, $1, #1", "=r,r"(i32 %2)\n', self.text)
         self.assertIn('c"slot #1\\00"', self.text)
         self.assertIn('br i1 %8, label %9, label %5\n', self.text)
+
+    def test_metadata_operands_are_copied_with_the_nodes_inside_them(self):
+        self.assertIn('call void @llvm.experimental.noalias.scope.decl(metadata !30)\n', self.text)
+        self.assertTrue(self.text.endswith('}\n\n!30 = !{!31}\n!31 = distinct !{!31, !32, !"p_sum_to: argument 0"}\n'
+                                           '!32 = distinct !{!32, !"p_sum_to"}\n'), self.text[-200:])
 
     def test_summary_names_the_c_functions_and_globals(self):
         self.assertTrue(self.summary.endswith('C: p_count p_make'), self.summary)

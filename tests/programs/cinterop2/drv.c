@@ -38,6 +38,7 @@ int32_t kt_varargs(void) __asm__("kfun:#varargs(){}kotlin.Int");
 int32_t kt_inline_loop(void) __asm__("kfun:#inlineLoop(){}kotlin.Int");
 int32_t kt_inline_asm(void) __asm__("kfun:#inlineAsm(){}kotlin.Int");
 int32_t kt_inline_string(void) __asm__("kfun:#inlineString(){}kotlin.Int");
+int32_t kt_inline_restrict(void) __asm__("kfun:#inlineRestrict(){}kotlin.Int");
 
 static int s_wrong;
 static void check(const char *what, int32_t v, int32_t want)
@@ -60,6 +61,7 @@ int main(void)
     check("inlineLoop() = ", kt_inline_loop(), 10);
     check("inlineAsm() = ", kt_inline_asm(), 42);
     check("inlineString() = ", kt_inline_string(), 1);
+    check("inlineRestrict() = ", kt_inline_restrict(), 18);
     check("drv_counter = ", drv_counter, 15);
     kmicro_puts(s_wrong ? "cinterop2: WRONG\n" : "cinterop2: all OK\n");
     return s_wrong ? 1 : 0;

@@ -12,8 +12,9 @@ side of each callback and only declares the other bridges and the C-callable stu
 globals and the wrappers come from the compiler's C stubs, linked in later together with the stock runtime. This tool
 copies exactly those pieces and the types they use into a small module, and declares what they reference: the C
 functions and globals, and every name Codegen knows (the Kotlin side of a callback comes from k.o, runtime functions
-from the kmicro runtime). Full LTO then folds each chain into a direct call. Attribute groups and metadata are dropped
-(retarget.py gives the definitions the Cortex-M4 attributes); string constants and inline assembly keep their text.
+from the kmicro runtime). Full LTO then folds each chain into a direct call. Attribute groups and metadata attachments
+are dropped (retarget.py gives the definitions the Cortex-M4 attributes); metadata used as an operand is copied, and
+string constants and inline assembly keep their text.
 """
 import argparse
 import re
@@ -48,6 +49,11 @@ def names(text, sigil):
     return {m.group(2) for m in TOKEN.finditer(text) if m.group(1) == sigil}
 
 
+def metadata(text):
+    """The numbered metadata (!12) that IR text uses, outside string constants."""
+    return {n for part in re.split(r'"[^"]*"', text) for n in re.findall(r'!(\d+)', part)}
+
+
 def outside_strings(fn, s):
     """fn applied to the parts of s that are not quoted (string constants, inline assembly, quoted names)."""
     return ''.join(p if p.startswith('"') else fn(p) for p in re.split(r'("[^"]*")', s))
@@ -55,7 +61,7 @@ def outside_strings(fn, s):
 
 def clean(s):
     """Without metadata attachments (!tbaa !7, !llvm.loop !12, !srcloc !3 ...) and attribute groups (#4): neither the
-    metadata nor the attribute groups are copied."""
+    attachments' metadata nor the attribute groups are copied."""
     return outside_strings(lambda p: re.sub(r'\s#\d+(?=\s|$)', '', re.sub(r',? ![\w.]+ !\d+', '', p)), s)
 
 
@@ -113,13 +119,21 @@ def extract(lbd, codegen):
         t = todo.pop()
         used.add(t)
         todo |= (names(types[t][1], '%') & set(types)) - used
+    # metadata that is still an operand, not an attachment (the noalias scope of an inlined `restrict` parameter), and
+    # the nodes inside it
+    nodes = {m.group(1): m.group(0) for m in re.finditer(r'^!(\d+) = .*$', lbd, re.M)}
+    md, todo = set(), set().union(*(metadata(p) for p in pieces)) & set(nodes)
+    while todo:
+        t = todo.pop()
+        md.add(t)
+        todo |= (metadata(nodes[t]) & set(nodes)) - md
 
     def ordered(d):                                     # numbered names (@0, %3) must keep increasing in the file
         return [clean(t) for _, t in sorted(d.values())]
     header = [l for l in lbd.splitlines() if l.startswith(('target datalayout', 'target triple'))]
     text = '\n'.join(['; cinterop bridges extracted by kmicro toolchain/bridges.py', *header, '',
                       *ordered({t: types[t] for t in used}), '', *ordered(out_globs), '',
-                      *ordered({**out_decls, **out_defs})]) + '\n'
+                      *ordered({**out_decls, **out_defs}), *(nodes[n] for n in sorted(md, key=int))]) + '\n'
     external = {n for n in out_globs if EXTERNAL.match(out_globs[n][1])}
     calls_c = sorted(n for n in [*out_decls, *external] if n not in kotlin)
     summary = (f'bridges: {sum("knbridge" in n for n in roots)} Kotlin->C bridges, '

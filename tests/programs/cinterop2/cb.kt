@@ -40,3 +40,10 @@ fun inlineString(): Int {
     println("slot_name() = \"$s\"")
     return if (s == "slot #1") 1 else 0
 }
+
+fun inlineRestrict(): Int = memScoped {
+    val src = allocArray<IntVar>(4)
+    val dst = allocArray<IntVar>(4)
+    for (i in 0 until 4) src[i] = i * 3
+    copy_sum(dst, src, 4)
+}
