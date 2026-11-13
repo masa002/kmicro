@@ -231,20 +231,120 @@ def _type_list(params):
     return ', '.join(p.split()[0] for p in filter(None, (x.strip() for x in params.split(','))))
 
 
+IR_TYPES = ('void', 'i1', 'i8', 'i16', 'i32', 'i64', 'float', 'double', 'ptr', '...')
+
+
+def ir_signature(ret_words, params):
+    """IR declaration parts -> ((return type, extension), [(parameter type, extension)]): the ABI a C caller sees.
+    The extension is signext, zeroext or '' (an i8/i16/i1 argument is widened by the caller)."""
+    def one(words):
+        t = next((w for w in words if w in IR_TYPES or w.startswith(('{', '%', '['))), '?')
+        return t, next((w for w in words if w in ('signext', 'zeroext')), '')
+    return one(ret_words.split()), [one(p.split()) for p in filter(None, (x.strip() for x in params.split(',')))]
+
+
 def kotlin_functions(ll_text, package):
-    """Top-level functions of `package` defined in the IR: Kotlin name -> [(symbol, return type, parameter types)]."""
+    """Top-level functions of `package` defined in the IR: Kotlin name -> [(symbol, return type, parameter types,
+    ir_signature())]."""
     defs = {}
     pat = r'^define ([^@]*?)@"(kfun:' + re.escape(package) + r'#([A-Za-z0-9_]+)\([^"]*)"\(([^)]*)\)'
     for m in re.finditer(pat, ll_text, re.M):
         ret = [w for w in m.group(1).split() if w not in ('internal', 'dso_local', 'zeroext', 'signext', 'noundef',
                                                           'nonnull', 'hidden', 'local_unnamed_addr')][-1]
-        defs.setdefault(m.group(3), []).append((m.group(2), ret, _type_list(m.group(4))))
+        defs.setdefault(m.group(3), []).append((m.group(2), ret, _type_list(m.group(4)),
+                                                ir_signature(m.group(1), m.group(4))))
     return defs
 
 
-def add_c_aliases(ll_text, cnames, package, prefix=''):
+C_PRIMITIVES = {'kotlin.Int', 'kotlin.Long', 'kotlin.Short', 'kotlin.Byte', 'kotlin.Float', 'kotlin.Double',
+                'kotlin.Boolean', 'kotlin.Char', 'kotlin.UInt', 'kotlin.ULong', 'kotlin.UShort', 'kotlin.UByte'}
+
+
+def kotlin_signature(sym):
+    """A Kotlin function symbol -> (parameter types, return type), '' for Unit:
+    'kfun:app#hello(kotlin.Int;kotlin.String){}kotlin.String' -> (['kotlin.Int', 'kotlin.String'], 'kotlin.String')."""
+    s = sym.split('#', 1)[1]
+    start = s.index('(')
+    depth, params, cur = 0, [], ''
+    for i in range(start + 1, len(s)):
+        c = s[i]
+        if c == ')' and depth == 0:
+            break
+        if c in '<(':
+            depth += 1
+        elif c in '>)':
+            depth -= 1
+        if c == ';' and depth == 0:
+            params.append(cur)
+            cur = ''
+        else:
+            cur += c
+    params += [cur] if cur else []
+    rest = s[i + 1:]
+    return params, rest[rest.index('}') + 1:] if rest.startswith('{') else rest
+
+
+def crosses_to_c(kotlin_type, result=False):
+    """Whether a Kotlin parameter or result type has a plain C equivalent: a primitive (not nullable: that is a boxed
+    object), an unsigned number, a CPointer or NativePtr, or Unit ('') or Nothing (void) as a result."""
+    return (kotlin_type in C_PRIMITIVES or (result and kotlin_type in ('', 'kotlin.Nothing'))
+            or kotlin_type.startswith('kotlinx.cinterop.CPointer<')
+            or kotlin_type in ('kotlin.native.internal.NativePtr', 'kotlinx.cinterop.NativePtr'))
+
+
+def _show_sig(sig):
+    (rt, rx), ps = sig
+    return f'{rt} ({", ".join(t for t, _ in ps)})'
+
+
+def check_c_signature(cname, sym, kotlin_sig, c_sig=None, c_text=None):
+    """Error messages (empty when fine) for a C name that becomes an alias of the Kotlin function `sym`: every Kotlin
+    parameter and result must have a plain C type, and the C prototype (c_sig, an ir_signature() of what clang made
+    of it) must have the same IR types and argument extensions."""
+    params, ret = kotlin_signature(sym)
+    kname = sym.split('#', 1)[1].split('(', 1)[0]
+    bad = [f'returns {ret}'] if not crosses_to_c(ret, result=True) else []
+    bad += [f'takes {t}' for t in params if not crosses_to_c(t)]
+    if bad:
+        return [f'{cname}: Kotlin {kname} {" and ".join(bad)}; only primitives, unsigned numbers and CPointer can '
+                'cross to C (pass other data through a CPointer, or keep it on the Kotlin side)']
+    if c_sig is None or c_sig == kotlin_sig:
+        return []
+    if c_sig[1] == [('...', '')] and not kotlin_sig[1] and c_sig[0] == kotlin_sig[0]:
+        return []                              # `void f();` (no parameter list) for a Kotlin function without any
+    if c_sig[1] and c_sig[1][-1][0] == '...':
+        return [f'{cname}: the C prototype is variadic or has no parameter list; declare it as `{cname}(void)` or '
+                'with its parameters']
+    return [f'{cname}: the C prototype {c_text or _show_sig(c_sig)} does not match Kotlin {kname}({";".join(params)})'
+            f'{": " + ret if ret else ""} (C: {_show_sig(c_sig)}; Kotlin: {_show_sig(kotlin_sig)}'
+            + ('; signed/unsigned differs' if [t for t, _ in c_sig[1]] == [t for t, _ in kotlin_sig[1]]
+               and c_sig[0][0] == kotlin_sig[0][0] else '') + ')']
+
+
+def c_signatures(headers, names, include_dirs=(), defines=(), work=None):
+    """C name -> ir_signature() of its prototype as clang lowers it for the Cortex-M4 (the ABI a C caller uses)."""
+    if not names:
+        return {}
+    headers = [Path(h).resolve() for h in headers]
+    src = Path(work or '.') / 'c_api_check.c'
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text(''.join(f'#include "{h.as_posix()}"\n' for h in headers)
+                   + 'void *const kmicro_c_api[] = {\n' + ''.join(f'    (void *)&{n},\n' for n in names) + '};\n',
+                   encoding='utf-8')
+    dirs = [*dict.fromkeys(h.parent for h in headers), *include_dirs]
+    ll = _clang_c([*c_flags(headers[0], dirs, defines), '-S', '-emit-llvm', '-O0', '-o', '-', src],
+                  ', '.join(map(str, headers)))
+    sigs = {}
+    for m in re.finditer(r'^declare ([^@]*)@"?([\w.$]+)"?\(([^)]*)\)', ll, re.M):
+        sigs[m.group(2)] = ir_signature(m.group(1), m.group(3))
+    return sigs
+
+
+def add_c_aliases(ll_text, cnames, package, prefix='', c_sigs=None, c_texts=None):
     """`@<prefix><cname> = alias ...` for every C name whose camelCase Kotlin function exists in `package`. Returns the
-    alias lines and the C names that found no Kotlin function. Two C names with one Kotlin name are an error."""
+    alias lines and the C names that found no Kotlin function. Two C names with one Kotlin name are an error, and so
+    is a Kotlin function whose types cannot cross to C or (with c_sigs from c_signatures()) do not match the C
+    prototype."""
     cnames = list(dict.fromkeys(cnames))
     seen = {}
     for cname in cnames:
@@ -253,7 +353,7 @@ def add_c_aliases(ll_text, cnames, package, prefix=''):
             sys.exit(f'kmicro: the C names {other} and {cname} both become the Kotlin name {camel(cname)}: rename '
                      'one of them')
     defs = kotlin_functions(ll_text, package)
-    lines, missing = [], []
+    lines, missing, errors = [], [], []
     for cname in cnames:
         name = next((n for n in kotlin_names(cname) if n in defs), None)
         if name is None:
@@ -265,8 +365,11 @@ def add_c_aliases(ll_text, cnames, package, prefix=''):
         k = defs[name]
         if len(k) > 1:
             sys.exit(f'kmicro: overloaded Kotlin function for {cname}: {[x[0] for x in k]}')
-        sym, ret, params = k[0]
+        sym, ret, params, sig = k[0]
+        errors += check_c_signature(cname, sym, sig, (c_sigs or {}).get(cname), (c_texts or {}).get(cname))
         lines.append(f'@{prefix}{cname} = alias {ret} ({params}), ptr @"{sym}"')
+    if errors:
+        sys.exit('kmicro: ' + '\nkmicro: '.join(errors))
     return lines, missing
 
 
@@ -304,7 +407,12 @@ def c_prototypes(*headers, include_dirs=(), defines=()):
     """Names of the functions the headers themselves declare without a body, exactly as a C compiler reads them
     (clang's syntax tree): extern prototypes and prototypes made by macros count; static inline functions, calls
     inside their bodies, inactive #if blocks and the headers they include do not."""
-    names = []
+    return list(c_declarations(*headers, include_dirs=include_dirs, defines=defines))
+
+
+def c_declarations(*headers, include_dirs=(), defines=()):
+    """c_prototypes() with each function's C type: name -> 'int32_t (int32_t)'."""
+    names = {}
     for h in headers:
         h = Path(h)
         if not h.exists():
@@ -332,9 +440,9 @@ def c_prototypes(*headers, include_dirs=(), defines=()):
             if any(c.get('kind') == 'CompoundStmt' for c in node.get('inner', [])):
                 bodies.add(node['name'])
             elif node.get('storageClass') != 'static':
-                found.append(node['name'])
-        names += [n for n in found if n not in bodies and n not in names]
-    return list(dict.fromkeys(names))
+                found.append((node['name'], node.get('type', {}).get('qualType', '?')))
+        names.update((n, t) for n, t in found if n not in bodies and n not in names)
+    return names
 
 
 def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, size=False, hot=None, force=False,
@@ -364,8 +472,10 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
         if package is None:
             sys.exit('kmicro: c_api and init_all (--c-api, --init-all) need the Kotlin package (--package)')
         text = ll.read_text(encoding='utf-8')
-        names = [n for n in c_prototypes(*c_api, include_dirs=include_dirs) if n != init_all]
-        lines, missing = add_c_aliases(text, names, package)
+        decls = c_declarations(*c_api, include_dirs=include_dirs)
+        names = [n for n in decls if n != init_all]
+        lines, missing = add_c_aliases(text, names, package, c_sigs=c_signatures(c_api, names, include_dirs, work=out),
+                                       c_texts=decls)
         if missing:
             sys.exit(f'kmicro: no Kotlin function in package {package} for: '
                      + ', '.join(f'{c} (expected {camel(c)})' for c in missing))
