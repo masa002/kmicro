@@ -193,22 +193,43 @@ static void report_oom(uint32_t bytes)
     kmicro_puts(" free blocks\n");
 }
 
+static void collect(void);
+
+/* Interrupt handlers written in Kotlin must not allocate or collect: the handler may have interrupted another
+ * allocation or the collector (the heap is not reentrant), and a collection started there would miss references
+ * the interrupted code holds only in registers. Stop loudly instead of corrupting the heap. Every heap allocation
+ * (the compiled code's and the runtime's own, e.g. Int.toString) and every collection passes one of these checks;
+ * km_fault_pc is the return address into the code that asked, and kmicro_panic prints it. */
+void *km_fault_pc;
+
+__attribute__((noinline, cold, noreturn)) static void isr_fail(void *caller, const char *what)
+{
+    if ((uintptr_t)caller >= 0xF0000000u)            /* EXC_RETURN: the check was inlined into the handler itself, */
+        caller = (char *)__builtin_return_address(0) - 2;   /* so name the call to here (it may end the handler) */
+    km_fault_pc = caller;
+    kmicro_panic(what);
+}
+
+static inline void isr_check(void *caller, const char *what)
+{
+    if (km_in_interrupt())
+        isr_fail(caller, what);
+}
+#define KM_ISR_ALLOC "allocation inside an interrupt handler"
+
 static uint32_t *alloc_block(uint32_t object_bytes)
 {
-    /* Interrupt handlers written in Kotlin must not allocate: the handler may have interrupted another allocation
-     * or the collector (the heap is not reentrant), and a collection started here would miss references the
-     * interrupted code holds only in registers. Stop loudly instead of corrupting the heap. */
     if (s_lo == NULL)
         heap_init();
     if (object_bytes > KM_HEAP_BYTES)
         ThrowOutOfMemoryError();
     uint32_t bytes = round8(object_bytes);
 #ifdef KM_GC_STRESS
-    kmicro_gc();                                     /* stress: a full collection before every allocation */
+    collect();                                       /* stress: a full collection before every allocation */
 #endif
     uint32_t *b = take(bytes);
     if (b == NULL) {
-        kmicro_gc();
+        collect();
         b = take(bytes);
         if (b == NULL) {
             report_oom(bytes);
@@ -218,7 +239,7 @@ static uint32_t *alloc_block(uint32_t object_bytes)
     return b;
 }
 
-ObjHeader *kmicro_alloc_object(const TypeInfo *type, ObjHeader **result)
+static ObjHeader *alloc_object(const TypeInfo *type, ObjHeader **result)
 {
     if (type->flags_ & KM_TF_HAS_FINALIZER)          /* CleanerImpl / RegularWeakReferenceImpl: not in v1 */
         kmicro_panic("finalizers (Cleaner, WeakReference) are not supported");
@@ -227,7 +248,7 @@ ObjHeader *kmicro_alloc_object(const TypeInfo *type, ObjHeader **result)
     return km_return(result, o);
 }
 
-ObjHeader *kmicro_alloc_array(const TypeInfo *type, int32_t count, ObjHeader **result)
+static ObjHeader *alloc_array(const TypeInfo *type, int32_t count, ObjHeader **result)
 {
     if (count < 0)
         ThrowIllegalArgumentException();
@@ -241,30 +262,28 @@ ObjHeader *kmicro_alloc_array(const TypeInfo *type, int32_t count, ObjHeader **r
     return km_return(result, (ObjHeader *)a);
 }
 
-/* Interrupt handlers written in Kotlin must not allocate: the handler may have interrupted another allocation or
- * the collector (the heap is not reentrant), and a collection started here would miss references the interrupted
- * code holds only in registers. Stop loudly instead of corrupting the heap; km_fault_pc tells the platform which
- * code allocated (the return address into the Kotlin caller). */
-void *km_fault_pc;
-
-static void isr_alloc_check(void *caller)
+/* The runtime's own allocations (strings, stack traces) */
+ObjHeader *kmicro_alloc_object(const TypeInfo *type, ObjHeader **result)
 {
-    if (km_in_interrupt()) {
-        km_fault_pc = caller;
-        kmicro_panic("allocation inside an interrupt handler");
-    }
+    isr_check(__builtin_return_address(0), KM_ISR_ALLOC);
+    return alloc_object(type, result);
+}
+ObjHeader *kmicro_alloc_array(const TypeInfo *type, int32_t count, ObjHeader **result)
+{
+    isr_check(__builtin_return_address(0), KM_ISR_ALLOC);
+    return alloc_array(type, count, result);
 }
 
-/* Memory.h */
+/* Memory.h: the compiled code's allocations */
 KM_NOTHROW ObjHeader *AllocInstance(const TypeInfo *type, ObjHeader **result)
 {
-    isr_alloc_check(__builtin_return_address(0));
-    return kmicro_alloc_object(type, result);
+    isr_check(__builtin_return_address(0), KM_ISR_ALLOC);
+    return alloc_object(type, result);
 }
 ObjHeader *AllocArrayInstance(const TypeInfo *type, int32_t elements, ObjHeader **result)
 {
-    isr_alloc_check(__builtin_return_address(0));
-    return kmicro_alloc_array(type, elements, result);
+    isr_check(__builtin_return_address(0), KM_ISR_ALLOC);
+    return alloc_array(type, elements, result);
 }
 
 /* ---------------------------------------------------------------------------------------------------------- */
@@ -495,7 +514,7 @@ static void sweep(void)
         s_st.live_peak_bytes = used;
 }
 
-void kmicro_gc(void)
+static void collect(void)
 {
     if (s_lo == NULL)
         heap_init();
@@ -505,6 +524,12 @@ void kmicro_gc(void)
     drain();
     sweep();
     s_st.gc_count++;
+}
+
+void kmicro_gc(void)
+{
+    isr_check(__builtin_return_address(0), "garbage collection inside an interrupt handler");
+    collect();
 }
 
 void kmicro_stats(kmicro_stats_t *out)

@@ -93,10 +93,18 @@ void kmicro_put_int(int32_t v)
     kmicro_puts(p);
 }
 
+/* "... at 0x0800abcd": tools/symbolize.py turns the address into the function that made the faulting call. */
 __attribute__((noreturn)) void kmicro_panic(const char *what)
 {
     kmicro_puts("kmicro panic: ");
     kmicro_puts(what);
+    if (km_fault_pc != NULL) {
+        char b[] = " at 0x00000000";
+        uint32_t v = (uint32_t)km_fault_pc & ~1u;    /* without the Thumb bit, as in stack traces */
+        for (int i = 0; i < 8; i++)
+            b[13 - i] = "0123456789abcdef"[(v >> (4 * i)) & 15u];
+        kmicro_puts(b);
+    }
     kmicro_puts("\n");
     extern void kmicro_exit(int);
     kmicro_exit(98);

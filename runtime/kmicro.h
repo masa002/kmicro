@@ -100,6 +100,7 @@ extern const TypeInfo *theArrayTypeInfo, *theStringTypeInfo, *theCharArrayTypeIn
 void kmicro_puts(const char *s);
 void kmicro_put_int(int32_t v);
 __attribute__((noreturn)) void kmicro_panic(const char *what);
+extern void *km_fault_pc;                            /* set before a panic: the return address of the faulting call */
 
 /* True inside an exception/interrupt handler (Cortex-M IPSR != 0); always false where there is no IPSR. */
 static inline int km_in_interrupt(void)
