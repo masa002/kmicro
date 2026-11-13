@@ -15,7 +15,9 @@ on QEMU's STM32L475 and checks:
 - the output, line by line against tests/expected/<name>.txt. There {N} stands for a number, {X} for hex digits and
   {*} for any text within a line, and a line {...} for any number of lines: they mark what differs between runs or
   under --stress, such as heap statistics, addresses and times;
-- that qbuild stubbed no runtime native (a board link would fail on it).
+- that qbuild stubbed no runtime native (a board link would fail on it);
+- that the image fits the STM32L431 kmicro aims at: flash (text + data) at most 256 KB, RAM (data + bss: the heap,
+  the runtime's tables, the globals) at most 64 KB, unless the test is marked large with the reason.
 
 A test can instead expect its link to fail, with qbuild's message in its expected file. What a test is compared on
 is written to build/t/<name>/run.log, with the checkout's folder written as $ROOT. To add a test: add it to TESTS,
@@ -37,6 +39,7 @@ import kn  # noqa: E402
 
 BUILD = ROOT / 'build/t'
 EXPECTED = ROOT / 'tests/expected'
+FLASH, RAM = 256 * 1024, 64 * 1024          # the STM32L431
 
 
 @dataclass
@@ -55,6 +58,7 @@ class Test:
     heap: int = 16384                   # KM_HEAP_BYTES
     exit: int = 0                       # the program's exit code (QEMU's), or qbuild's when the link must fail
     fails: bool = False                 # the link must fail
+    large: str = None                   # why the image may exceed the STM32L431
 
 
 HELLO = Kotlin('hello', ['examples/hello/hello.kt'], dict(c_api=['examples/hello/hello.h'], package='hello'))
@@ -179,17 +183,23 @@ def run_test(t, args):
         print(indented(''.join(log) + out), end='')
     if t.fails:
         got, note = out, 'the link fails as expected'
+        (d / 'run.log').write_text(got, encoding='utf-8', newline='\n')
     else:
         size, end = QBUILD_SIZE.search(out), QEMU_END.search(out)
         if not size or not end:
             raise Failed(f'qbuild failed (exit {rc})\n' + out[-3000:])
         got = out[size.end():end.start()]
+        (d / 'run.log').write_text(got, encoding='utf-8', newline='\n')
         stubs = QBUILD_STUBS.search(out)
         if stubs:
             raise Failed('qbuild stubbed runtime natives that kmicro does not implement\n' + stubs.group(0))
         text, data, bss = map(int, size.groups())
         note = f'flash {(text + data) / 1024:5.1f} KB  RAM {(data + bss) / 1024:4.1f} KB'
-    (d / 'run.log').write_text(got, encoding='utf-8', newline='\n')
+        if (text + data > FLASH or data + bss > RAM) and not t.large:
+            raise Failed(f'does not fit the STM32L431 (256 KB flash, 64 KB RAM): {note} (text {text}, data {data}, '
+                         f'bss {bss}); shrink it, or mark the test large with the reason')
+        if t.large:
+            note += f'  (large: {t.large})'
     if rc != t.exit:
         raise Failed(f'exit {rc}, expected {t.exit}\n' + '\n'.join(got.splitlines()[-15:]))
     compare(t.name, got)

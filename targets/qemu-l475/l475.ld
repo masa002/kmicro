@@ -1,6 +1,7 @@
 /* QEMU b-l475e-iot01a (STM32L475VG: 1 MB flash at 0x08000000, SRAM1 96 KB at 0x20000000).
- * The emulated chip is larger than the STM32L431 kmicro aims at (256 KB flash, 64 KB RAM), and nothing checks a
- * program against the smaller chip here: compare the size line qbuild prints.
+ * The emulated chip is larger than the STM32L431 kmicro aims at (256 KB flash, 64 KB RAM). This script does not
+ * hold a program to the smaller chip; tests/run_all.py and tools/difftest.py do, from the size line qbuild prints,
+ * and fail a program that does not fit unless it is marked large.
  * RAM: .data, .bss (the Kotlin heap and the runtime's globals), a 256-byte guard, then the stack up to the top. The
  * guard is an MPU no-access region (start.c): an overflowing stack faults there before it writes .bss. */
 MEMORY
