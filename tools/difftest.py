@@ -104,7 +104,7 @@ def kmicro(name, src, opts, stress, size):
     defs = [*(['-D', f'KM_HEAP_BYTES={opts["heap"]}'] if 'heap' in opts else []),
             *(['-D', 'KM_GC_STRESS=1'] if stress else [])]
     r = subprocess.run([sys.executable, ROOT / 'tools/qbuild.py', elf, DIFF / 'driver.c', *objs, *defs],
-                       capture_output=True, text=True, errors='replace')
+                       capture_output=True, encoding='utf-8', errors='replace')
     if r.returncode != 0:
         raise Failure('qbuild failed\n' + (r.stdout + r.stderr)[-2000:])
     notes = [l for l in r.stdout.splitlines() if l.startswith('qbuild: warning')]
@@ -112,9 +112,10 @@ def kmicro(name, src, opts, stress, size):
     text, data, bss = map(int, m.groups())
     timeout = 3000 if stress else 300                # stress collects before every allocation: legitimately slow
     try:
-        q = subprocess.run([str(paths.qemu_system_arm()), '-machine', 'b-l475e-iot01a', '-nographic',
-                            '-semihosting-config', 'enable=on,target=native', '-kernel', str(elf), '-serial', 'none',
-                            '-monitor', 'none'], capture_output=True, timeout=timeout)
+        # in the image's folder, with its bare name: on Windows QEMU opens files through the ANSI code page
+        q = subprocess.run([str(paths.qemu_system_arm().resolve()), '-machine', 'b-l475e-iot01a', '-nographic',
+                            '-semihosting-config', 'enable=on,target=native', '-kernel', elf.name, '-serial', 'none',
+                            '-monitor', 'none'], capture_output=True, timeout=timeout, cwd=elf.parent)
     except subprocess.TimeoutExpired:
         raise Failure(f'QEMU timed out after {timeout} s') from None
     out = q.stderr.replace(b'\r\n', b'\n')           # QEMU writes semihosting output to stderr
