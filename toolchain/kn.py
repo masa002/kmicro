@@ -43,25 +43,68 @@ def argfile(path, args):
                           encoding='utf-8')
 
 
+def kotlin_files(srcs):
+    """The Kotlin files a compile reads: each source, a folder standing for the .kt files under it. A missing one is
+    an error."""
+    files = []
+    for s in map(Path, srcs):
+        if not s.exists():
+            sys.exit(f'kmicro: Kotlin source not found: {s}')
+        files += sorted(s.rglob('*.kt')) if s.is_dir() else [s]
+    return files
+
+
+def _stamps(files):
+    """One line per file (every file under a folder): path, size, modification time."""
+    lines = []
+    for f in map(Path, files):
+        if not f.exists():
+            sys.exit(f'kmicro: not found: {f}')
+        for x in (sorted(y for y in f.rglob('*') if y.is_file()) if f.is_dir() else [f]):
+            st = x.stat()
+            lines.append(f'{os.path.abspath(x)} {st.st_size} {st.st_mtime_ns}')
+    return lines
+
+
+def _compiler_key():
+    jar = paths.kotlin_native() / 'konan/lib/kotlin-native-compiler-embeddable.jar'
+    return [f'kotlin-native {os.path.abspath(paths.kotlin_native())} {paths.kotlin_native_version()}',
+            *_stamps([jar] if jar.exists() else [])]
+
+
+def _up_to_date(keyfile, key):
+    """Whether the last successful run had exactly this key (its arguments, compiler and input files). When not, the
+    old key is removed first, so a failed or interrupted run is never taken as current."""
+    keyfile = Path(keyfile)
+    if keyfile.exists() and keyfile.read_text(encoding='utf-8') == key:
+        return True
+    keyfile.unlink(missing_ok=True)
+    return False
+
+
 def compile_ir(srcs, out, extra=(), deps=(), force=False):
-    """kotlinc-native -> out/ir/out.Codegen.ll and out/ir/out.LinkBitcodeDependencies.ll. Skipped while the IR is
-    newer than every source and dependency (klibs). Returns the compiler's warnings (empty when skipped)."""
+    """kotlinc-native -> out/ir/out.Codegen.ll and out/ir/out.LinkBitcodeDependencies.ll. Skipped while the saved IR
+    came from the same arguments, the same compiler and unchanged sources and dependencies (klibs): any difference,
+    a removed source included, recompiles. Returns the compiler's warnings (empty when skipped)."""
     out = Path(out)
-    ir = out / 'ir/out.Codegen.ll'
-    if not force and not stale(ir, *srcs, *deps):
-        return []
-    (out / 'ir').mkdir(parents=True, exist_ok=True)
-    (out / 'tmp').mkdir(exist_ok=True)
+    files = kotlin_files(srcs)
     o = Path(os.path.abspath(out))             # absolute: paths.run_kn may start the compiler in another folder
     args = [Path(os.path.abspath(s)).as_posix() for s in srcs] + KOTLINC_BASE + [str(a) for a in extra] + [
         '-o', (o / 'lib').as_posix(), '-Xsave-llvm-ir-after=Codegen,LinkBitcodeDependencies',
         f'-Xsave-llvm-ir-directory={(o / "ir").as_posix()}', f'-Xtemporary-files-dir={(o / "tmp").as_posix()}']
+    key = '\n'.join(['[arguments]', *args, '[compiler]', *_compiler_key(), '[inputs]', *_stamps([*files, *deps])])
+    if (out / 'ir/out.Codegen.ll').exists() and _up_to_date(out / 'ir/key.txt', key) and not force:
+        return []
+    (out / 'ir').mkdir(parents=True, exist_ok=True)
+    (out / 'tmp').mkdir(exist_ok=True)
+    (out / 'ir/key.txt').unlink(missing_ok=True)
     argfile(out / 'args.txt', args)
     r = paths.run_kn('kotlinc-native', ['@' + (out / 'args.txt').as_posix()])
     msgs = [l for l in (r.stdout + r.stderr).splitlines()
             if ('error:' in l or 'warning:' in l) and 'deprecated' not in l.lower() and 'api.cpp' not in l]
     if r.returncode != 0:
         sys.exit('kotlinc-native FAILED:\n' + '\n'.join(msgs or (r.stdout + r.stderr).splitlines()[-30:]))
+    (out / 'ir/key.txt').write_text(key, encoding='utf-8')
     return msgs
 
 
@@ -87,10 +130,16 @@ def bridges(out):
 
 
 def cinterop(def_file, out_base, include_dirs=(), deps=(), force=False):
-    """def_file -> out_base.klib (rebuilt when the .def or a dependency, typically the headers, is newer)."""
+    """def_file -> out_base.klib, rebuilt when the .def, a dependency (typically the headers), the include folders or
+    the compiler change."""
     klib = Path(str(out_base) + '.klib')
-    if force or stale(klib, def_file, *deps):
+    key = '\n'.join(['[arguments]', os.path.abspath(def_file), *(os.path.abspath(d) for d in include_dirs),
+                     os.path.abspath(out_base), '[compiler]', *_compiler_key(), '[inputs]',
+                     *_stamps([def_file, *deps])])
+    keyfile = Path(str(out_base) + '.key.txt')
+    if force or not klib.exists() or not _up_to_date(keyfile, key):
         Path(out_base).parent.mkdir(parents=True, exist_ok=True)
+        keyfile.unlink(missing_ok=True)
         # cinterop takes no argument file: its arguments go on Java's command line (paths.arg_path)
         args = ['-def', paths.arg_path(def_file), '-target', 'linux_arm32_hfp']
         for d in include_dirs:
@@ -99,6 +148,7 @@ def cinterop(def_file, out_base, include_dirs=(), deps=(), force=False):
         r = paths.run_kn('cinterop', args)
         if r.returncode != 0:
             sys.exit('cinterop FAILED:\n' + (r.stdout + r.stderr)[-3000:])
+        keyfile.write_text(key, encoding='utf-8')
     return klib
 
 
