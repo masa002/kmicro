@@ -9,6 +9,8 @@
 
 #define KM_NOTHROW __attribute__((nothrow))
 #define KM_ALIGN 8u                                  /* kObjectAlignment (Alignment.hpp) */
+#define KM_STR_(x) #x
+#define KM_STR(x) KM_STR_(x)                         /* a size macro's value as text, for panic messages */
 
 typedef struct MemoryState MemoryState;             /* opaque to compiled code; kmicro passes NULL */
 typedef struct TypeInfo TypeInfo;

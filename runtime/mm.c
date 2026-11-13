@@ -20,12 +20,19 @@
 #include <string.h>
 #include "kmicro.h"
 
+/* Sizes; each can be set from the build (-D NAME=VALUE). A full table stops with a panic naming its macro. */
 #ifndef KM_HEAP_BYTES
 #define KM_HEAP_BYTES (16u * 1024u)
 #endif
-#define KM_MARK_STACK 96
-#define KM_GLOBALS    160
-#define KM_C_ROOTS    16
+#ifndef KM_MARK_STACK
+#define KM_MARK_STACK 96                             /* not a limit: an overflow costs a rescan of the heap */
+#endif
+#ifndef KM_GLOBALS
+#define KM_GLOBALS    160                            /* reference globals (RegisterGlobal), the stdlib's included */
+#endif
+#ifndef KM_C_ROOTS
+#define KM_C_ROOTS    16                             /* kmicro_root slots */
+#endif
 
 #define FREE_BIT 1u
 #define MARK_BIT 2u
@@ -325,7 +332,7 @@ KM_NOTHROW void CheckCurrentFrame(ObjHeader **frame)
 KM_NOTHROW void RegisterGlobal(ObjHeader **location)
 {
     if (s_nglobals == KM_GLOBALS)
-        kmicro_panic("too many globals");
+        kmicro_panic("too many globals (raise KM_GLOBALS, now " KM_STR(KM_GLOBALS) ")");
     s_globals[s_nglobals++] = location;
 }
 
@@ -339,7 +346,7 @@ void kmicro_root(ObjHeader **slot)
             s_croots[i] = slot;
             return;
         }
-    kmicro_panic("too many C roots");
+    kmicro_panic("too many C roots (raise KM_C_ROOTS, now " KM_STR(KM_C_ROOTS) ")");
 }
 void kmicro_unroot(ObjHeader **slot)
 {
