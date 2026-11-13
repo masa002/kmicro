@@ -23,7 +23,7 @@ class Parser(argparse.ArgumentParser):
 
 def parser():
     p = Parser(prog='kbuild.py', description=__doc__.split('\n\n')[0], allow_abbrev=False,
-                                epilog='Example: python tools/kbuild.py build/app app.kt --c-api app.h --package app')
+               epilog='Example: python tools/kbuild.py build/app app.kt --c-api app.h --package app')
     p.add_argument('outdir', type=Path, help='build folder (k.o, the saved IR, ...)')
     p.add_argument('sources', nargs='+', type=Path, metavar='source', help='Kotlin file, or a folder of .kt files')
     p.add_argument('-l', dest='libs', action='append', default=[], type=Path, metavar='LIB.klib',
@@ -31,6 +31,8 @@ def parser():
     p.add_argument('--c-api', action='append', default=[], type=Path, metavar='HEADER.h',
                    help='a C header whose prototypes the Kotlin code implements: `int32_t gc_chains(int32_t)` becomes '
                         'a C name for the Kotlin function <package>.gcChains (needs --package); repeatable')
+    p.add_argument('-I', dest='include_dirs', action='append', default=[], type=Path, metavar='DIR',
+                   help='a folder the C headers include from (for --c-api); repeatable')
     p.add_argument('--package', metavar='NAME', help='the Kotlin package of the --c-api and --init-all functions')
     p.add_argument('--init-all', metavar='NAME',
                    help='generate `void NAME(void)`, which initialises every file-level global of --package: call it '
@@ -68,7 +70,7 @@ def parse(argv):
         p.error('--hot needs --size (it chooses the functions that --size leaves at full speed)')
     if (args.c_api or args.init_all) and args.package is None:
         p.error('--c-api and --init-all need --package (the Kotlin package that implements them)')
-    for flag, files in (('-l', args.libs), ('--c-api', args.c_api)):
+    for flag, files in (('-l', args.libs), ('--c-api', args.c_api), ('-I', args.include_dirs)):
         for f in files:
             if not f.exists():
                 p.error(f'{flag} {f}: not found')
@@ -81,7 +83,7 @@ def parse(argv):
 def main():
     a = parse(sys.argv[1:])
     objs = kn.build(a.sources, a.outdir, libs=a.libs, c_api=a.c_api, package=a.package, init_all=a.init_all,
-                    size=a.size, hot=a.hot, force=a.force, kotlinc_args=a.kotlinc_args)
+                    size=a.size, hot=a.hot, force=a.force, kotlinc_args=a.kotlinc_args, include_dirs=a.include_dirs)
     print('\n'.join(str(o) for o in objs))
 
 

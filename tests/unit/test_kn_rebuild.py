@@ -3,6 +3,8 @@ the compiler call is replaced by a fake that writes the IR files).
 
 python -m unittest discover -s tests/unit
 """
+import contextlib
+import io
 import os
 import sys
 import tempfile
@@ -54,7 +56,8 @@ class Rebuild(unittest.TestCase):
 
     def compile(self, srcs=None, extra=()):
         before = self.calls
-        kn.compile_ir(srcs if srcs is not None else [self.a, self.b], self.d / 'out', extra)
+        with contextlib.redirect_stderr(io.StringIO()):     # 'kotlinc-native: compiling ...'
+            kn.compile_ir(srcs if srcs is not None else [self.a, self.b], self.d / 'out', extra)
         return self.calls - before
 
     def touch_later(self, f, text):

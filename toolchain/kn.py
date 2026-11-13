@@ -12,6 +12,7 @@
 
 A program built this way runs on the kmicro runtime (runtime/): see docs/how-it-works.md.
 """
+import json
 import os
 import re
 import subprocess
@@ -280,36 +281,76 @@ def add_init_all(ll_text, package, name='kt_init_all'):
             '  ret void', '}']
 
 
-def c_prototypes(*headers):
-    """Names of the functions the headers declare (prototypes only: no static inline bodies, typedefs, externs)."""
+def c_flags(header, include_dirs=(), defines=()):
+    """clang flags that read a C header as qbuild compiles C: Cortex-M4F, newlib, runtime/ and support/ on the include
+    path, then the header's own folder and `include_dirs`; `defines` as NAME or NAME=VALUE."""
+    root = HERE.parent
+    return [*paths.TARGET_M4F, '-isystem', paths.newlib_include(), '-I', root / 'runtime', '-I', root / 'support',
+            '-I', Path(header).resolve().parent, *(x for d in include_dirs for x in ('-I', d)),
+            *('-D' + d for d in defines)]
+
+
+def _clang_c(args, what):
+    r = subprocess.run([str(a) for a in [paths.clang(), '-x', 'c', '-std=gnu11', *args]], capture_output=True,
+                       text=True, encoding='utf-8', errors='replace')
+    if r.returncode != 0:
+        errs = [l for l in r.stderr.splitlines() if ' error: ' in l or l.startswith('error:')] or r.stderr.splitlines()
+        sys.exit(f'kmicro: clang cannot read {what}:\n' + '\n'.join(errs[:10])
+                 + '\n(a header it includes is not found? add its folder with -I)')
+    return r.stdout
+
+
+def c_prototypes(*headers, include_dirs=(), defines=()):
+    """Names of the functions the headers themselves declare without a body, exactly as a C compiler reads them
+    (clang's syntax tree): extern prototypes and prototypes made by macros count; static inline functions, calls
+    inside their bodies, inactive #if blocks and the headers they include do not."""
     names = []
     for h in headers:
-        s = re.sub(r'/\*.*?\*/|//[^\n]*', '', Path(h).read_text(encoding='utf-8', errors='replace'), flags=re.S)
-        s = re.sub(r'\\\n', ' ', s)
-        s = re.sub(r'^[ \t]*#.*$', '', s, flags=re.M)          # preprocessor lines would glue onto the next prototype
-        for stmt in re.split(r';|\{|\}', s):
-            st = ' '.join(stmt.split())
-            if not st or st.startswith(('#', 'typedef', 'extern', 'static', 'return')) or '=' in st:
+        h = Path(h)
+        if not h.exists():
+            sys.exit(f'kmicro: header not found: {h}')
+        tree = json.loads(_clang_c([*c_flags(h, include_dirs, defines), '-fsyntax-only', '-Xclang', '-ast-dump=json',
+                                    h.resolve()], h))
+        here, state, bodies = os.path.normcase(str(h.resolve())), [None], set()
+
+        def walk(x):                           # clang writes a location's file only when it changes, in this order
+            if isinstance(x, dict):
+                if 'offset' in x and 'file' in x:
+                    state[0] = x['file']
+                for v in x.values():
+                    walk(v)
+            elif isinstance(x, list):
+                for v in x:
+                    walk(v)
+        found = []
+        for node in tree.get('inner', []):
+            walk(node.get('loc', {}))
+            in_header = state[0] is not None and os.path.normcase(os.path.abspath(state[0])) == here
+            walk({k: v for k, v in node.items() if k != 'loc'})
+            if node.get('kind') != 'FunctionDecl' or node.get('isImplicit') or not in_header:
                 continue
-            m = re.search(r'\b([A-Za-z_]\w*)\s*\(((?:[^()]|\([^()]*\))*)\)\s*(?:__attribute__\(\(.*\)\))?\s*$', st)
-            if m and m.group(1) not in names and not re.match(r'^(if|while|for|switch|sizeof)$', m.group(1)):
-                names.append(m.group(1))
-    return names
+            if any(c.get('kind') == 'CompoundStmt' for c in node.get('inner', [])):
+                bodies.add(node['name'])
+            elif node.get('storageClass') != 'static':
+                found.append(node['name'])
+        names += [n for n in found if n not in bodies and n not in names]
+    return list(dict.fromkeys(names))
 
 
 def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, size=False, hot=None, force=False,
-          kotlinc_args=()):
+          kotlinc_args=(), include_dirs=()):
     """Kotlin sources -> [out/k.o] (+ out/bridges.o when the program calls C through cinterop), ready to link with
     the kmicro runtime.
 
     libs     klibs the sources use (cinterop output); deps: other files whose change means a recompile
     c_api    C headers whose prototypes the Kotlin code implements: `int32_t gc_chains(int32_t)` becomes a C name for
              the Kotlin function <package>.gcChains, so C calls Kotlin by plain names (a prototype without its
-             Kotlin function is an error)
+             Kotlin function is an error; the init_all name may be declared there too)
     init_all the name of a generated C function `void <init_all>(void)` that initialises every file-level global of
              <package>: called at boot, before interrupts, it leaves no first-use initialisation to a handler
     size     minsize for every Kotlin function except those whose symbol matches the regex `hot`
     kotlinc_args  more kotlinc-native options (-Xbinary=latin1Strings=true, -opt-in=..., -language-version ...)
+    include_dirs  folders the c_api headers include from (besides their own, runtime/, support/ and newlib)
     """
     out = Path(out)
     if hot and not size:
@@ -323,7 +364,8 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
         if package is None:
             sys.exit('kmicro: c_api and init_all (--c-api, --init-all) need the Kotlin package (--package)')
         text = ll.read_text(encoding='utf-8')
-        lines, missing = add_c_aliases(text, c_prototypes(*c_api), package)
+        names = [n for n in c_prototypes(*c_api, include_dirs=include_dirs) if n != init_all]
+        lines, missing = add_c_aliases(text, names, package)
         if missing:
             sys.exit(f'kmicro: no Kotlin function in package {package} for: '
                      + ', '.join(f'{c} (expected {camel(c)})' for c in missing))
