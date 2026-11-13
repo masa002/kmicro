@@ -1,6 +1,9 @@
+/* A coroutine resumed by events from C: 300 suspend/resume cycles (coroutines.kt). */
 #include "kmicro.h"
-void k_start(void) __asm__("kfun:#start(){}");
-int32_t k_event(int32_t t) __asm__("kfun:#event(kotlin.Int){}kotlin.Int");
+
+void k_start(void);                             /* Kotlin: @CName("k_start") fun start() */
+int32_t k_event(int32_t t);                     /* Kotlin: @CName("k_event") fun event(t: Int): Int */
+
 int main(void)
 {
     kmicro_init();

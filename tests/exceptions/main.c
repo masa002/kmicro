@@ -1,6 +1,10 @@
+/* Exceptions: throw, catch, finally and Result (exceptions.kt), then an uncaught one, which stops the program with
+ * the uncaught-exception report and exit 98. */
 #include "kmicro.h"
-int32_t k_exc(int32_t n) __asm__("kfun:#exc(kotlin.Int){}kotlin.Int");
-int32_t k_uncaught(int32_t n) __asm__("kfun:#uncaught(kotlin.Int){}kotlin.Int");
+
+int32_t k_exc(int32_t n);                       /* Kotlin: @CName("k_exc") fun exc(n: Int): Int */
+int32_t k_uncaught(int32_t n);                  /* Kotlin: @CName("k_uncaught") fun uncaught(n: Int): Int */
+
 int main(void)
 {
     kmicro_init();

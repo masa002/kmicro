@@ -133,7 +133,7 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | memScoped, usePinned/addressOf, readBytes, cValuesOf | works | |
 | nativeHeap alloc/free in any order | works | freed blocks are reused and merged with their neighbours |
 | native memory beyond `KM_INTEROP_BYTES` (1 KB) | partly | throws OutOfMemoryError; raise the arena with `-D KM_INTEROP_BYTES=N` |
-| structs by value (CValue, useContents, cValue{}) | works | [tests/programs/cinterop2](../tests/programs/cinterop2) |
+| structs by value (CValue, useContents, cValue{}) | works | [tests/cinterop_shapes](../tests/cinterop_shapes) |
 | staticCFunction callbacks | works | an exception thrown inside one does not reach a Kotlin try around the C call, as on stock: catch it in the callback |
 | header static inline functions, with loops, inline assembly or restrict pointers | works | |
 | StableRef | works | at most `KM_STABLE_REFS` (16) live at once |

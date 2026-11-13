@@ -15,23 +15,27 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'toolchain'))
 import kn  # noqa: E402
 
-P = 'tests/programs'
-CINTEROP_KLIB = ROOT / 'build/t/cinterop/kernel.klib'
 HELLO = dict(c_api=['examples/hello/hello.h'], package='hello')
 SELFTEST = dict(c_api=['examples/selftest/selftest.h'], package='selftest')
+KERNEL = dict(defs=['tests/cinterop/kernel.def'])
+SHAPES = dict(defs=['tests/cinterop_shapes/drv.def'])
 # name, kotlin sources, C driver, kn.build() options, heap bytes, expected exit, text that must appear
 TESTS = [
-    ('add', [f'{P}/add.kt'], 'tests/m1/main.c', {}, 16384, 0, 'add(40, 2) = 42'),
-    ('obj', [f'{P}/p_obj.kt'], 'tests/m2/obj.c', {}, 16384, 0, 'OK'),
-    ('gc16k', ['tests/m2/gc.kt'], 'tests/m2/gc.c', {}, 16384, 0, 'OK'),
-    ('gc5k', ['tests/m2/gc.kt'], 'tests/m2/gc.c', {}, 5120, 0, 'OK'),
-    ('str', ['tests/m3/str.kt'], 'tests/m3/str.c', {}, 16384, 0, 'mask = 0  OK'),
-    ('exc', ['tests/m3/exc.kt'], 'tests/m3/exc.c', {}, 8192, 98, 'Uncaught Kotlin exception: PanelError: panel error -5'),
-    ('coro', [f'{P}/p_coro.kt'], 'tests/m4/coro.c', {}, 4096, 0, 'OK'),
-    ('app', [f'{P}/p_app.kt'], 'tests/m4/app.c', {}, 32768, 0, 'OK'),
-    ('cinterop', [f'{P}/cinterop/use.kt'], 'tests/m5/kernel.c', dict(libs=[CINTEROP_KLIB]), 16384, 0,
-     'poke(7) = 1003  OK'),
-    ('loop', ['tests/m6/loop.kt'], 'tests/m6/loop.c', {}, 8192, 0, 'ticks*100+presses = 502'),
+    ('add', ['tests/add/add.kt'], 'tests/add/main.c', {}, 16384, 0, 'add(40, 2) = 42'),
+    ('cname', ['tests/cname/cname.kt'], 'tests/cname/main.c', {}, 16384, 0, 'cname: OK'),
+    ('objects', ['tests/objects/objects.kt'], 'tests/objects/main.c', {}, 16384, 0, 'OK'),
+    ('gc16k', ['tests/gc/gc.kt'], 'tests/gc/main.c', {}, 16384, 0, 'OK'),
+    ('gc5k', ['tests/gc/gc.kt'], 'tests/gc/main.c', {}, 5120, 0, 'OK'),
+    ('strings', ['tests/strings/strings.kt'], 'tests/strings/main.c', {}, 16384, 0, 'mask = 0  OK'),
+    ('exceptions', ['tests/exceptions/exceptions.kt'], 'tests/exceptions/main.c', {}, 8192, 98,
+     'Uncaught Kotlin exception: PanelError: panel error -5'),
+    ('coroutines', ['tests/coroutines/coroutines.kt'], 'tests/coroutines/main.c', {}, 4096, 0, 'OK'),
+    ('app', ['tests/app/app.kt'], 'tests/app/main.c', {}, 32768, 0, 'OK'),
+    ('cinterop', ['tests/cinterop/cinterop.kt'], 'tests/cinterop/main.c', KERNEL, 16384, 0, 'poke(7) = 1003  OK'),
+    ('cinterop_shapes', ['tests/cinterop_shapes/shapes.kt'], 'tests/cinterop_shapes/drv.c', SHAPES, 16384, 0,
+     'cinterop_shapes: all OK'),
+    ('event_loop', ['tests/event_loop/event_loop.kt'], 'tests/event_loop/main.c', {}, 8192, 0,
+     'ticks*100+presses = 502'),
     ('hello', ['examples/hello/hello.kt'], 'examples/hello/main.c', HELLO, 16384, 0,
      'Hello from Kotlin #1, Kotlin #2, Kotlin #3 on a bare Cortex-M4'),
     ('selftest', ['examples/selftest/selftest.kt'], 'examples/selftest/main.c', SELFTEST, 16384, 0, 'result: ALL PASS'),
@@ -39,12 +43,10 @@ TESTS = [
 
 
 def kotlin(name, srcs, opts, force):
-    if CINTEROP_KLIB in opts.get('libs', []):
-        d = ROOT / P / 'cinterop'
-        kn.cinterop(d / 'kernel.def', CINTEROP_KLIB.with_suffix(''), [d], [d / 'kernel.h'], force)
     c_api = [ROOT / h for h in opts.get('c_api', [])]
-    return kn.build([ROOT / s for s in srcs], ROOT / 'build/t' / name, libs=opts.get('libs', []),
-                    c_api=c_api, package=opts.get('package'), force=force)
+    defs = [ROOT / d for d in opts.get('defs', [])]
+    return kn.build([ROOT / s for s in srcs], ROOT / 'build/t' / name, c_api=c_api, package=opts.get('package'),
+                    defs=defs, force=force)
 
 
 def main():

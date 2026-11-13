@@ -1,5 +1,8 @@
+/* Strings: templates, UTF-16, hashCode, split, replace, StringBuilder (strings.kt). */
 #include "kmicro.h"
-int32_t k_str(int32_t n) __asm__("kfun:#str(kotlin.Int){}kotlin.Int");
+
+int32_t k_str(int32_t n);                       /* Kotlin: @CName("k_str") fun str(n: Int): Int */
+
 int main(void)
 {
     kmicro_init();

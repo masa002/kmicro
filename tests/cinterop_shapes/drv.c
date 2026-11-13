@@ -1,4 +1,5 @@
-/* The C side of the cinterop2 test: implements drv.h and checks every call shape of cb.kt. */
+/* The C side of the cinterop_shapes test: implements drv.h and checks every call shape of shapes.kt, calling the
+ * Kotlin functions by their @CName names. */
 #include "kmicro.h"
 #include <stdarg.h>
 #include <stdlib.h>
@@ -29,16 +30,16 @@ int32_t sum_va(int32_t n, ...)
 
 uint32_t plain_fn(uint32_t v) { return v; }
 
-int32_t kt_global(void) __asm__("kfun:#global(){}kotlin.Int");
-int32_t kt_struct_return(void) __asm__("kfun:#structReturn(){}kotlin.Int");
-int32_t kt_struct_arg(void) __asm__("kfun:#structArg(){}kotlin.Int");
-int32_t kt_callback(void) __asm__("kfun:#callback(){}kotlin.Int");
-int32_t kt_sort_descending(void) __asm__("kfun:#sortDescending(){}kotlin.Int");
-int32_t kt_varargs(void) __asm__("kfun:#varargs(){}kotlin.Int");
-int32_t kt_inline_loop(void) __asm__("kfun:#inlineLoop(){}kotlin.Int");
-int32_t kt_inline_asm(void) __asm__("kfun:#inlineAsm(){}kotlin.Int");
-int32_t kt_inline_string(void) __asm__("kfun:#inlineString(){}kotlin.Int");
-int32_t kt_inline_restrict(void) __asm__("kfun:#inlineRestrict(){}kotlin.Int");
+int32_t kt_global(void);
+int32_t kt_struct_return(void);
+int32_t kt_struct_arg(void);
+int32_t kt_callback(void);
+int32_t kt_sort_descending(void);
+int32_t kt_varargs(void);
+int32_t kt_inline_loop(void);
+int32_t kt_inline_asm(void);
+int32_t kt_inline_string(void);
+int32_t kt_inline_restrict(void);
 
 static int s_wrong;
 static void check(const char *what, int32_t v, int32_t want)
@@ -63,6 +64,6 @@ int main(void)
     check("inlineString() = ", kt_inline_string(), 1);
     check("inlineRestrict() = ", kt_inline_restrict(), 18);
     check("drv_counter = ", drv_counter, 15);
-    kmicro_puts(s_wrong ? "cinterop2: WRONG\n" : "cinterop2: all OK\n");
+    kmicro_puts(s_wrong ? "cinterop_shapes: WRONG\n" : "cinterop_shapes: all OK\n");
     return s_wrong ? 1 : 0;
 }

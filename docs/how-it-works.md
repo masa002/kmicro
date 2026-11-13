@@ -94,8 +94,8 @@ Cortex-M as well.
 python tools/kbuild.py build/app app.kt --def board.def -I include --c-api app.h --package app
 ```
 
-kbuild then prints `bridges.o` next to `k.o`, and both are linked. [tests/programs/cinterop](../tests/programs/cinterop)
-and [tests/programs/cinterop2](../tests/programs/cinterop2) are complete examples.
+kbuild then prints `bridges.o` next to `k.o`, and both are linked. [tests/cinterop](../tests/cinterop)
+and [tests/cinterop_shapes](../tests/cinterop_shapes) are complete examples.
 
 **C calls Kotlin** by symbol. A top-level function `fun gcChains(rounds: Int): Int` in package `selftest` is the
 symbol `kfun:selftest#gcChains(kotlin.Int){}kotlin.Int`. C can declare it with that name as an assembler label, or

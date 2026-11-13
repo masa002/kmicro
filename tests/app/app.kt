@@ -2,7 +2,7 @@
 import kotlin.coroutines.*
 import kotlin.native.CName
 
-// A realistic slice of the device app: events from C, a small state machine, a log of strings.
+// A slice of a typical device app: events from C, a small state machine, a log of strings.
 sealed interface Ev { object Press : Ev; object Dock : Ev; data class Tick(val ms: Int) : Ev }
 
 class Device {

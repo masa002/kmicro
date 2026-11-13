@@ -2,7 +2,7 @@
 
 import kotlin.native.CName
 
-// C calls these by their @CName names (tests/cname/main.c), with plain C types: kn.build gives each Kotlin function
+// C calls these by their @CName names (main.c), with plain C types: kn.build gives each Kotlin function
 // its C name.
 
 @CName("k_add")

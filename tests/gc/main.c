@@ -1,5 +1,9 @@
+/* The garbage collector: 6000 objects through a small heap, survivors in locals, a global and an array (gc.kt).
+ * run_all runs it with a 16 KB and a 5 KB heap. */
 #include "kmicro.h"
-int32_t k_gc(int32_t rounds) __asm__("kfun:#gc(kotlin.Int){}kotlin.Int");
+
+int32_t k_gc(int32_t rounds);                   /* Kotlin: @CName("k_gc") fun gc(rounds: Int): Int */
+
 int main(void)
 {
     kmicro_init();

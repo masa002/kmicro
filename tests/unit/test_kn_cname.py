@@ -1,5 +1,5 @@
 """toolchain/kn.py add_cname_aliases(): @CName names from kotlinc-native's C adapter (IR excerpts, no compiler needed;
-tests/programs/cname.kt runs the real thing).
+tests/cname/cname.kt runs the real thing).
 
 python -m unittest discover -s tests/unit
 """

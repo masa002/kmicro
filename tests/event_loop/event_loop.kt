@@ -3,6 +3,7 @@ package loop
 
 import kotlin.coroutines.*
 import kotlin.coroutines.intrinsics.*
+import kotlin.native.CName
 
 // A single-thread event loop for a microcontroller. No allocation per wait: waiting continuations sit in fixed
 // arrays (they are GC roots through these globals). The C main loop calls step(); when every coroutine waits,
@@ -84,6 +85,7 @@ var ticks = 0
 var presses = 0
 var lastPressAt = -1
 
+@CName("kt_start")
 fun startApp() {
     Loop.launch {                                   // a periodic job
         while (true) {
@@ -103,5 +105,8 @@ fun startApp() {
     }
 }
 
+@CName("kt_step")
 fun step(events: Int, nowMs: Int): Int = Loop.step(events, nowMs)
+
+@CName("kt_result")
 fun result(): Int = ticks * 100 + presses

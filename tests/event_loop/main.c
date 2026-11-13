@@ -1,10 +1,11 @@
-/* C kernel side of the event loop on QEMU: SysTick 1 kHz clock, injected button presses, WFI between steps. */
+/* The C side of the event loop (event_loop.kt) on QEMU: a 1 kHz SysTick clock, injected button presses, WFI between
+ * steps. */
 #include "kmicro.h"
 #include <stdint.h>
 
-void kt_start(void) __asm__("kfun:loop#startApp(){}");
-int32_t kt_step(int32_t events, int32_t now) __asm__("kfun:loop#step(kotlin.Int;kotlin.Int){}kotlin.Int");
-int32_t kt_result(void) __asm__("kfun:loop#result(){}kotlin.Int");
+void kt_start(void);                            /* Kotlin: @CName("kt_start") fun startApp() */
+int32_t kt_step(int32_t events, int32_t now);   /* Kotlin: @CName("kt_step") fun step(events: Int, nowMs: Int): Int */
+int32_t kt_result(void);                        /* Kotlin: @CName("kt_result") fun result(): Int */
 
 static volatile uint32_t s_ms;
 static volatile uint32_t s_events;
@@ -22,7 +23,7 @@ void SysTick_Handler(void)
 int main(void)
 {
     kmicro_init();
-    SYST_RVR = 16000u - 1u;                      /* QEMU's SysTick reference: 1 ms at the modelled core clock */
+    SYST_RVR = 4000u - 1u;                       /* 1 ms at the 4 MHz clock (MSI) the STM32L4 and QEMU's model start with */
     SYST_CVR = 0;
     SYST_CSR = 7u;                               /* enable, interrupt, processor clock */
     kt_start();

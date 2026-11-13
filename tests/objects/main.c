@@ -1,5 +1,8 @@
+/* Classes, an interface and virtual calls (objects.kt). */
 #include "kmicro.h"
-int32_t k_entry(int32_t n) __asm__("kfun:#entry(kotlin.Int){}kotlin.Int");
+
+int32_t k_entry(int32_t n);                     /* Kotlin: @CName("k_entry") fun entry(n: Int): Int */
+
 int main(void)
 {
     kmicro_init();

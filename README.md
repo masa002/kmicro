@@ -126,7 +126,7 @@ fun main() {
 }
 ```
 
-[tests/programs/cinterop2](tests/programs/cinterop2) shows structs by value, callbacks, globals, varargs and
+[tests/cinterop_shapes](tests/cinterop_shapes) shows structs by value, callbacks, globals, varargs and
 static inline header functions. [examples/irq](examples/irq) uses [support/hw.def](support/hw.def) for register
 access and handles SysTick in Kotlin.
 

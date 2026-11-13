@@ -1,5 +1,5 @@
 /* A C driver API in the shapes vendor headers use: structs by value, callbacks, globals, varargs and static inline
- * helpers. Kotlin calls it through cinterop (drv.def, package drv); tests/programs/cinterop2/drv.c implements it. */
+ * helpers. Kotlin calls it through cinterop (drv.def, package drv); drv.c implements it. */
 #ifndef DRV_H
 #define DRV_H
 #include <stdint.h>

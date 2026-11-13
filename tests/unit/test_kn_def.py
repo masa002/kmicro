@@ -24,7 +24,7 @@ class DefHeaders(unittest.TestCase):
                          ['api.h', 'inc/board.h', 'util.h', 'inc/regs.h'])
 
     def test_repo_cinterop_test(self):
-        root = Path(__file__).resolve().parents[2] / 'tests/programs/cinterop'
+        root = Path(__file__).resolve().parents[2] / 'tests/cinterop'
         self.assertEqual([p.name for p in kn.def_headers(root / 'kernel.def')], ['kernel.h'])
 
 

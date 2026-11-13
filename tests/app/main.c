@@ -1,6 +1,9 @@
+/* A small device app (app.kt): events from C drive a state machine in a coroutine, which keeps a log of strings. */
 #include "kmicro.h"
-void k_start(void) __asm__("kfun:#start(){}");
-int32_t k_event(int32_t kind, int32_t arg) __asm__("kfun:#event(kotlin.Int;kotlin.Int){}kotlin.Int");
+
+void k_start(void);                             /* Kotlin: @CName("k_start") fun start() */
+int32_t k_event(int32_t kind, int32_t arg);     /* Kotlin: @CName("k_event") fun event(kind: Int, arg: Int): Int */
+
 int main(void)
 {
     kmicro_init();
