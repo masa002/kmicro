@@ -1,7 +1,6 @@
-// Known not to work on kmicro yet with the default 16 KB heap: String.toDouble() and toFloat() go through the Regex
-// engine, which needs about 27 KB of heap and about 240 KB of flash. With a bigger heap the results are the same as
-// on stock Kotlin/Native (d_numbers.kt).
-// Not run by default: python tools/difftest.py d_known_to_double
+// String.toDouble()/toFloat() and their OrNull forms on decimal text: the largest and smallest values, subnormals,
+// overflow and underflow, hundreds of digits, exponents beyond Int, named values and malformed text. (Hexadecimal
+// text in depth: d_parse_small.kt.)
 fun err(label: String, block: () -> Any?) {
     val r = runCatching(block)
     val e = r.exceptionOrNull()

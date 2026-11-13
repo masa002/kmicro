@@ -1,5 +1,6 @@
-// Known not to work on kmicro yet: RegexOption.CANON_EQ stops with "unimplemented runtime symbol:
-// Kotlin_text_regex_decomposeString" (it cannot be caught).
+// Known to differ on kmicro: RegexOption.CANON_EQ is not supported. kmicro throws an IllegalArgumentException with
+// the message "RegexOption.CANON_EQ is not supported on kmicro", which the program can catch; stock Kotlin/Native
+// matches the canonically equivalent text.
 // Not run by default: python tools/difftest.py d_known_regex_canon_eq
 // difftest: heap 32768 -- the Regex engine builds its tables on the heap: the default 16 KB runs out
 // difftest: large -- the Regex engine is about 240 KB of flash

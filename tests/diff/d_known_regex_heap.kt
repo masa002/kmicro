@@ -1,6 +1,6 @@
-// Known not to work on kmicro yet with the default 16 KB heap (nor with 64 KB): Regex beyond a few small patterns. The
-// engine keeps its tables and compiled patterns on the heap, and \p{L} copies the Unicode category table there
-// as well (d_regex.kt's patterns plus \p{L} need about 56 KB). (A few small patterns with a 32 KB heap: d_regex.kt.)
+// Known not to work on kmicro yet: Regex beyond a few small patterns. The engine keeps its tables and compiled
+// patterns on the heap, which runs out after the first line with the default 16 KB, and with 64 KB after 16 of the 35
+// lines (58032 bytes live, the free memory in 129 pieces). (A few small patterns with a 32 KB heap: d_regex.kt.)
 // Not run by default: python tools/difftest.py d_known_regex_heap
 fun err(label: String, block: () -> Any?) {
     val r = runCatching(block)

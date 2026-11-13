@@ -1,5 +1,5 @@
 // hashCode, enums, data classes, comparators, Pair/Triple, Result, lazy, preconditions. (kotlin.random:
-// d_known_random_time.kt)
+// d_random_time.kt, d_random_api.kt)
 // difftest: heap 32768 -- the default 16 KB runs out: one long main keeps the objects of its checks alive
 // difftest: large -- hashing, enums, comparators, Result and lazy in one program: about 280 KB of flash
 

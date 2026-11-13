@@ -1,5 +1,5 @@
-// Duration, Uuid, HexFormat, Base64, atomics, print. (Duration.toString(unit, decimals): d_known_duration_format.kt;
-// the clock: d_known_random_time.kt)
+// Duration, Uuid, HexFormat, Base64, atomics, print. (Duration.toString(unit, decimals): d_duration_fmt.kt; the
+// clock: d_random_time.kt)
 // difftest: heap 32768 -- one long main keeps the objects of its checks alive: the default 16 KB runs out at Uuid
 // difftest: large -- Duration, Uuid, HexFormat and Base64 in one program: about 290 KB of flash
 @file:OptIn(kotlin.uuid.ExperimentalUuidApi::class, ExperimentalStdlibApi::class, kotlin.io.encoding.ExperimentalEncodingApi::class,

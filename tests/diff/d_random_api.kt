@@ -1,7 +1,6 @@
-// Known not to work on kmicro yet: kotlin.random and the clock. Creating any Random, even a seeded one, first
-// initialises Random.Default, whose seed comes from the clock native Kotlin_system_getSteadyTimeNanos, which kmicro does
-// not have; measureTime and TimeSource.Monotonic need the same native.
-// Not run by default: python tools/difftest.py d_known_random_time
+// kotlin.random beyond d_random_time.kt: the Random functions on seeded generators (ranges, bits, unsigned, bytes
+// into part of an array), shuffle and random() on collections, the exceptions for an empty range or collection, and
+// Random.Default. measureTime and TimeSource.Monotonic differ on every run: only their properties are printed.
 import kotlin.random.Random
 import kotlin.random.nextInt
 import kotlin.random.nextUInt
