@@ -2,6 +2,7 @@
   <img src="docs/images/kmicro-banner.png" alt="kmicro: Kotlin® on bare-metal microcontrollers" width="100%">
 </h1>
 
+[![CI](https://github.com/masa002/kmicro/actions/workflows/ci.yml/badge.svg)](https://github.com/masa002/kmicro/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Kotlin/Native 2.4.21](https://img.shields.io/badge/Kotlin%2FNative-2.4.21-informational)](https://github.com/JetBrains/kotlin/releases/tag/v2.4.21)
 [![Target: Cortex-M4F](https://img.shields.io/badge/target-Cortex--M4F%2C%20bare%20metal-informational)](docs/how-it-works.md)
