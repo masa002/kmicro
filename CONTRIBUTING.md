@@ -23,15 +23,15 @@ python tools/qbuild.py build/app/app.elf targets/common/kotlin_main.c build/app/
 
 Three suites, all on the host and QEMU; no hardware is needed.
 
-- **`python tests/run_all.py [NAME ...]`** builds the test programs and the examples and runs them on QEMU. With
-  names it runs only those; `--stress` collects garbage at every allocation, and `--kotlin` recompiles the Kotlin
-  code even when its saved IR is current.
+- **`python tests/run_all.py [NAME ...]`** builds the test programs and the examples, runs them on QEMU and compares
+  each program's whole output with `tests/expected/<name>.txt`. With names it runs only those; `--stress` collects
+  garbage at every allocation, `--kotlin` recompiles the Kotlin code even when its saved IR is current, and `-v`
+  prints the build messages and the program's output. A test also fails when its image does not fit the STM32L431
+  (256 KB of flash, 64 KB of RAM) and the test is not marked large.
 
   ```
   $ python tests/run_all.py selftest
-  kotlinc-native: compiling 1 file...
-  single-core: 127 init-state loads made plain
-  PASS  selftest  text 131828  data 88  bss 18856  stack 79728
+  PASS  selftest                     flash 128.8 KB  RAM 18.5 KB, isr_check, isr_check_boxing
   1 passed, 0 failed
   ```
 
@@ -69,8 +69,12 @@ line of its own, with the reason:
 
 A program that shows a feature that does not work is named `d_known_<topic>.kt`; it runs only when named.
 
-**A test for run_all** is a Kotlin program with a C driver (or `targets/common/kotlin_main.c` for `fun main()`),
-added to `tests/run_all.py` with the exit code and the output it must print.
+**A test for run_all** is an entry in `TESTS` in `tests/run_all.py`: its Kotlin sources (a file or a folder under
+`tests/`), its C driver (or `targets/common/kotlin_main.c` for `fun main()`) and its exit code. Run it, read
+`build/t/<name>/run.log` and copy that to `tests/expected/<name>.txt`, with `{N}` where a number may vary.
+
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the unit tests, `run_all.py` and `run_all.py --stress`
+on every pull request, and difftest with and without `--stress` on main and once a week.
 
 ## Documentation
 

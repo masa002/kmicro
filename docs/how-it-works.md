@@ -228,12 +228,12 @@ the report in every case ([porting.md](porting.md#the-board-contract)). When no 
 uncaught exception makes the standard library create its hook holder, two small objects; if the heap is full at
 that moment, the program stops with the out-of-memory report instead.
 
-The exc test ([tests/m3/exc.kt](../tests/m3/exc.kt)) ends with an uncaught exception thrown three calls deep. Its
-output saved to a log file, then symbolized:
+The exceptions test ([tests/exceptions/exceptions.kt](../tests/exceptions/exceptions.kt)) ends with an uncaught
+exception thrown three calls deep. Its output saved to a log file, then symbolized:
 
 ```
-python tools/kbuild.py build/exc tests/m3/exc.kt
-python tools/qbuild.py build/exc/exc.elf tests/m3/exc.c build/exc/k.o -D KM_HEAP_BYTES=8192 --run > exc.log
+python tools/kbuild.py build/exc tests/exceptions/exceptions.kt
+python tools/qbuild.py build/exc/exc.elf tests/exceptions/main.c build/exc/k.o -D KM_HEAP_BYTES=8192 --run > exc.log
 python tools/symbolize.py build/exc/exc.elf exc.log
 ```
 
@@ -246,7 +246,7 @@ now an uncaught one (expected to stop with a report):
 Uncaught Kotlin exception: PanelError: panel error -5
     at 0x08009aa0  PanelError#<init>(kotlin.Int){}+0x1e4
     at 0x08002822  run_main+0x75e
-        run_main (exc.c:17)
+        run_main (main.c:21)
     at 0x08001942  start_c+0xaa
         start_c (start.c:68)
 kmicro panic: uncaught Kotlin exception
@@ -256,30 +256,30 @@ qemu: exit 98
 symbolize.py adds the function and the offset after each `at 0x...`. A trace address is a return address, so it
 names the function that made the call; the offset is the return address's. The trace starts where the exception
 was created, here in the constructor of `PanelError`. LTO inlined `uncaught`, `deep` and `check` into `main` of
-`exc.c`, and `main` into `run_main` of the start code, so the Kotlin functions fold into `run_main`. The C files are
-compiled with `-g` by qbuild, hence `exc.c:17`.
+`main.c`, and `main` into `run_main` of the start code, so the Kotlin functions fold into `run_main`. The C files are
+compiled with `-g` by qbuild, hence `main.c:21`.
 
 Compiled with debug information, the Kotlin frames come back:
 
 ```
-python tools/kbuild.py build/exc tests/m3/exc.kt --kotlinc -g
-python tools/qbuild.py build/exc/exc.elf tests/m3/exc.c build/exc/k.o -D KM_HEAP_BYTES=8192 --run > exc.log
+python tools/kbuild.py build/exc tests/exceptions/exceptions.kt --kotlinc -g
+python tools/qbuild.py build/exc/exc.elf tests/exceptions/main.c build/exc/k.o -D KM_HEAP_BYTES=8192 --run > exc.log
 python tools/symbolize.py build/exc/exc.elf exc.log
 ```
 
 symbolize.py prints the log with the names added:
 
 ```
-qbuild: exc.elf  text 55436  data 80  bss 10672  stack 88012
+qbuild: exc.elf  text 55260  data 80  bss 10672  stack 88012
 exception checks failed mask = 0  OK   (gcs=6)
 now an uncaught one (expected to stop with a report):
 Uncaught Kotlin exception: PanelError: panel error -5
-    at 0x0800a174  PanelError#<init>(kotlin.Int){}+0x1c0
-    at 0x08002838  run_main+0x774
-        #check(kotlin.Int){} (exc.kt:6) [inlined]
-        #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exc.kt:7) [inlined]
-        #uncaught(kotlin.Int){}kotlin.Int (exc.kt:40) [inlined]
-        main (exc.c:17) [inlined]
+    at 0x0800a0c8  PanelError#<init>(kotlin.Int){}+0x1c0
+    at 0x08002854  run_main+0x790
+        #check(kotlin.Int){} (exceptions.kt:6) [inlined]
+        #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exceptions.kt:7) [inlined]
+        #uncaught(kotlin.Int){}kotlin.Int (exceptions.kt:40) [inlined]
+        main (main.c:21) [inlined]
         run_main (start.c:58)
     at 0x08001942  start_c+0xaa
         start_c (start.c:68)
@@ -289,7 +289,7 @@ qemu: exit 98
 
 Under each frame, the functions inlined at that call are listed innermost first, each with its file and line,
 then the function that holds them (`arm-none-eabi-addr2line -i`). kotlinc-native warns
-`unsupported combination of flags: -opt and -g` and builds the program, here 2,124 bytes larger. The C files need
+`unsupported combination of flags: -opt and -g` and builds the program, here 1,948 bytes larger. The C files need
 `-g` too, which qbuild gives them and which takes no flash: without it, the Kotlin functions that LTO inlined into a
 C function (here into `run_main`) are not listed. On a board, compile the C files with `-g`
 ([porting.md](porting.md#compiling-the-runtime)), save what the UART printed and pass that file the same way; the
@@ -299,15 +299,15 @@ symbolize.py also reads the log on stdin (`python tools/symbolize.py build/exc/e
 addresses given as arguments:
 
 ```
-python tools/symbolize.py build/exc/exc.elf 0x08002838
+python tools/symbolize.py build/exc/exc.elf 0x08002854
 ```
 
 ```
-0x08002838  run_main+0x774
-        #check(kotlin.Int){} (exc.kt:6) [inlined]
-        #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exc.kt:7) [inlined]
-        #uncaught(kotlin.Int){}kotlin.Int (exc.kt:40) [inlined]
-        main (exc.c:17) [inlined]
+0x08002854  run_main+0x790
+        #check(kotlin.Int){} (exceptions.kt:6) [inlined]
+        #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exceptions.kt:7) [inlined]
+        #uncaught(kotlin.Int){}kotlin.Int (exceptions.kt:40) [inlined]
+        main (main.c:21) [inlined]
         run_main (start.c:58)
 ```
 
@@ -405,8 +405,10 @@ call.
 
 ## Testing
 
-- [tests/run_all.py](../tests/run_all.py) builds every test program and the examples and runs them on QEMU
-  (`b-l475e-iot01a`, an emulated STM32L475).
+- [tests/run_all.py](../tests/run_all.py) builds every test program and the examples, runs them on QEMU
+  (`b-l475e-iot01a`, an emulated STM32L475; one test on `mps2-an386`) and compares each program's whole output with
+  its file in `tests/expected/`. It also fails a program that does not fit the STM32L431 unless the test is marked
+  large, and runs the tools (isr_check, symbolize, frames, gen_regs, missing_natives) on some of them.
 - [tools/difftest.py](../tools/difftest.py) runs the programs in `tests/diff/` on the stock Kotlin/Native runtime
   of the host and on kmicro in QEMU, and requires byte-identical output: strings including emoji, collections,
   exceptions, initialisers, number formatting and parsing, sequences. The kmicro side is built as kbuild builds it,
@@ -417,5 +419,7 @@ call.
   report is then the most the program had live at once, while without it the peak is often the heap size. The
   `d_known_*.kt` programs show what does not work and run only when named.
 - `python -m unittest discover -s tests/unit` tests the tools.
+- CI ([.github/workflows/ci.yml](../.github/workflows/ci.yml)) runs the unit tests and run_all, also with `--stress`,
+  on every pull request, and difftest on main and once a week.
 - `python tools/missing_natives.py` lists the standard library's runtime functions that kmicro implements, does not
   support, or lacks.

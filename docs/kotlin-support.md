@@ -5,11 +5,11 @@ kmicro on an emulated Cortex-M4 (QEMU), and comparing the output ([tools/difftes
 running it on kmicro alone where the host output naturally differs (time, memory, C interop). The kmicro side runs
 on the default 16 KB heap; a program that needs more says so, with the reason, in a `// difftest: heap` line, and the
 notes below give the costs. The programs are in [tests/diff](../tests/diff); the `d_known_*.kt` ones show what does
-not work yet and run only when named.
+not work and run only when named.
 
 - **works**: behaves as on stock Kotlin/Native; for the standard library, the output is byte-identical.
 - **partly**: works with the limits in the note.
-- **does not work**: not yet.
+- **does not work**: fails as the note says.
 - **not supported**: left out by design (it needs threads or an OS); the note says what happens instead.
 - **not applicable**: not part of Kotlin/Native either, or deprecated with an error.
 

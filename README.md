@@ -79,7 +79,7 @@ The short list; [docs/kotlin-support.md](docs/kotlin-support.md) has every case.
   arrays on the stack; kbuild warns about those above 512 bytes.
 - **Faults are not exceptions:** a stack overflow or a null-pointer read stops the program with a fault report
   (exit 99). The QEMU target `qemu-l475` catches both with the MPU; the STM32L431 example reports faults but has no
-  stack guard yet.
+  stack guard.
 - **Board hooks:** without them the clocks (`measureTime`, `TimeSource.Monotonic`, `Clock.System`) and
   `Uuid.random()` stop the program naming the missing hook, `Random.Default` repeats its sequence after every reset,
   and `readln()` sees the end of the input. [runtime/kmicro.h](runtime/kmicro.h) lists the hooks.
@@ -175,7 +175,7 @@ its message and stack trace, 2,722 from the throw to the catch.
 | [targets/](targets) | startup code and linker scripts for QEMU (`qemu-l475` for programs, `qemu-an386` through `qbuild --target an386` for programs that need more memory), and `common/kotlin_main.c` for `fun main()` |
 | [tools/](tools) | `kbuild.py`, `qbuild.py`, `gen_regs.py` (CMSIS to Kotlin), `isr_check.py`, `symbolize.py`, `frames.py`, `missing_natives.py`, `difftest.py`, `measure.py`, `irstat.py`, `port_dtoa.py` |
 | [examples/](examples) | `hello`, `irq` (a Kotlin SysTick handler on registers), `selftest` (with its STM32L431 board files) |
-| [tests/](tests) | `run_all.py`, the test programs, the differential tests, `unit/` for the tools |
+| [tests/](tests) | `run_all.py` and one folder per feature, `expected/` (the outputs run_all compares), `diff/` (the differential tests), `unit/` for the tools |
 | [docs/](docs) | [Kotlin support](docs/kotlin-support.md), [how it works](docs/how-it-works.md), [writing Kotlin for a microcontroller](docs/writing-kotlin.md), [porting to a board](docs/porting.md), [roadmap](docs/roadmap.md), [design notes](docs/research) |
 
 ## Contributing

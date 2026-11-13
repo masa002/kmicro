@@ -95,7 +95,7 @@ The files are `runtime/*.c`, `runtime/*.cpp` and `runtime/dtoa/*.cpp`.
 | `-ffunction-sections -fdata-sections` | `--gc-sections` drops what the program does not use |
 | `-fexceptions -funwind-tables` | a Kotlin exception unwinds through runtime functions (`ThrowException`, the array functions). Without unwind tables they get `[cantunwind]` entries, the unwinder stops there, and every exception is reported as uncaught, exit 98. `runtime/eh.c` stops the build without `-fexceptions` |
 | `-std=c++17 -fno-rtti` | the `.cpp` files only |
-| `-g` (optional) | debug information, which takes no flash: with `kbuild.py --kotlinc -g`, `tools/symbolize.py` then names the Kotlin functions that LTO inlined into C functions, with file and line ([how-it-works.md](how-it-works.md#reading-a-stack-trace)). The exc test below, its Kotlin built with `--kotlinc -g`, is 55,436 bytes of text with or without `-g` on the C side |
+| `-g` (optional) | debug information, which takes no flash: with `kbuild.py --kotlinc -g`, `tools/symbolize.py` then names the Kotlin functions that LTO inlined into C functions, with file and line ([how-it-works.md](how-it-works.md#reading-a-stack-trace)). The exceptions test below, its Kotlin built with `--kotlinc -g`, is 55,260 bytes of text with or without `-g` on the C side |
 | `-I runtime` | `kmicro.h` |
 | `-D KM_HEAP_BYTES=32768`, ... | the sizes ([how-it-works.md](how-it-works.md#sizes)) |
 
@@ -112,7 +112,7 @@ arm-none-eabi-gcc cannot build the runtime: `eh.c` names two Kotlin functions by
 **Your own C code** goes through the same compiler and flags. A C function that a Kotlin exception can pass through
 needs `-fexceptions -funwind-tables` too: one that throws, as the runtime's array functions do, or C called from
 Kotlin that calls Kotlin again. When `runtime/types.c` alone is compiled without them, the out-of-bounds array
-store that the exc test catches ends the program with
+store that the exceptions test catches ends the program with
 `Uncaught Kotlin exception: kotlin.ArrayIndexOutOfBoundsException`. [support/hw.c](../support/hw.c), when the
 program uses [support/hw.h](../support/hw.h), is compiled the same way.
 
@@ -175,12 +175,12 @@ Kotlin/Native stdlib: 261 implemented, 52 unsupported, 40 Objective-C, 0 missing
 
 ## A check on QEMU
 
-The steps above, written out as a shell script (bash) for the exceptions test `tests/m3/exc.kt`, with the QEMU
-target's `start.c` and `l475.ld` standing in for a board's. The tool folders are the ones `python toolchain/paths.py`
-prints; these are a Windows host's, run from the repository root in Git Bash:
+The steps above, written out as a shell script (bash) for the exceptions test `tests/exceptions/exceptions.kt`, with
+the QEMU target's `start.c` and `l475.ld` standing in for a board's. The tool folders are the ones
+`python toolchain/paths.py` prints; these are a Windows host's, run from the repository root in Git Bash:
 
 ```
-python tools/kbuild.py build/board tests/m3/exc.kt
+python tools/kbuild.py build/board tests/exceptions/exceptions.kt
 
 LLVM=~/.konan/dependencies/llvm-21-x86_64-windows-essentials-150/bin
 GCC=~/toolchains/xpack-arm-none-eabi-gcc-15.2.1-1.1
@@ -191,7 +191,7 @@ CFLAGS="--target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat
         -isystem $GCC/arm-none-eabi/include -O2 -flto -ffunction-sections -fdata-sections
         -fexceptions -funwind-tables -I runtime -D KM_HEAP_BYTES=8192"
 mkdir -p build/board/obj
-for f in runtime/*.c runtime/*.cpp runtime/dtoa/*.cpp targets/qemu-l475/start.c tests/m3/exc.c; do
+for f in runtime/*.c runtime/*.cpp runtime/dtoa/*.cpp targets/qemu-l475/start.c tests/exceptions/main.c; do
     case $f in *.cpp) more="-std=c++17 -fno-rtti" ;; *) more="" ;; esac
     $LLVM/clang $CFLAGS $more -c $f -o build/board/obj/$(basename $f).o || break
 done
