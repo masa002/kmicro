@@ -1,13 +1,16 @@
-"""Build a QEMU test image: Kotlin LTO object(s) + the kmicro runtime + C code, for the emulated STM32L475
-(QEMU machine b-l475e-iot01a, targets/qemu-l475).
+"""Build a QEMU test image: Kotlin LTO object(s) + the kmicro runtime + C code, for an emulated Cortex-M4.
 
-usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--run] [--timeout SECONDS]
+usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--target l475|an386] [--run]
+                              [--timeout SECONDS]
 
     FILE       C (.c), C++ (.cpp) and assembly (.s, .S) files, compiled with the runtime's flags, and objects (.o, .a)
                linked as they are: the k.o (and bridges.o) that tools/kbuild.py prints. Several C files are fine, e.g.
                main.c support/hw.c
     -D, -I     a definition or include folder for every C file, e.g. -D KM_HEAP_BYTES=32768 (runtime/ and support/
                are always on the include path)
+    --target   l475 (default): QEMU b-l475e-iot01a, an STM32L475 (targets/qemu-l475), the layout programs run on.
+               an386: QEMU mps2-an386 (targets/qemu-an386: 4 MB of code, 16 MB of RAM, newlib stdio over
+               semihosting), for tests that need more memory than a microcontroller has
     --run      run the image on QEMU and exit with the program's exit code (124 when it runs out of time)
     --timeout  seconds a --run may take (default 120)
 
@@ -32,6 +35,7 @@ import paths  # noqa: E402
 
 TARGETS = {   # start code and linker script, QEMU machine, the newlib system-call library
     'l475': (ROOT / 'targets/qemu-l475', 'l475.ld', 'b-l475e-iot01a', ['-lnosys']),
+    'an386': (ROOT / 'targets/qemu-an386', 'an386.ld', 'mps2-an386', ['-lrdimon_nano', '--wrap=_exit']),
 }
 # -g costs no flash. It lets Kotlin code built with debug information keep its line info when LTO inlines it into C.
 CFLAGS = [*paths.TARGET_M4F, '-isystem', str(paths.newlib_include()), '-O2', '-g', '-flto', '-ffunction-sections',
@@ -168,6 +172,7 @@ def parse_args():
     ap.add_argument('files', type=Path, nargs='+', help=hide)
     ap.add_argument('-D', dest='defs', action='append', default=[], help=hide)
     ap.add_argument('-I', dest='incs', action='append', default=[], help=hide)
+    ap.add_argument('--target', choices=sorted(TARGETS), default='l475', help=hide)
     ap.add_argument('--run', action='store_true', help=hide)
     ap.add_argument('--timeout', type=float, default=120, help=hide)
     return ap.parse_intermixed_args()
@@ -180,7 +185,7 @@ def main():
             fail(f'qbuild: no such file: {f}')
         if f.suffix not in (*C_SOURCES, '.o', '.a'):
             fail(f'qbuild: {f}: expected .c, .cpp, .s, .S, .o or .a')
-    tdir, script, machine, syslibs = TARGETS['l475']
+    tdir, script, machine, syslibs = TARGETS[args.target]
     defs = [f'-D{d}' for d in args.defs]
     incs = [f'-I{i}' for i in args.incs]
     out = args.out
