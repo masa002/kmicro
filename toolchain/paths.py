@@ -12,8 +12,11 @@ Each tool is looked up in this order: its environment variable, then the usual i
                           default: ~/toolchains/xpack-qemu-arm-*
     JAVA_HOME             the Java that runs kotlinc-native and cinterop; default: `java` on PATH
 
-BUILDING.md lists the versions kmicro is tested with.
+toolchain/versions.txt lists the versions kmicro is tested with, with their downloads and SHA-256: when several
+versions of a tool are installed, the tested one is used, else the newest, with a warning.
+`python toolchain/paths.py` shows what is found and exits 1 when a tool is missing or incomplete.
 """
+import functools
 import os
 import re
 import shutil
@@ -30,7 +33,27 @@ ML = 'thumb/v7e-m+fp/hard'                 # newlib / libgcc multilib for Cortex
 TARGET_M4F = ['--target=thumbv7em-none-eabihf', '-mcpu=cortex-m4', '-mfpu=fpv4-sp-d16', '-mfloat-abi=hard']
 
 
-def _find(env, patterns, what):
+@functools.lru_cache(maxsize=None)
+def tested_versions():
+    """toolchain/versions.txt: tool -> the versions kmicro is tested with (every host)."""
+    t = {}
+    for line in (Path(__file__).resolve().parent / 'versions.txt').read_text(encoding='utf-8').splitlines():
+        f = line.split()
+        if f and not line[0].isspace() and not f[0].startswith('#') and len(f) >= 2 and f[1] not in t.get(f[0], []):
+            t.setdefault(f[0], []).append(f[1])
+    return t
+
+
+def version_key(p):
+    """Sort key that orders version numbers as numbers: xpack-qemu-arm-10.1.0-1 after xpack-qemu-arm-9.2.4-1."""
+    return [int(x) if x.isdigit() else x for x in re.split(r'(\d+)', Path(p).as_posix())]
+
+
+def _tested(tool, p):
+    return any(v in Path(p).as_posix() for v in tested_versions().get(tool, []))
+
+
+def _find(env, patterns, what, tool=None):
     v = os.environ.get(env)
     if v:
         p = Path(v)
@@ -38,46 +61,82 @@ def _find(env, patterns, what):
             sys.exit(f'kmicro: {env}={v} does not exist ({what})')
         return p
     for pat in patterns:
-        hits = sorted(HOME.glob(pat), reverse=True)
+        hits = sorted(HOME.glob(pat), key=version_key)
         if hits:
-            return hits[0]
+            tested = [h for h in hits if tool and _tested(tool, h)]
+            return (tested or hits)[-1]
     return None
+
+
+_warned = set()
+
+
+def warn_once(msg):
+    if msg not in _warned:
+        _warned.add(msg)
+        print(f'kmicro: warning: {msg}', file=sys.stderr)
 
 
 class _Lazy:
     """Tools resolved on first use, so a script that never needs QEMU never asks for it."""
 
-    def __init__(self, env, patterns, what):
-        self.env, self.patterns, self.what, self._p = env, patterns, what, None
+    def __init__(self, env, patterns, what, tool):
+        self.env, self.patterns, self.what, self.tool, self._p = env, patterns, what, tool, None
 
     def __call__(self):
         if self._p is None:
-            self._p = _find(self.env, self.patterns, self.what)
+            self._p = _find(self.env, self.patterns, self.what, self.tool)
             if self._p is None:
                 sys.exit(f'kmicro: {self.what} not found. Set {self.env} or install it under '
                          f'{HOME / self.patterns[0]} (see BUILDING.md).')
+            if not os.environ.get(self.env) and not _tested(self.tool, self._p):
+                warn_once(f'{self._p} is not the tested version of {self.what} '
+                          f'({", ".join(tested_versions().get(self.tool, []))}; toolchain/versions.txt)')
         return self._p
 
 
 kotlin_native = _Lazy('KMICRO_KOTLIN_NATIVE', [f'toolchains/kotlin-native-prebuilt-*-{KOTLIN_NATIVE_VERSION}'],
-                      f'Kotlin/Native {KOTLIN_NATIVE_VERSION}')
+                      f'Kotlin/Native {KOTLIN_NATIVE_VERSION}', 'kotlin-native')
 llvm = _Lazy('KMICRO_LLVM', ['.konan/dependencies/llvm-*-essentials-*/bin', '.konan/dependencies/llvm-*/bin'],
-             'the LLVM of Kotlin/Native (run kotlinc-native once to download it)')
-arm_gcc = _Lazy('KMICRO_ARM_GCC', ['toolchains/xpack-arm-none-eabi-gcc-*'], 'xPack arm-none-eabi-gcc')
-qemu = _Lazy('KMICRO_QEMU', ['toolchains/xpack-qemu-arm-*'], 'xPack QEMU Arm')
+             'the LLVM of Kotlin/Native (run kotlinc-native once to download it)', 'llvm')
+arm_gcc = _Lazy('KMICRO_ARM_GCC', ['toolchains/xpack-arm-none-eabi-gcc-*'], 'xPack arm-none-eabi-gcc', 'arm-gcc')
+qemu = _Lazy('KMICRO_QEMU', ['toolchains/xpack-qemu-arm-*'], 'xPack QEMU Arm', 'qemu')
+
+
+def kotlin_native_version():
+    """compilerVersion of the Kotlin/Native distribution in use (konan/konan.properties), or None."""
+    props = kotlin_native() / 'konan/konan.properties'
+    m = re.search(r'^compilerVersion\s*=\s*(\S+)', props.read_text(encoding='utf-8', errors='replace'), re.M) \
+        if props.exists() else None
+    v = m.group(1) if m else None
+    if v != KOTLIN_NATIVE_VERSION:
+        warn_once(f'{kotlin_native()} is Kotlin/Native {v or "(unknown version)"}; kmicro needs '
+                  f'{KOTLIN_NATIVE_VERSION} (retarget.py reads its IR)')
+    return v
+
+
+def _exe(lazy, rel):
+    """A tool's executable, or a one-line error that names it (e.g. KMICRO_LLVM set to the LLVM root, not bin)."""
+    p = lazy() / rel
+    if not p.exists():
+        env = os.environ.get(lazy.env)
+        what = lazy.what.split(' (')[0]
+        sys.exit(f'kmicro: {p} not found: ' + (f'{lazy.env}={env} must be the {"bin" if lazy is llvm else "top"} '
+                                                f'folder of {what}' if env else f'the {what} install is incomplete'))
+    return p
 
 
 def clang():
-    return llvm() / f'clang{EXE}'
+    return _exe(llvm, f'clang{EXE}')
 
 
 def ld_lld():
-    return llvm() / f'ld.lld{EXE}'
+    return _exe(llvm, f'ld.lld{EXE}')
 
 
 def gcc_bin(name):
     """arm-none-eabi-<name> of the xPack toolchain (gcc, objcopy, size, objdump, nm)."""
-    return arm_gcc() / 'bin' / f'arm-none-eabi-{name}{EXE}'
+    return _exe(arm_gcc, f'bin/arm-none-eabi-{name}{EXE}')
 
 
 def newlib_include():
@@ -89,11 +148,12 @@ def newlib_lib():
 
 
 def libgcc():
-    return next((arm_gcc() / 'lib/gcc/arm-none-eabi').glob('*')) / ML / 'libgcc.a'
+    dirs = sorted((arm_gcc() / 'lib/gcc/arm-none-eabi').glob('*'), key=version_key)
+    return _exe(arm_gcc, Path('lib/gcc/arm-none-eabi') / (dirs[-1].name if dirs else '<version>') / ML / 'libgcc.a')
 
 
 def qemu_system_arm():
-    return qemu() / 'bin' / f'qemu-system-arm{EXE}'
+    return _exe(qemu, f'bin/qemu-system-arm{EXE}')
 
 
 _java = None
@@ -135,7 +195,7 @@ def arg_path(p, relative=True, ascii=False, fail=True):
     """A path as a command-line argument of a tool that cannot take every Windows file name. Java's launcher reads its
     command line in the ANSI code page, so a character outside it (an accented letter on Japanese Windows, Japanese on
     English Windows) is lost; QEMU opens files by narrow names and needs `ascii`. Such a path is given relative to the
-    current folder, or by its 8.3 short name, when that avoids the character (else an error, or None with fail=False)."""
+    current folder, or by its 8.3 short name, when that avoids the character; else an error (None with fail=False)."""
     s = Path(p).as_posix()
     if not WINDOWS:
         return s
@@ -179,14 +239,12 @@ def kn_command(tool, args):
 
 def _kn_command(tool, args):
     """(command, working folder or None): an argument file whose path Java cannot take is named from its own folder."""
+    kotlin_native_version()
     if not WINDOWS:
-        return [str(kotlin_native() / 'bin' / tool), *map(str, args)], None
+        return [str(_exe(kotlin_native, f'bin/{tool}')), *map(str, args)], None
     home = Path(os.path.abspath(kotlin_native()))
     exe, major = java()
-    jar = home / 'konan/lib/kotlin-native-compiler-embeddable.jar'
-    if not jar.exists():
-        sys.exit(f'kmicro: {jar} not found: KMICRO_KOTLIN_NATIVE must be the top folder of the Kotlin/Native '
-                 'distribution')
+    jar = Path(os.path.abspath(_exe(kotlin_native, 'konan/lib/kotlin-native-compiler-embeddable.jar')))
     opts = ['-ea', '-Xmx3G', '-XX:TieredStopAtLevel=1', '-Dfile.encoding=UTF-8',
             f'-Dkonan.home={arg_path(home, relative=False)}']
     if major >= 19:                            # messages as UTF-8 (run_kn decodes them so)
@@ -216,8 +274,70 @@ def run_kn(tool, args, **kw):
                           **({'encoding': 'utf-8'} if utf8 else {}), **({'cwd': cwd} if cwd else {}), **kw)
 
 
+def _first_line(cmd):
+    try:
+        r = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, errors='replace', timeout=60)
+    except OSError as e:
+        return f'cannot run ({e.strerror})'
+    return ((r.stdout + r.stderr).strip().splitlines() or ['?'])[0]
+
+
+def report():
+    """python toolchain/paths.py: each tool, its version and whether it is the tested one. Exit 1 when one is
+    missing or incomplete."""
+    bad = 0
+    tested = tested_versions()
+    rows = [('Kotlin/Native', kotlin_native, [f'bin/kotlinc-native{".bat" if WINDOWS else ""}',
+                                              f'bin/cinterop{".bat" if WINDOWS else ""}',
+                                              'konan/lib/kotlin-native-compiler-embeddable.jar']),
+            ('LLVM', llvm, [f'clang{EXE}', f'ld.lld{EXE}']),
+            ('arm-none-eabi-gcc', arm_gcc, [f'bin/arm-none-eabi-{n}{EXE}' for n in ('gcc', 'objcopy', 'size', 'objdump',
+                                                                                   'nm')] + ['arm-none-eabi/include']),
+            ('QEMU', qemu, [f'bin/qemu-system-arm{EXE}'])]
+    for name, lazy, files in rows:
+        p = _find(lazy.env, lazy.patterns, lazy.what, lazy.tool)
+        if p is None:
+            print(f'{name:18s} NOT FOUND: set {lazy.env} or install it under {HOME / lazy.patterns[0]}')
+            bad += 1
+            continue
+        lazy._p = p
+        missing = [f for f in files if not (p / f).exists()]
+        if lazy is arm_gcc and not missing:
+            missing = [] if libgcc_ok() else [f'lib/gcc/arm-none-eabi/*/{ML}/libgcc.a']
+        version = (kotlin_native_version() if lazy is kotlin_native else
+                   _first_line([p / f'clang{EXE}', '--version']) if lazy is llvm else
+                   _first_line([p / f'bin/arm-none-eabi-gcc{EXE}', '-dumpversion']) if lazy is arm_gcc else
+                   _first_line([p / f'bin/qemu-system-arm{EXE}', '--version'])) if not missing else ''
+        ok = (version == KOTLIN_NATIVE_VERSION if lazy is kotlin_native else
+              _tested(lazy.tool, p) or any(v in (version or '') for v in tested.get(lazy.tool, [])))
+        print(f'{name:18s} {p}')
+        if not missing:
+            print(f'{"":18s} {version}' + ('' if ok else
+                                           f'   (untested: kmicro is tested with {", ".join(tested[lazy.tool])})'))
+        for f in missing:
+            print(f'{"":18s} MISSING: {p / f}')
+        bad += bool(missing)
+    home = os.environ.get('JAVA_HOME')
+    exe = Path(home) / 'bin' / f'java{EXE}' if home else shutil.which('java')
+    if not exe or not Path(exe).exists():
+        print(f'{"Java":18s} NOT FOUND: set JAVA_HOME or put java on PATH (Kotlin/Native runs on Java)')
+        bad += 1
+    else:
+        v = re.search(r'version "([^"]+)"', _first_line([exe, '-version']))
+        major = java()[1]
+        print(f'{"Java":18s} {exe}' + (' (JAVA_HOME)' if home else ' (PATH)'))
+        print(f'{"":18s} {v.group(1) if v else "?"}' + ('' if str(major) in tested.get('java', []) else
+                                                        f'   (untested: kmicro is tested with Java '
+                                                        f'{", ".join(tested.get("java", []))})'))
+    if bad:
+        print(f'{bad} tool(s) missing or incomplete: see BUILDING.md')
+    return 1 if bad else 0
+
+
+def libgcc_ok():
+    dirs = sorted((arm_gcc() / 'lib/gcc/arm-none-eabi').glob('*'), key=version_key)
+    return bool(dirs) and (dirs[-1] / ML / 'libgcc.a').exists()
+
+
 if __name__ == '__main__':                 # python toolchain/paths.py: show what was found
-    for name, lazy in (('Kotlin/Native', kotlin_native), ('LLVM', llvm), ('arm-none-eabi-gcc', arm_gcc),
-                       ('QEMU', qemu)):
-        p = _find(lazy.env, lazy.patterns, lazy.what)
-        print(f'{name:18s} {p if p else "NOT FOUND (" + lazy.env + ")"}')
+    sys.exit(report())
