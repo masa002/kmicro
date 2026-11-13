@@ -1,9 +1,15 @@
-"""Retarget a probe's Codegen IR to Cortex-M4, link it with full LTO + --gc-sections against trapping stubs, and report
-(1) the flash/RAM the Kotlin side really costs and (2) the runtime symbols that survive dead-code elimination.
+"""Retarget a program's Codegen IR to Cortex-M4, link it with full LTO + --gc-sections against trapping stubs, and
+report (1) the flash/RAM the Kotlin side really costs and (2) the runtime symbols that survive dead-code elimination.
 
-usage: python measure.py <probe-dir> <name> <kfun-prefix> [<kfun-prefix> ...]
-  kfun-prefix: e.g. 'kfun:#entry(' -- every defined IR function whose name starts with it is kept as a root.
+usage: python tools/measure.py SOURCE KFUN_PREFIX... [-o OUTDIR]
+
+    SOURCE       a tools/kbuild.py (or run_all) output folder, whose ir/out.Codegen.ll is used, or a Codegen .ll file
+    KFUN_PREFIX  e.g. 'kfun:#add(': every defined IR function whose name starts with it is kept as a root
+    -o           the folder for the results (default: measure/ next to ir/), result.json among them
+
+example: python tools/measure.py build/t/add 'kfun:#add('
 """
+import argparse
 import json
 import re
 import subprocess
@@ -25,10 +31,18 @@ def sh(args, **kw):
 
 
 def main():
-    d, name, prefixes = Path(sys.argv[1]), sys.argv[2], sys.argv[3:]
-    src = d / f'ir_{name}' / 'out.Codegen.ll'
-    out = d / f'm_{name}'
-    out.mkdir(exist_ok=True)
+    ap = argparse.ArgumentParser(usage='python tools/measure.py SOURCE KFUN_PREFIX... [-o OUTDIR]', description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('source', type=Path, help=argparse.SUPPRESS)
+    ap.add_argument('prefixes', nargs='+', help=argparse.SUPPRESS)
+    ap.add_argument('-o', dest='out', type=Path, help=argparse.SUPPRESS)
+    args = ap.parse_args()
+    src = args.source / 'ir/out.Codegen.ll' if args.source.is_dir() else args.source
+    if not src.is_file():
+        sys.exit(f'measure: no such IR: {src}')
+    base = src.parent.parent if src.parent.name == 'ir' else src.parent
+    name, prefixes, out = base.name, args.prefixes, args.out or base / 'measure'
+    out.mkdir(parents=True, exist_ok=True)
     ll, stubs = out / 'm4.ll', out / 'stubs.c'
     sh([sys.executable, TOOLS / 'retarget.py', src, ll, '--stubs', stubs, '--no-tls', '--eh-stubs'])
     text = ll.read_text(encoding='utf-8')

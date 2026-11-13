@@ -1,24 +1,38 @@
 """Quick statistics over a textual LLVM IR module (.ll) produced by kotlinc-native -Xsave-llvm-ir-after.
 
-usage: python irstat.py module.ll [--list-decls] [--list-defs]
+usage: python tools/irstat.py MODULE [--list-decls] [--list-defs]
+
+    MODULE        a .ll file, or a tools/kbuild.py (or run_all) output folder: its ir/out.Codegen.ll
+    --list-decls  also list every declared function (LLVM intrinsics included)
+    --list-defs   also list every defined function
 
 Reports: defined / declared functions, external symbols the module needs (the runtime contract), thread_local
 globals, 64-bit atomics, EH constructs (invoke / landingpad / personality), target-cpu / target-features attributes,
 and the instruction count per defined function (top 25).
 """
+import argparse
 import re
 import sys
 from collections import Counter
+from pathlib import Path
 
 DEF_RE = re.compile(r'^define\s+(?:[^@]*?)@("?[^"(\s]+"?)\(')
 DECL_RE = re.compile(r'^declare\s+(?:[^@]*?)@("?[^"(\s]+"?)\(')
 GLOBAL_RE = re.compile(r'^@("?[^"=\s]+"?)\s*=\s*(.*)$')
 ATTR_RE = re.compile(r'^attributes #(\d+) = \{(.*)\}')
+LANDINGPAD_RE = re.compile(r'^(?:%\S+ = )?landingpad\b')
 
 
 def main():
-    path = sys.argv[1]
-    opts = set(sys.argv[2:])
+    ap = argparse.ArgumentParser(usage='python tools/irstat.py MODULE [--list-decls] [--list-defs]',
+                                 description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('module', type=Path, help=argparse.SUPPRESS)
+    ap.add_argument('--list-decls', action='store_true', help=argparse.SUPPRESS)
+    ap.add_argument('--list-defs', action='store_true', help=argparse.SUPPRESS)
+    args = ap.parse_args()
+    path = args.module / 'ir/out.Codegen.ll' if args.module.is_dir() else args.module
+    if not path.is_file():
+        sys.exit(f'irstat: no such module: {path}')
     defs, decls = [], []
     sizes = Counter()
     tls, globals_ext, globals_def = [], [], 0
@@ -44,7 +58,7 @@ def main():
                     sizes[cur] += 1
                 if ' invoke ' in s or s.startswith('invoke ') or '= invoke ' in s:
                     eh['invoke'] += 1
-                if 'landingpad' in s:
+                if LANDINGPAD_RE.match(s):          # the instruction, not `unwind label %landingpad...`
                     eh['landingpad'] += 1
                 if ('atomicrmw' in s or 'cmpxchg' in s or ' atomic ' in s) and 'i64' in s:
                     atomics64[s.split()[2] if '=' in s else s.split()[0]] += 1
@@ -92,7 +106,11 @@ def main():
     print('\nlargest defined functions:')
     for name, n in sizes.most_common(25):
         print(f'  {n:6d}  {name}')
-    if '--list-defs' in opts:
+    if args.list_decls:
+        print('\nall declared functions:')
+        for d in decls:
+            print('  ', d)
+    if args.list_defs:
         print('\nall defined functions:')
         for d in defs:
             print('  ', d)
