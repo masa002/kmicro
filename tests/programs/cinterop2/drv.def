@@ -1,0 +1,3 @@
+headers = drv.h
+headerFilter = drv.h
+package = drv
