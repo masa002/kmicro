@@ -517,6 +517,24 @@ ObjHeader *Kotlin_Char_toString(uint16_t c, ObjHeader **result)
 
 /* ---- Console.cpp: println goes to the platform's text output ---- */
 
+/* UTF-8 text with a length, so a U+0000 character does not end it. A board whose output can take any byte (a UART,
+ * semihosting SYS_WRITE) defines this; the default passes the text between NUL bytes to kmicro_puts and drops the
+ * NULs. */
+__attribute__((weak)) void kmicro_write(const char *buf, size_t n)
+{
+    char run[32];
+    size_t k = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (buf[i] != 0)
+            run[k++] = buf[i];
+        if (k > 0 && (k == sizeof run - 1u || i + 1u == n)) {
+            run[k] = 0;
+            kmicro_puts(run);
+            k = 0;
+        }
+    }
+}
+
 static void put_string(const ObjHeader *s)
 {
     char buf[64];
@@ -527,14 +545,13 @@ static void put_string(const ObjHeader *s)
             uint8_t tmp[4];
             uint32_t u = char_units(s, i, n);        /* a surrogate pair is one character, one UTF-8 sequence */
             uint32_t k = utf8_of(s, i, u, tmp, false);
-            if (o + k + 1 > sizeof buf)
+            if (o + k > sizeof buf)
                 break;
             memcpy(buf + o, tmp, k);
             o += k;
             i += u;
         }
-        buf[o] = 0;
-        kmicro_puts(buf);
+        kmicro_write(buf, o);
     }
 }
 void Kotlin_io_Console_print(const ObjHeader *message) { put_string(message); }
