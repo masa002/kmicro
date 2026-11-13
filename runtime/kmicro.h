@@ -88,6 +88,14 @@ extern int kmicro_tls_slot_count;
 ObjHeader *kmicro_alloc_object(const TypeInfo *type, ObjHeader **result);
 ObjHeader *kmicro_alloc_array(const TypeInfo *type, int32_t count, ObjHeader **result);
 
+/* The collector marks with interrupts enabled, and an interrupt handler that moves a reference meanwhile could hide
+ * a live object from it. So every store of a reference into an object, an array or a global (UpdateHeapRef, the
+ * reference atomics, the array natives) calls km_ref_stored(): the collector clears the flag before marking and
+ * marks again if a handler set it (mm.c mark()). C code that stores Kotlin references from a handler calls it too. */
+extern volatile uint8_t km_refs_stored;
+static inline void km_ref_stored(void) { km_refs_stored = 1; }
+KM_NOTHROW void UpdateHeapRef(ObjHeader **location, const ObjHeader *object);   /* barrier + store (Memory.h) */
+
 /* Kotlin-side helpers the runtime calls (stdlib RuntimeUtils.kt, exported for the C++ runtime) */
 __attribute__((noreturn)) void ThrowArrayIndexOutOfBoundsException(void);
 __attribute__((noreturn)) void ThrowOutOfMemoryError(void);

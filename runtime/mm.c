@@ -16,6 +16,7 @@
  *
  * The collector runs only inside an allocation call (or an explicit GC.collect / kmicro_gc). The compiled code
  * keeps every live reference in a frame slot across calls, so nothing live hides in registers (docs/research/R_mm.md).
+ * Interrupt handlers may run while it marks and store references; mark() handles that.
  */
 #include <string.h>
 #include "kmicro.h"
@@ -32,6 +33,9 @@
 #endif
 #ifndef KM_C_ROOTS
 #define KM_C_ROOTS    16                             /* kmicro_root slots */
+#endif
+#ifndef KM_GC_REMARKS
+#define KM_GC_REMARKS 3                              /* marking passes an interrupt handler may restart (mark()) */
 #endif
 
 #define FREE_BIT 1u
@@ -52,6 +56,26 @@ static ObjHeader **s_croots[KM_C_ROOTS];
 static ObjHeader *s_mark_stack[KM_MARK_STACK];
 static int s_msp;
 static bool s_mark_overflow;
+
+/* Short critical sections against interrupt handlers: PRIMASK is saved and restored, never just enabled. */
+static inline uint32_t irq_save(void)
+{
+#if defined(__thumb__)
+    uint32_t pm;
+    __asm volatile("mrs %0, primask\n cpsid i" : "=r"(pm) : : "memory");
+    return pm;
+#else
+    return 0;
+#endif
+}
+static inline void irq_restore(uint32_t pm)
+{
+#if defined(__thumb__)
+    __asm volatile("msr primask, %0" : : "r"(pm) : "memory");
+#else
+    (void)pm;
+#endif
+}
 
 /* ---------------------------------------------------------------------------------------------------------- */
 /* heap                                                                                                       */
@@ -287,29 +311,44 @@ ObjHeader *AllocArrayInstance(const TypeInfo *type, int32_t elements, ObjHeader 
 }
 
 /* ---------------------------------------------------------------------------------------------------------- */
-/* reference stores (no barriers: the collector never runs concurrently)                                       */
+/* reference stores (the one barrier: km_ref_stored, for interrupt handlers storing while the collector marks)  */
 /* ---------------------------------------------------------------------------------------------------------- */
 
-KM_NOTHROW void UpdateHeapRef(ObjHeader **location, const ObjHeader *object) { *location = (ObjHeader *)object; }
+volatile uint8_t km_refs_stored;
+
+/* Stores into objects and globals (heap stores) go through the barrier. Frame slots (UpdateStackRef, UpdateReturnRef)
+ * do not: a handler only writes its own frames, and storing null (ZeroHeapRef) cannot hide an object. */
+KM_NOTHROW void UpdateHeapRef(ObjHeader **location, const ObjHeader *object)
+{
+    km_ref_stored();
+    *location = (ObjHeader *)object;
+}
 KM_NOTHROW void UpdateStackRef(ObjHeader **location, const ObjHeader *object) { *location = (ObjHeader *)object; }
 KM_NOTHROW void UpdateReturnRef(ObjHeader **slot, const ObjHeader *object) { *slot = (ObjHeader *)object; }
-KM_NOTHROW void UpdateVolatileHeapRef(ObjHeader **location, const ObjHeader *object) { *location = (ObjHeader *)object; }
+KM_NOTHROW void UpdateVolatileHeapRef(ObjHeader **location, const ObjHeader *object)
+{
+    km_ref_stored();
+    *location = (ObjHeader *)object;
+}
 KM_NOTHROW void ZeroHeapRef(ObjHeader **location) { *location = NULL; }
 KM_NOTHROW void ZeroArrayRefs(ArrayHeader *array) { memset(km_array_refs(array), 0, array->count_ * sizeof(ObjHeader *)); }
 /* AtomicReference and @Volatile read-modify-writes: atomic against interrupt handlers too (LDREX/STREX; exception
  * entry clears the exclusive monitor, so an interrupted update retries), like the Int and Long atomics. */
 KM_NOTHROW bool CompareAndSetVolatileHeapRef(ObjHeader **location, ObjHeader *expected, ObjHeader *value)
 {
+    km_ref_stored();
     return __atomic_compare_exchange_n(location, &expected, value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
 }
 KM_NOTHROW ObjHeader *CompareAndSwapVolatileHeapRef(ObjHeader **location, ObjHeader *expected, ObjHeader *value,
                                                     ObjHeader **result)
 {
+    km_ref_stored();
     __atomic_compare_exchange_n(location, &expected, value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
     return km_return(result, expected);              /* the old value, whether or not it was replaced */
 }
 KM_NOTHROW ObjHeader *GetAndSetVolatileHeapRef(ObjHeader **location, ObjHeader *value, ObjHeader **result)
 {
+    km_ref_stored();
     return km_return(result, __atomic_exchange_n(location, value, __ATOMIC_SEQ_CST));
 }
 
@@ -509,14 +548,42 @@ static void sweep(void)
         s_st.live_peak_bytes = used;
 }
 
+static void remark(void)                            /* the roots and every marked object's fields again */
+{
+    mark_roots();
+    s_mark_overflow = true;
+    drain();
+}
+
+/* Marking runs with interrupts enabled. A handler that moves a reference meanwhile, from a slot not scanned yet to
+ * one already scanned (a buffer swap), would hide a live object, so km_ref_stored() records every reference store
+ * made during marking, and marking repeats until a pass ends without one: then the reference graph did not change
+ * during a complete pass. A pass from the roots alone would not do, since it stops at marked objects whose fields
+ * may have changed. If handlers keep storing, the last pass (after KM_GC_REMARKS) runs with interrupts masked. */
+static void mark(void)
+{
+    s_msp = 0;
+    s_mark_overflow = false;
+    km_refs_stored = 0;                              /* only interrupt handlers store from here on */
+    mark_roots();
+    drain();
+    uint32_t pm = irq_save();
+    for (int pass = 0; km_refs_stored && pass < KM_GC_REMARKS; pass++) {
+        km_refs_stored = 0;
+        irq_restore(pm);
+        remark();
+        pm = irq_save();
+    }
+    if (km_refs_stored)
+        remark();
+    irq_restore(pm);
+}
+
 static void collect(void)
 {
     if (s_lo == NULL)
         heap_init();
-    s_msp = 0;
-    s_mark_overflow = false;
-    mark_roots();
-    drain();
+    mark();
     sweep();
     s_st.gc_count++;
 }
