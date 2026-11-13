@@ -1,0 +1,5 @@
+# support/hw.h for Kotlin (cinterop): `import c.*`, then hw_rd32(addr), hw_wr32(addr, v), hw_wfi() ...
+# Link support/hw.c with the program, compiled with clang -flto, so each call becomes one instruction.
+headers = hw.h
+headerFilter = hw.h
+package = c

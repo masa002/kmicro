@@ -54,4 +54,12 @@ uint32_t hw_basepri(void)
 void hw_basepri_set(uint32_t v) { __asm volatile("msr basepri, %0" :: "r"(v) : "memory"); }
 void hw_basepri_max(uint32_t v) { __asm volatile("msr basepri_max, %0" :: "r"(v) : "memory"); }
 
+/* QEMU does not model the DWT: there the writes are ignored and hw_cycles() stays 0. */
+void hw_cycles_enable(void)
+{
+    *(volatile uint32_t *)0xE000EDFCu |= 1u << 24;    /* CoreDebug->DEMCR.TRCENA: the DWT unit on */
+    *(volatile uint32_t *)0xE0001004u = 0;            /* DWT->CYCCNT */
+    *(volatile uint32_t *)0xE0001000u |= 1u;          /* DWT->CTRL.CYCCNTENA */
+}
+
 uint32_t hw_cycles(void) { return *(volatile uint32_t *)0xE0001004u; }   /* DWT->CYCCNT */
