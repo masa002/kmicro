@@ -327,17 +327,34 @@ __attribute__((noreturn)) void _ZSt9terminatev(void) { kmicro_panic("std::termin
 
 /* ---- stack traces: return addresses through the same unwind tables ---- */
 
+/* The trace leaves out the frames that only build the exception, as the stock runtime does: Kotlin_getCurrentStackTrace
+ * itself and the Throwable primary constructor that calls it. They are recognised by their function's address, not
+ * counted: LTO often inlines the constructor into a subclass constructor or into the function that throws, and a fixed
+ * count then drops that function instead. A constructor that was inlined somewhere stays as the frame it became. */
+__attribute__((noinline)) ObjHeader *Kotlin_getCurrentStackTrace(ObjHeader **result);
+__attribute__((weak)) void km_throwable_init(void)
+    __asm__("kfun:kotlin.Throwable#<init>(kotlin.String?;kotlin.Throwable?){}");
+
 #define KM_TRACE_MAX 12
-typedef struct { uint32_t pc[KM_TRACE_MAX + 2], sp; int n; } km_trace_t;
+typedef struct { uint32_t pc[KM_TRACE_MAX], last_pc, last_sp; int n; } km_trace_t;
 
 static _Unwind_Reason_Code trace_fn(_Unwind_Context *ctx, void *arg)
 {
     km_trace_t *t = arg;
     uint32_t pc = (uint32_t)(_Unwind_GetGR(ctx, 15) & ~1u), sp = _Unwind_GetGR(ctx, 13);
-    if (t->n >= KM_TRACE_MAX + 2 || (t->n > 0 && pc == t->pc[t->n - 1] && sp == t->sp))
-        return _URC_END_OF_STACK;                    /* full, or the walk did not move: never one frame twice */
+    if (pc == t->last_pc && sp == t->last_sp)
+        return _URC_END_OF_STACK;                    /* the walk did not move: never one frame twice */
+    t->last_pc = pc;
+    t->last_sp = sp;
+    if (t->n == 0) {
+        uint32_t fn = (uint32_t)_Unwind_GetRegionStart(ctx) & ~1u;
+        uint32_t ctor = (uint32_t)(uintptr_t)km_throwable_init & ~1u;
+        if (fn == ((uint32_t)(uintptr_t)Kotlin_getCurrentStackTrace & ~1u) || (ctor != 0 && fn == ctor))
+            return _URC_NO_REASON;
+    }
+    if (t->n >= KM_TRACE_MAX)
+        return _URC_END_OF_STACK;
     t->pc[t->n++] = pc;
-    t->sp = sp;
     return _URC_NO_REASON;
 }
 
@@ -346,10 +363,10 @@ ObjHeader *Kotlin_getCurrentStackTrace(ObjHeader **result)
 {
     km_trace_t t;
     t.n = 0;
+    t.last_pc = t.last_sp = 0;
     _Unwind_Backtrace(trace_fn, &t);
-    int skip = t.n > 2 ? 2 : t.n;                    /* this function and the Throwable constructor */
-    ObjHeader *a = kmicro_alloc_array(theNativePtrArrayTypeInfo, t.n - skip, result);
-    memcpy(km_array_data((ArrayHeader *)a), &t.pc[skip], (size_t)(t.n - skip) * 4u);
+    ObjHeader *a = kmicro_alloc_array(theNativePtrArrayTypeInfo, t.n, result);
+    memcpy(km_array_data((ArrayHeader *)a), t.pc, (size_t)t.n * 4u);
     return a;
 }
 
