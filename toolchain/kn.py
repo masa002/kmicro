@@ -259,7 +259,8 @@ def c_prototypes(*headers):
     return names
 
 
-def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, size=False, hot=None, force=False):
+def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, size=False, hot=None, force=False,
+          kotlinc_args=()):
     """Kotlin sources -> [out/k.o] (+ out/bridges.o when the program calls C through cinterop), ready to link with
     the kmicro runtime.
 
@@ -270,15 +271,19 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
     init_all the name of a generated C function `void <init_all>(void)` that initialises every file-level global of
              <package>: called at boot, before interrupts, it leaves no first-use initialisation to a handler
     size     minsize for every Kotlin function except those whose symbol matches the regex `hot`
+    kotlinc_args  more kotlinc-native options (-Xbinary=latin1Strings=true, -opt-in=..., -language-version ...)
     """
     out = Path(out)
-    for w in compile_ir(srcs, out, [x for lib in libs for x in ('-l', lib)], [*libs, *deps], force):
+    if hot and not size:
+        sys.exit('kmicro: hot (--hot) needs size (--size)')
+    extra = [*(x for lib in libs for x in ('-l', Path(os.path.abspath(lib)).as_posix())), *kotlinc_args]
+    for w in compile_ir(srcs, out, extra, [*libs, *deps], force):
         print(w, file=sys.stderr)             # (stdout is kbuild's list of objects)
     ll = retarget(out / 'ir/out.Codegen.ll', out / 'm4.ll', '--no-tls', '--single-core',
                   *(['--size', *(['--hot', hot] if hot else [])] if size else []))
     if c_api or init_all:
-        if not package:
-            sys.exit('kmicro: c_api and init_all need the Kotlin package')
+        if package is None:
+            sys.exit('kmicro: c_api and init_all (--c-api, --init-all) need the Kotlin package (--package)')
         text = ll.read_text(encoding='utf-8')
         lines, missing = add_c_aliases(text, c_prototypes(*c_api), package)
         if missing:
