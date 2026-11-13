@@ -1,0 +1,14 @@
+Kotlin/Native 2.4.21, the compiler kmicro was developed with
+
+Release   https://github.com/JetBrains/kotlin/releases/tag/v2.4.21
+Asset     kotlin-native-prebuilt-windows-x86_64-2.4.21.zip
+          https://github.com/JetBrains/kotlin/releases/download/v2.4.21/kotlin-native-prebuilt-windows-x86_64-2.4.21.zip
+
+SHA-256, in sha256sum format:
+
+9b77b3972a05e35ddfa0dd9d50eb3ddc20618c9cc6cead1bc6f6d41d2cad24bd *kotlin-native-prebuilt-windows-x86_64-2.4.21.zip
+7ded8eaa3bf8b716539321b1f1fc198486295da503a560541f64bb18ee81928e *kotlin-native-prebuilt-windows-x86_64-2.4.21/konan/lib/kotlin-native-compiler-embeddable.jar
+
+The archive's hash is the one published with the release, in the asset
+kotlin-native-prebuilt-windows-x86_64-2.4.21.zip.sha256. The jar is the compiler inside that archive; its hash was
+computed from the archive.

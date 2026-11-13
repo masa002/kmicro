@@ -1,0 +1,3 @@
+headers = kernel.h
+headerFilter = kernel.h
+package = kmicro.example.kernel

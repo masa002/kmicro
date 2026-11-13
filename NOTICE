@@ -1,0 +1,68 @@
+kmicro
+Copyright 2026 The kmicro authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE). "The kmicro authors" are the
+contributors recorded in the Git history of this repository.
+
+------------------------------------------------------------------------------------------------------------------
+Kotlin/Native
+
+Parts of kmicro are derived from the Kotlin/Native runtime of the Kotlin compiler, version 2.4.21
+(https://github.com/JetBrains/kotlin, tag v2.4.21, kotlin-native/runtime/src), licensed under the Apache License,
+Version 2.0. Its source files carry JetBrains copyright lines ("Copyright 2010-2024 JetBrains s.r.o. and Kotlin
+Programming Language contributors." in the current file header, "Copyright 2010-2018 JetBrains s.r.o." and similar in
+older files), and the NOTICE file of the Kotlin compiler (license/NOTICE.txt in that repository, licenses/NOTICE.txt
+in the Kotlin/Native distribution) reads:
+
+   =========================================================================
+   ==  NOTICE file corresponding to the section 4 d of                    ==
+   ==  the Apache License, Version 2.0,                                   ==
+   ==  in this case for the Kotlin Compiler distribution.                 ==
+   =========================================================================
+
+   Kotlin Compiler
+   Copyright 2010-2024 JetBrains s.r.o and respective authors and developers
+
+The kmicro files derived from it, with the upstream files they follow (under kotlin-native/runtime/src/):
+
+    runtime/dtoa/            main/cpp/dtoa/: copied; dblparse.cpp, fltparse.cpp and cbigint.h are modified, and
+                             runtime/dtoa/README.md lists the changes
+    runtime/kmicro.h         declarations and data layouts of main/cpp/Runtime.h, Memory.h, TypeInfo.h and the
+                             other files its first comment names
+    runtime/init.c           main/cpp/Runtime.cpp, main/cpp/Memory.h: runtime start, initializer list, TLS records
+    runtime/init_cxx.cpp     main/cpp/Runtime.cpp: CallInitGlobalPossiblyLock, CallInitThreadLocal
+    runtime/mm.c             mm/cpp/RootSet.cpp, mm/cpp/ShadowStack.cpp, gc/common/cpp/MarkAndSweepUtils.hpp,
+                             main/cpp/Runtime.cpp (globals)
+    runtime/numbers.c        main/cpp/Operator.cpp
+    runtime/kmath.c          main/cpp/KotlinMath.cpp
+    runtime/strings.c        main/cpp/KString.h, KString.cpp, ToString.cpp, Console.cpp
+    runtime/types.c          main/cpp/Types.cpp, Natives.cpp, Boxing.cpp, Arrays.cpp
+    runtime/interop.c        main/cpp/Natives.cpp: Kotlin_interop_malloc, Kotlin_interop_free
+
+Apart from runtime/dtoa, these files are written for kmicro in C or C++: they implement the same runtime interface,
+with the same data layouts and behaviour, and their comments name the upstream sources they follow. Any other
+kmicro file whose comments name a Kotlin/Native source it follows is derived in the same way.
+
+------------------------------------------------------------------------------------------------------------------
+Apache Harmony
+
+runtime/dtoa is the Kotlin/Native adaptation of code from Apache Harmony
+(https://github.com/apache/harmony, classlib/modules/luni/src/main/native/luni/shared). A kmicro file that follows
+another Kotlin/Native source adapted from Apache Harmony, such as the hexadecimal floating-point parser
+HexStringParser.kt, derives from Apache Harmony as well. The Apache Harmony NOTICE
+(kotlin-native/licenses/third_party/harmony_NOTICE.txt in the Kotlin repository) reads:
+
+   Apache Harmony
+   Copyright 2006, 2010 The Apache Software Foundation.
+
+   This product includes software developed at
+   The Apache Software Foundation (http://www.apache.org/).
+
+   Portions of Apache Harmony were originally developed by
+   Intel Corporation and are licensed to the Apache Software
+   Foundation under the "Software Grant and Corporate Contribution
+   License Agreement" and for which the following copyright notices
+   apply
+            (C) Copyright 2005 Intel Corporation
+            (C) Copyright 2005-2006 Intel Corporation
+            (C) Copyright 2006 Intel Corporation

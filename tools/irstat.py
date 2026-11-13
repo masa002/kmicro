@@ -1,0 +1,102 @@
+"""Quick statistics over a textual LLVM IR module (.ll) produced by kotlinc-native -Xsave-llvm-ir-after.
+
+usage: python irstat.py module.ll [--list-decls] [--list-defs]
+
+Reports: defined / declared functions, external symbols the module needs (the runtime contract), thread_local
+globals, 64-bit atomics, EH constructs (invoke / landingpad / personality), target-cpu / target-features attributes,
+and the instruction count per defined function (top 25).
+"""
+import re
+import sys
+from collections import Counter
+
+DEF_RE = re.compile(r'^define\s+(?:[^@]*?)@("?[^"(\s]+"?)\(')
+DECL_RE = re.compile(r'^declare\s+(?:[^@]*?)@("?[^"(\s]+"?)\(')
+GLOBAL_RE = re.compile(r'^@("?[^"=\s]+"?)\s*=\s*(.*)$')
+ATTR_RE = re.compile(r'^attributes #(\d+) = \{(.*)\}')
+
+
+def main():
+    path = sys.argv[1]
+    opts = set(sys.argv[2:])
+    defs, decls = [], []
+    sizes = Counter()
+    tls, globals_ext, globals_def = [], [], 0
+    eh = Counter()
+    atomics64 = Counter()
+    attrs = {}
+    cur = None
+    with open(path, encoding='utf-8', errors='replace') as f:
+        for line in f:
+            if line.startswith('define '):
+                m = DEF_RE.match(line)
+                cur = m.group(1) if m else '?'
+                defs.append(cur)
+                if 'personality' in line:
+                    eh['personality'] += 1
+                continue
+            if line.startswith('}'):
+                cur = None
+                continue
+            if cur is not None:
+                s = line.strip()
+                if s and not s.endswith(':') and not s.startswith(';'):
+                    sizes[cur] += 1
+                if ' invoke ' in s or s.startswith('invoke ') or '= invoke ' in s:
+                    eh['invoke'] += 1
+                if 'landingpad' in s:
+                    eh['landingpad'] += 1
+                if ('atomicrmw' in s or 'cmpxchg' in s or ' atomic ' in s) and 'i64' in s:
+                    atomics64[s.split()[2] if '=' in s else s.split()[0]] += 1
+                continue
+            if line.startswith('declare '):
+                m = DECL_RE.match(line)
+                decls.append(m.group(1) if m else line.strip())
+                continue
+            m = GLOBAL_RE.match(line)
+            if m:
+                name, rest = m.groups()
+                if 'thread_local' in rest:
+                    tls.append(name)
+                if rest.startswith('external ') or ' external ' in rest.split('=')[0]:
+                    globals_ext.append(name)
+                else:
+                    globals_def += 1
+                continue
+            m = ATTR_RE.match(line)
+            if m:
+                attrs[m.group(1)] = m.group(2)
+
+    cpu = Counter(re.search(r'"target-cpu"="([^"]*)"', a).group(1) for a in attrs.values()
+                  if '"target-cpu"' in a)
+    feats = Counter(re.search(r'"target-features"="([^"]*)"', a).group(1)[:80] for a in attrs.values()
+                    if '"target-features"' in a)
+    intrinsics = [d for d in decls if d.startswith('llvm.') or d.startswith('"llvm.')]
+    runtime = sorted(d for d in decls if d not in intrinsics)
+    print(f'file: {path}')
+    print(f'defined functions: {len(defs)}   instructions: {sum(sizes.values())}')
+    print(f'declared functions: {len(decls)} (llvm intrinsics {len(intrinsics)}, external {len(runtime)})')
+    print(f'external globals: {len(globals_ext)}   defined globals: {globals_def}   thread_local: {len(tls)}')
+    print(f'EH: {dict(eh)}   64-bit atomics: {dict(atomics64)}')
+    print(f'target-cpu: {dict(cpu)}')
+    print(f'target-features (first 80 chars): {dict(feats)}')
+    if tls:
+        print('thread_local globals:', ', '.join(tls[:20]))
+    print('\nexternal functions (the runtime contract):')
+    for d in runtime:
+        print('  ', d)
+    if globals_ext:
+        print('\nexternal globals:')
+        for g in globals_ext:
+            print('  ', g)
+    print('\nlargest defined functions:')
+    for name, n in sizes.most_common(25):
+        print(f'  {n:6d}  {name}')
+    if '--list-defs' in opts:
+        print('\nall defined functions:')
+        for d in defs:
+            print('  ', d)
+
+
+if __name__ == '__main__':
+    main()

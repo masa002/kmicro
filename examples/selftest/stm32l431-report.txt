@@ -1,0 +1,33 @@
+kmicro selftest on an STM32L431: a recorded run
+
+Board      STM32L431 (Cortex-M4F, 256 KB flash, 64 KB SRAM). SYSCLK = MSI at 16 MHz; flash with 0 wait states,
+           prefetch and both caches. Output on USART1 at 115200 8N1.
+Program    selftest.kt, called by the checks of main.c, with the start-up, clock, UART and timing code of
+           stm32l431/board.c; the kmicro runtime with its default 16 KB heap; clang -O2 with LTO.
+Times      The DWT cycle counter around each check, divided by 16: microseconds at 16 MHz. A time includes sending
+           what the check itself printed (87 us per character at 115200 baud), but not its PASS line.
+Recorded   2026-10-16, with earlier versions of board.c, of the runtime and of the build steps. That version printed
+           "STM32L431" in the Kotlin greeting, where selftest.kt now says "a Cortex-M4"; its checks and their labels
+           are the ones shown below.
+           When that runtime captured a stack trace inside a try block, it walked the same frame again and again,
+           up to 12 times. Every throw captures a stack trace, so the two exception times include that extra work.
+New run    python examples/selftest/stm32l431/build.py, write build/stm32l431/selftest.hex to the board, reset it
+           and save what it prints on USART1.
+
+---- output ----
+=== kmicro self-test: official Kotlin/Native 2.4.21 output on STM32L431 ===
+  PASS  runtime init (module initializers)   111 us
+Hello from Kotlin/Native 2.4.21 on a bare STM32L431 (no OS, kmicro runtime)
+  PASS  println from Kotlin   7117 us
+  PASS  classes, interface, virtual calls (= 45)   53 us
+  PASS  garbage collection, 6000+ objects   160640 us
+  PASS  strings (10 checks, UTF-16, JVM hashCode)   1486 us
+  PASS  exceptions (9 checks, 200+ throws)   600684 us
+  PASS  one throw + catch   1609 us
+  PASS  coroutine: 300 suspend/resume cycles   49395 us
+  PASS  one full GC   1804 us
+
+heap 16384 B, peak 16384 B, objects 9599, collections 12, freed 9574
+result: ALL PASS
+
+kmicro: stopped, code 0

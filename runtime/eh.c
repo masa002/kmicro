@@ -1,0 +1,372 @@
+/* Kotlin exceptions on ARM EHABI, bare metal: libgcc's unwinder plus kmicro's own personality routine.
+ *
+ * How the compiler lowers exceptions (docs/research/R_eh.md, CodeGenerator.kt / IrToBitcode.kt at v2.4.21):
+ *   - throw out of a function: call ThrowException(exception);
+ *   - every try gets one landing pad `landingpad catch null` (catch-all at the LLVM level); it calls
+ *     SetCurrentFrame, __cxa_begin_catch(r0), Kotlin_getExceptionObject, __cxa_end_catch and then matches the
+ *     Kotlin catch clauses in Kotlin code, rethrowing when none matches; finally is lowered to catch + rethrow;
+ *   - Kotlin -> C bridges get "filtering" pads `catch @_ZTI18ExceptionObjHolder, catch null` that compare the
+ *     selector with the type index of _ZTI18ExceptionObjHolder; cleanup pads end in __cxa_end_cleanup.
+ * So the personality never matches Kotlin types: a frame with a catch action handles the exception, the selector
+ * handed to the pad is the filter of its first action record, and a cleanup-only pad runs and unwinding resumes.
+ * Phase 1 finds the handler frame and remembers its SP; phase 2 runs cleanups on the way and installs the handler.
+ * If nothing handles the exception (or unwinding reaches code without unwind tables), ThrowException reports it
+ * with its Kotlin type, message and the stack trace captured at construction, then stops.
+ */
+#include <string.h>
+#include "kmicro.h"
+
+/* ARM EHABI interface of libgcc (unwind-arm-common.h, GCC 15.2), declared here because clang's own <unwind.h>
+ * describes a different (LLVM libunwind) layout. */
+typedef enum {
+    _URC_OK = 0, _URC_NO_REASON = 0, _URC_FOREIGN_EXCEPTION_CAUGHT = 1, _URC_END_OF_STACK = 5,
+    _URC_HANDLER_FOUND = 6, _URC_INSTALL_CONTEXT = 7, _URC_CONTINUE_UNWIND = 8, _URC_FAILURE = 9
+} _Unwind_Reason_Code;
+typedef int _Unwind_State;
+enum { _US_VIRTUAL_UNWIND_FRAME = 0, _US_UNWIND_FRAME_STARTING = 1, _US_UNWIND_FRAME_RESUME = 2,
+       _US_ACTION_MASK = 3 };
+typedef struct _Unwind_Context _Unwind_Context;
+typedef struct _Unwind_Control_Block {
+    char exception_class[8];
+    void (*exception_cleanup)(_Unwind_Reason_Code, struct _Unwind_Control_Block *);
+    struct { uint32_t reserved1, reserved2, reserved3, reserved4, reserved5; } unwinder_cache;
+    struct { uint32_t sp; uint32_t bitpattern[5]; } barrier_cache;
+    struct { uint32_t bitpattern[4]; } cleanup_cache;
+    struct { uint32_t fnstart; uint32_t *ehtp; uint32_t additional; uint32_t reserved1; } pr_cache;
+    long long : 0;
+} _Unwind_Control_Block;
+typedef _Unwind_Reason_Code (*_Unwind_Trace_Fn)(_Unwind_Context *, void *);
+enum { _UVRSC_CORE = 0, _UVRSD_UINT32 = 0 };
+int _Unwind_VRS_Get(_Unwind_Context *, int regclass, uint32_t regno, int repr, void *value);
+int _Unwind_VRS_Set(_Unwind_Context *, int regclass, uint32_t regno, int repr, void *value);
+void *_Unwind_GetLanguageSpecificData(_Unwind_Context *);
+uintptr_t _Unwind_GetRegionStart(_Unwind_Context *);
+_Unwind_Reason_Code _Unwind_RaiseException(_Unwind_Control_Block *);
+__attribute__((noreturn)) void _Unwind_Resume(_Unwind_Control_Block *);
+_Unwind_Reason_Code _Unwind_Backtrace(_Unwind_Trace_Fn, void *);
+_Unwind_Reason_Code __gnu_unwind_frame(_Unwind_Control_Block *, _Unwind_Context *);
+static inline uint32_t _Unwind_GetGR(_Unwind_Context *c, int r)
+{
+    uint32_t v;
+    _Unwind_VRS_Get(c, _UVRSC_CORE, (uint32_t)r, _UVRSD_UINT32, &v);
+    return v;
+}
+static inline void _Unwind_SetGR(_Unwind_Context *c, int r, uint32_t v)
+{
+    _Unwind_VRS_Set(c, _UVRSC_CORE, (uint32_t)r, _UVRSD_UINT32, &v);
+}
+typedef uint32_t _Unwind_Word;
+
+void EnterFrame(ObjHeader **start, int parameters, int count);
+void LeaveFrame(ObjHeader **start, int parameters, int count);
+
+/* ---- the one exception object in flight (Kotlin catches it immediately, finally rethrows a fresh one) ---- */
+
+typedef struct {
+    _Unwind_Control_Block ucb;                       /* first: r0 at the landing pad points here */
+    ObjHeader *exception;                            /* a GC root while set */
+} km_exception_t;
+
+static km_exception_t s_exc __attribute__((aligned(8)));
+static ObjHeader *s_caught;                          /* between __cxa_begin_catch and __cxa_end_catch */
+static _Unwind_Control_Block *s_cleanup_ucb;         /* the exception whose cleanup pad is running */
+const void *const _ZTI18ExceptionObjHolder[2] = { 0, "18ExceptionObjHolder" };   /* identity only */
+
+void kmicro_eh_roots(void (*visit)(ObjHeader *))
+{
+    visit(s_exc.exception);
+    visit(s_caught);
+}
+
+/* ---- LSDA reading (GCC exception table format, as LLVM emits it after the EHABI opcodes) ---- */
+
+enum { DW_EH_PE_omit = 0xff, DW_EH_PE_uleb128 = 0x01, DW_EH_PE_udata2 = 0x02, DW_EH_PE_udata4 = 0x03,
+       DW_EH_PE_sleb128 = 0x09, DW_EH_PE_sdata2 = 0x0a, DW_EH_PE_sdata4 = 0x0b, DW_EH_PE_pcrel = 0x10 };
+
+static uint32_t uleb(const uint8_t **p)
+{
+    uint32_t r = 0;
+    unsigned shift = 0;
+    uint8_t b;
+    do {
+        b = *(*p)++;
+        r |= (uint32_t)(b & 0x7f) << shift;
+        shift += 7;
+    } while (b & 0x80);
+    return r;
+}
+
+static int32_t sleb(const uint8_t **p)
+{
+    int32_t r = 0;
+    unsigned shift = 0;
+    uint8_t b;
+    do {
+        b = *(*p)++;
+        r |= (int32_t)(b & 0x7f) << shift;
+        shift += 7;
+    } while (b & 0x80);
+    if (shift < 32 && (b & 0x40))
+        r |= -(1 << shift);
+    return r;
+}
+
+static uint32_t read_enc(const uint8_t **p, uint8_t enc)
+{
+    const uint8_t *start = *p;
+    uint32_t v;
+    switch (enc & 0x0f) {
+    case DW_EH_PE_uleb128: v = uleb(p); break;
+    case DW_EH_PE_sleb128: v = (uint32_t)sleb(p); break;
+    case DW_EH_PE_udata2: case DW_EH_PE_sdata2: {
+        uint16_t x;
+        memcpy(&x, *p, 2);
+        *p += 2;
+        v = (enc & 0x0f) == DW_EH_PE_sdata2 ? (uint32_t)(int32_t)(int16_t)x : x;
+        break;
+    }
+    default:                                         /* absptr / udata4 / sdata4 */
+        memcpy(&v, *p, 4);
+        *p += 4;
+        break;
+    }
+    if (v != 0 && (enc & 0x70) == DW_EH_PE_pcrel)
+        v += (uint32_t)(uintptr_t)start;
+    return v;
+}
+
+typedef struct { uint32_t lp; int32_t filter; bool found; } km_site_t;
+
+/* The call-site entry covering ip: its landing pad (0 = none) and the first action's filter (0 = cleanup). */
+static km_site_t find_site(_Unwind_Context *ctx)
+{
+    km_site_t s = { 0, 0, false };
+    const uint8_t *p = _Unwind_GetLanguageSpecificData(ctx);
+    if (p == NULL)
+        return s;
+    uint32_t fstart = (uint32_t)_Unwind_GetRegionStart(ctx);
+    uint32_t ip = (uint32_t)(_Unwind_GetGR(ctx, 15) & ~1u) - 1u;   /* inside the call instruction */
+    uint8_t lp_enc = *p++;
+    uint32_t lpstart = lp_enc == DW_EH_PE_omit ? fstart : read_enc(&p, lp_enc);
+    uint8_t tt_enc = *p++;
+    if (tt_enc != DW_EH_PE_omit)
+        (void)uleb(&p);                              /* type table offset: never read */
+    uint8_t cs_enc = *p++;
+    uint32_t cs_len = uleb(&p);
+    const uint8_t *cs_end = p + cs_len, *actions = cs_end;
+    while (p < cs_end) {
+        uint32_t start = read_enc(&p, cs_enc), len = read_enc(&p, cs_enc), lp = read_enc(&p, cs_enc);
+        uint32_t action = uleb(&p);
+        if (ip < lpstart + start)
+            break;                                   /* sorted table */
+        if (ip < lpstart + start + len) {
+            s.found = true;
+            if (lp != 0) {
+                s.lp = lpstart + lp;
+                if (action != 0) {
+                    const uint8_t *a = actions + action - 1;
+                    s.filter = sleb(&a);
+                }
+            }
+            return s;
+        }
+    }
+    return s;
+}
+
+static _Unwind_Reason_Code continue_unwinding(_Unwind_Control_Block *ucbp, _Unwind_Context *ctx)
+{
+    return __gnu_unwind_frame(ucbp, ctx) == _URC_OK ? _URC_CONTINUE_UNWIND : _URC_FAILURE;
+}
+
+static _Unwind_Reason_Code install(_Unwind_Control_Block *ucbp, _Unwind_Context *ctx, uint32_t lp, int32_t sel)
+{
+    _Unwind_SetGR(ctx, 0, (_Unwind_Word)(uintptr_t)ucbp);
+    _Unwind_SetGR(ctx, 1, (_Unwind_Word)sel);
+    _Unwind_SetGR(ctx, 15, lp | 1u);                 /* Thumb */
+    return _URC_INSTALL_CONTEXT;
+}
+
+_Unwind_Reason_Code __gxx_personality_v0(_Unwind_State state, _Unwind_Control_Block *ucbp, _Unwind_Context *ctx)
+{
+    _Unwind_SetGR(ctx, 12, (_Unwind_Word)(uintptr_t)ucbp);   /* the unwinder reads the LSDA through r12 */
+    switch (state & _US_ACTION_MASK) {
+    case _US_VIRTUAL_UNWIND_FRAME: {                 /* phase 1: is there a catch here? */
+        km_site_t s = find_site(ctx);
+        if (s.lp != 0 && s.filter > 0) {
+            ucbp->barrier_cache.sp = _Unwind_GetGR(ctx, 13);
+            return _URC_HANDLER_FOUND;
+        }
+        return continue_unwinding(ucbp, ctx);
+    }
+    case _US_UNWIND_FRAME_STARTING: {                /* phase 2 */
+        km_site_t s = find_site(ctx);
+        if (s.lp != 0) {
+            if (s.filter > 0) {
+                if (ucbp->barrier_cache.sp == _Unwind_GetGR(ctx, 13))
+                    return install(ucbp, ctx, s.lp, s.filter);
+            } else {
+                s_cleanup_ucb = ucbp;                /* __cxa_end_cleanup resumes with it */
+                return install(ucbp, ctx, s.lp, 0);
+            }
+        }
+        return continue_unwinding(ucbp, ctx);
+    }
+    case _US_UNWIND_FRAME_RESUME:                    /* this frame's cleanup ran: go on */
+        return continue_unwinding(ucbp, ctx);
+    default:
+        return _URC_FAILURE;
+    }
+}
+
+/* End of a cleanup pad. Tail-call with the pad's own registers: _Unwind_Resume snapshots them, and the PC
+ * comes from the control block (UCB_SAVED_CALLSITE_ADDR). */
+__attribute__((naked)) void __cxa_end_cleanup(void)
+{
+    __asm volatile("ldr r0, =s_cleanup_ucb\n"
+                   "ldr r0, [r0]\n"
+                   "b _Unwind_Resume\n"
+                   ".ltorg\n");
+}
+
+void *__cxa_begin_catch(void *exn)
+{
+    km_exception_t *e = exn;
+    s_caught = e->exception;
+    e->exception = NULL;
+    return e;
+}
+KM_NOTHROW void __cxa_end_catch(void) { s_caught = NULL; }
+KM_NOTHROW ObjHeader *kmicro_caught_exception(void) { return s_caught; }   /* for C++ catch(...) in the runtime */
+
+KM_NOTHROW ObjHeader *Kotlin_getExceptionObject(void *holder, ObjHeader **result)
+{
+    (void)holder;
+    return km_return(result, s_caught);
+}
+
+/* ---- throwing ---- */
+
+ObjHeader *Kotlin_Throwable_getMessage(ObjHeader *throwable, ObjHeader **result);
+ObjHeader *Kotlin_Throwable_getStackTrace(ObjHeader *throwable, ObjHeader **result);
+uint32_t kmicro_string_to_utf8(const ObjHeader *s, char *buf, uint32_t cap);
+__attribute__((weak)) void kmicro_on_uncaught(ObjHeader *exception) { (void)exception; }
+
+static void put_hex(uint32_t v)
+{
+    char b[11] = "0x00000000";
+    for (int i = 0; i < 8; i++)
+        b[9 - i] = "0123456789abcdef"[(v >> (4 * i)) & 15u];
+    kmicro_puts(b);
+}
+
+static void put_kstr(const ObjHeader *s)
+{
+    char buf[96];
+    if (s == NULL)
+        return;
+    kmicro_string_to_utf8(s, buf, sizeof buf);
+    kmicro_puts(buf);
+}
+
+void kmicro_report_exception(ObjHeader *e)
+{
+    struct { FrameOverlay f; ObjHeader *msg, *trace; } fr = { { 0, 0, 0 }, 0, 0 };   /* roots for the two getters */
+    EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+    const TypeInfo *t = km_type_info(e);
+    kmicro_puts("Uncaught Kotlin exception: ");
+    if (t->packageName_ && ((const ArrayHeader *)t->packageName_)->count_ > 3) {
+        put_kstr(t->packageName_);
+        kmicro_puts(".");
+    }
+    put_kstr(t->relativeName_);
+    Kotlin_Throwable_getMessage(e, &fr.msg);
+    if (fr.msg != NULL) {
+        kmicro_puts(": ");
+        put_kstr(fr.msg);
+    }
+    kmicro_puts("\n");
+    Kotlin_Throwable_getStackTrace(e, &fr.trace);
+    if (fr.trace != NULL) {
+        const ArrayHeader *a = (const ArrayHeader *)fr.trace;
+        const uint32_t *pc = km_array_data((ArrayHeader *)a);
+        for (uint32_t i = 0; i < a->count_; i++) {
+            kmicro_puts("    at ");
+            put_hex(pc[i]);
+            kmicro_puts("\n");
+        }
+    }
+    LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+}
+
+__attribute__((noreturn)) void ThrowException(ObjHeader *exception)
+{
+    if (s_exc.exception != NULL)
+        kmicro_panic("exception thrown while another one is being unwound");
+    memset(&s_exc.ucb, 0, sizeof s_exc.ucb);
+    memcpy(s_exc.ucb.exception_class, "KMICROKT", 8);
+    s_exc.exception = exception;
+    _Unwind_Reason_Code rc = _Unwind_RaiseException(&s_exc.ucb);
+    /* Only returns when no handler was found (end of stack, or a frame without unwind tables). */
+    (void)rc;
+    ObjHeader *e = s_exc.exception;
+    kmicro_report_exception(e);
+    kmicro_on_uncaught(e);
+    kmicro_panic("uncaught Kotlin exception");
+}
+
+void Kotlin_processUnhandledException(ObjHeader *e) { kmicro_report_exception(e); }
+__attribute__((noreturn)) void Kotlin_terminateWithUnhandledException(ObjHeader *e)
+{
+    kmicro_report_exception(e);
+    kmicro_panic("uncaught Kotlin exception");
+}
+__attribute__((noreturn)) void _ZSt9terminatev(void) { kmicro_panic("std::terminate"); }
+
+/* ---- stack traces: return addresses through the same unwind tables ---- */
+
+#define KM_TRACE_MAX 12
+typedef struct { uint32_t pc[KM_TRACE_MAX + 2]; int n; } km_trace_t;
+
+static _Unwind_Reason_Code trace_fn(_Unwind_Context *ctx, void *arg)
+{
+    km_trace_t *t = arg;
+    if (t->n >= KM_TRACE_MAX + 2)
+        return _URC_END_OF_STACK;
+    t->pc[t->n++] = (uint32_t)(_Unwind_GetGR(ctx, 15) & ~1u);
+    return _URC_NO_REASON;
+}
+
+extern const TypeInfo *theNativePtrArrayTypeInfo;
+ObjHeader *Kotlin_getCurrentStackTrace(ObjHeader **result)
+{
+    km_trace_t t;
+    t.n = 0;
+    _Unwind_Backtrace(trace_fn, &t);
+    int skip = t.n > 2 ? 2 : t.n;                    /* this function and the Throwable constructor */
+    ObjHeader *a = kmicro_alloc_array(theNativePtrArrayTypeInfo, t.n - skip, result);
+    memcpy(km_array_data((ArrayHeader *)a), &t.pc[skip], (size_t)(t.n - skip) * 4u);
+    return a;
+}
+
+/* Addresses as text: the host tool turns them into Kotlin function names from the ELF symbols. */
+ObjHeader *CreateStringFromCString(const char *c, ObjHeader **result);
+ObjHeader *Kotlin_getStackTraceStrings(const ObjHeader *trace, ObjHeader **result)
+{
+    const ArrayHeader *t = (const ArrayHeader *)trace;
+    uint32_t n = t->count_;
+    struct { FrameOverlay f; ObjHeader *arr, *s; } fr = { { 0, 0, 0 }, 0, 0 };
+    EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+    kmicro_alloc_array(theArrayTypeInfo, (int32_t)n, &fr.arr);
+    for (uint32_t i = 0; i < n; i++) {
+        char b[11] = "0x00000000";
+        uint32_t v = ((const uint32_t *)km_array_data((ArrayHeader *)t))[i];
+        for (int k = 0; k < 8; k++)
+            b[9 - k] = "0123456789abcdef"[(v >> (4 * k)) & 15u];
+        CreateStringFromCString(b, &fr.s);
+        km_array_refs((ArrayHeader *)fr.arr)[i] = fr.s;
+    }
+    ObjHeader *r = km_return(result, fr.arr);
+    LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+    return r;
+}
