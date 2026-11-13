@@ -409,6 +409,83 @@ void kmicro_unroot(ObjHeader **slot)
 }
 
 /* ---------------------------------------------------------------------------------------------------------- */
+/* StableRef: externally reference-counted references (ExternalRCRef.kt; stock mm/cpp ExternalRCRef)           */
+/* ---------------------------------------------------------------------------------------------------------- */
+
+/* StableRef.create(obj).asCPointer() is the address of a slot in this table; C keeps it as a void * (callback user
+ * data) and Kotlin turns it back with asStableRef. While the count is above zero the object is a root (create sets
+ * 1, dispose releases and frees the slot); at zero the slot is weak and the collector clears it once nothing else
+ * keeps the object. A null object has no slot: its reference is NULL. Interrupt handlers may use these too. */
+#ifndef KM_STABLE_REFS
+#define KM_STABLE_REFS 16
+#endif
+typedef struct { ObjHeader *obj; uint16_t rc; bool used; } km_stable_ref_t;
+static km_stable_ref_t s_stable[KM_STABLE_REFS];
+
+static km_stable_ref_t *stable_slot(void *ref)
+{
+    km_stable_ref_t *s = ref;
+    if (s < s_stable || s >= s_stable + KM_STABLE_REFS || !s->used)
+        kmicro_panic("not a live StableRef (used after dispose?)");
+    return s;
+}
+
+static void *stable_create(ObjHeader *obj, uint16_t rc)
+{
+    if (obj == NULL)
+        return NULL;
+    uint32_t pm = irq_save();
+    for (int i = 0; i < KM_STABLE_REFS; i++)
+        if (!s_stable[i].used) {
+            s_stable[i] = (km_stable_ref_t){ obj, rc, true };
+            km_ref_stored();                         /* a new root: a collection that is marking looks again */
+            irq_restore(pm);
+            return &s_stable[i];
+        }
+    kmicro_panic("too many StableRefs (raise KM_STABLE_REFS, now " KM_STR(KM_STABLE_REFS) ")");
+}
+
+KM_NOTHROW void *Kotlin_native_internal_ref_createRetainedExternalRCRef(ObjHeader *obj) { return stable_create(obj, 1); }
+KM_NOTHROW void *Kotlin_native_internal_ref_createUnretainedExternalRCRef(ObjHeader *obj) { return stable_create(obj, 0); }
+
+KM_NOTHROW void Kotlin_native_internal_ref_retainExternalRCRef(void *ref)
+{
+    if (ref == NULL)
+        return;
+    uint32_t pm = irq_save();
+    stable_slot(ref)->rc++;
+    km_ref_stored();                                 /* a weak slot may have become a root */
+    irq_restore(pm);
+}
+KM_NOTHROW void Kotlin_native_internal_ref_releaseExternalRCRef(void *ref)
+{
+    if (ref == NULL)
+        return;
+    uint32_t pm = irq_save();
+    km_stable_ref_t *s = stable_slot(ref);
+    if (s->rc == 0)
+        kmicro_panic("StableRef released more often than retained");
+    s->rc--;
+    irq_restore(pm);
+}
+KM_NOTHROW void Kotlin_native_internal_ref_disposeExternalRCRef(void *ref)
+{
+    if (ref == NULL)
+        return;
+    uint32_t pm = irq_save();
+    *stable_slot(ref) = (km_stable_ref_t){ NULL, 0, false };
+    irq_restore(pm);
+}
+KM_NOTHROW ObjHeader *Kotlin_native_internal_ref_dereferenceExternalRCRef(void *ref, ObjHeader **result)
+{
+    return km_return(result, ref == NULL ? NULL : stable_slot(ref)->obj);
+}
+KM_NOTHROW ObjHeader *Kotlin_native_internal_ref_dereferenceExternalRCRefOrNull(void *ref, ObjHeader **result)
+{
+    return km_return(result, ref == NULL ? NULL : stable_slot(ref)->obj);   /* NULL once a weak slot was cleared */
+}
+
+/* ---------------------------------------------------------------------------------------------------------- */
 /* mark                                                                                                       */
 /* ---------------------------------------------------------------------------------------------------------- */
 
@@ -496,6 +573,9 @@ static void mark_roots(void)
     for (int i = 0; i < KM_C_ROOTS; i++)
         if (s_croots[i] != NULL)
             root(*s_croots[i]);
+    for (int i = 0; i < KM_STABLE_REFS; i++)
+        if (s_stable[i].rc > 0)
+            root(s_stable[i].obj);
     extern void kmicro_eh_roots(void (*visit)(ObjHeader *));
     kmicro_eh_roots(root);                           /* an exception in flight */
 }
@@ -576,6 +656,11 @@ static void mark(void)
     }
     if (km_refs_stored)
         remark();
+    for (int i = 0; i < KM_STABLE_REFS; i++) {      /* weak StableRef slots: forget objects about to be freed */
+        ObjHeader *o = s_stable[i].obj;
+        if (s_stable[i].rc == 0 && o != NULL && in_heap(o) && !(*(uint32_t *)o & MARK_BIT))
+            s_stable[i].obj = NULL;
+    }
     irq_restore(pm);
 }
 
