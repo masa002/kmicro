@@ -61,7 +61,7 @@ body:
     id: output
     attributes:
       label: The full output
-      description: Everything the commands printed, the exit code included (qbuild prints `qemu: exit N`).
+      description: "Everything the commands printed, the exit code included (qbuild prints `qemu: exit N`)."
       render: text
     validations:
       required: true
