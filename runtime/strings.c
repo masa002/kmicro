@@ -620,7 +620,7 @@ ObjHeader *Kotlin_DurationValue_formatToExactDecimals(double value, int32_t deci
  * NULs. */
 __attribute__((weak)) void kmicro_write(const char *buf, size_t n)
 {
-    char run[32];
+    char run[65];                                    /* put_string's 64-byte chunk in one call: no character split */
     size_t k = 0;
     for (size_t i = 0; i < n; i++) {
         if (buf[i] != 0)
