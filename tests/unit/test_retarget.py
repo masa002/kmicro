@@ -97,6 +97,63 @@ attributes #0 = { "target-cpu"="arm1176jzf-s" "target-features"="+armv6kz,+dsp,+
 attributes #1 = { }
 '''
 
+# The same rewrites on functions that carry debug information (kotlinc-native -g).
+DEBUG_MODULE = r'''target datalayout = "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64"
+target triple = "armv6kz-unknown-linux-gnueabihf"
+
+@1 = internal unnamed_addr constant [4 x i32] [i32 1, i32 2, i32 3, i32 4]
+@"kvar:kotlin.text.rangeStart#internal" = internal global ptr null
+
+define void @bridge() !dbg !10 {
+entry:
+  ret void, !dbg !11
+}
+
+define double @"kfun:kotlin.native.internal.HexStringParser.Companion#parseDouble(kotlin.String){}kotlin.Double"(ptr %0, ptr %1) #0 !dbg !12 {
+entry:
+  %r = call double @"kfun:demo#regexParse(kotlin.String){}kotlin.Double"(ptr %1), !dbg !13
+  ret double %r, !dbg !13
+}
+
+define internal void @"kfun:kotlin.text.$init_global$_CharCategories.kt#internal"() #0 !dbg !14 {
+entry:
+  %0 = alloca ptr, align 4
+  %1 = call ptr @"kfun:kotlin.collections#copyOf__at__kotlin.IntArray(){}kotlin.IntArray"(ptr @1, ptr %0), !dbg !15
+  store ptr %1, ptr @"kvar:kotlin.text.rangeStart#internal", align 4, !dbg !15
+  ret void, !dbg !15
+}
+
+define internal void @"kfun:kotlin.random.NativeRandom.<init>#internal"(ptr %this) #0 !dbg !16 {
+entry:
+  %seed = call i64 @Kotlin_system_getSteadyTimeNanos(), !dbg !17
+  store i64 %seed, ptr %this, align 8, !dbg !17
+  ret void, !dbg !17
+}
+
+declare ptr @"kfun:kotlin.collections#copyOf__at__kotlin.IntArray(){}kotlin.IntArray"(ptr, ptr) #0
+declare double @"kfun:demo#regexParse(kotlin.String){}kotlin.Double"(ptr) #0
+declare i64 @Kotlin_system_getSteadyTimeNanos() #0
+
+attributes #0 = { "target-cpu"="arm1176jzf-s" "target-features"="+armv6kz,+dsp,+vfp2" }
+
+!llvm.dbg.cu = !{!0}
+!llvm.module.flags = !{!2, !3}
+!0 = distinct !DICompileUnit(language: DW_LANG_C89, file: !1, producer: "kotlin-compiler: 2.4.21", isOptimized: false, runtimeVersion: 2, emissionKind: FullDebug)
+!1 = !DIFile(filename: "demo.kt", directory: "/src")
+!2 = !{i32 2, !"Debug Info Version", i32 3}
+!3 = !{i32 2, !"Dwarf Version", i32 4}
+!4 = !DISubroutineType(types: !5)
+!5 = !{}
+!10 = distinct !DISubprogram(name: "bridge", scope: !1, file: !1, line: 1, type: !4, scopeLine: 1, spFlags: DISPFlagDefinition, unit: !0)
+!11 = !DILocation(line: 1, column: 1, scope: !10)
+!12 = distinct !DISubprogram(name: "parseDouble", scope: !1, file: !1, line: 2, type: !4, scopeLine: 2, spFlags: DISPFlagDefinition, unit: !0)
+!13 = !DILocation(line: 2, column: 1, scope: !12)
+!14 = distinct !DISubprogram(name: "tables", scope: !1, file: !1, line: 3, type: !4, scopeLine: 3, spFlags: DISPFlagDefinition, unit: !0)
+!15 = !DILocation(line: 3, column: 1, scope: !14)
+!16 = distinct !DISubprogram(name: "NativeRandom", scope: !1, file: !1, line: 4, type: !4, scopeLine: 4, spFlags: DISPFlagDefinition, unit: !0)
+!17 = !DILocation(line: 4, column: 1, scope: !16)
+'''
+
 
 def body(text, name):
     m = re.search(r'^define [^\n]*@"' + re.escape(name) + r'"[^\n]*\{$(.*?)^\}$', text, re.M | re.S)
@@ -109,12 +166,26 @@ class RetargetTest(unittest.TestCase):
     def setUpClass(cls):
         OUT.mkdir(parents=True, exist_ok=True)
         (OUT / 'in.ll').write_text(MODULE, encoding='utf-8')
+        (OUT / 'debug.ll').write_text(DEBUG_MODULE, encoding='utf-8')
 
-    def retarget(self, *opts, name='out.ll'):
-        r = subprocess.run([sys.executable, ROOT / 'toolchain/retarget.py', OUT / 'in.ll', OUT / name, *opts],
+    def retarget(self, *opts, name='out.ll', src='in.ll'):
+        r = subprocess.run([sys.executable, ROOT / 'toolchain/retarget.py', OUT / src, OUT / name, *opts],
                            capture_output=True, text=True)
         text = (OUT / name).read_text(encoding='utf-8') if r.returncode == 0 else ''
         return r, text
+
+    def test_debug_info_stays_valid(self):
+        r, text = self.retarget('--no-tls', '--single-core', '--size', '--hot', 'NativeRandom', src='debug.ll',
+                                name='debug_out.ll')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('define void @bridge() #9999 !dbg !10 {', text)
+        self.assertIn('%1 = getelementptr inbounds i8, ptr @1, i32 0, !dbg !15', text)
+        self.assertIn('%seed = call i64 @kmicro_random_seed(), !dbg !17', text)
+        self.assertRegex(text, r'define double @"[^"]*parseDouble[^"]*"\(ptr %0, ptr %1\) #\d+ \{')
+        c = subprocess.run([str(paths.clang()), *paths.TARGET_M4F, '-O2', '-c', '-x', 'ir', OUT / 'debug_out.ll',
+                            '-o', OUT / 'debug_out.o'], capture_output=True, text=True)
+        self.assertEqual(c.returncode, 0, c.stderr)
+        self.assertNotIn('invalid debug info', c.stderr)
 
     def test_attributes_equal_clang(self):
         c = subprocess.run([str(paths.clang()), *paths.TARGET_M4F, '-S', '-emit-llvm', '-x', 'c', '-', '-o', '-'],

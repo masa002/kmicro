@@ -20,6 +20,7 @@ usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot
 - String.toDouble()/toFloat(): the hexadecimal parser calls runtime/hexfloat.c instead of compiling regular
   expressions, so number parsing does not link the Regex engine
 - the stdlib's Unicode tables stay in flash instead of being copied to the heap on first use
+Debug information (kotlinc-native -g) passes through intact: every rewrite keeps or drops whole !dbg attachments.
 """
 import re
 import subprocess
@@ -89,9 +90,9 @@ text = re.sub(r'"target-features"="[^"]*"', lambda m: M4_FEATURES, text)
 text = re.sub(r'^(attributes #\d+ = )\{ \}$', lambda m: m.group(1) + '{ "kmicro"="retargeted" }', text, flags=re.M)
 # Definitions with no attribute group at all (the cinterop bridges and wrappers that bridges.py copies) would carry
 # no cpu/features: the inliner then refuses to put a Cortex-M4 callee (hw.c's one-instruction helpers) into them.
-NOATTR = re.compile(r'^(define [^\n]*\)) \{$', re.M)
+NOATTR = re.compile(r'^(define [^\n]*\))((?: !dbg ![0-9]+)?) \{$', re.M)
 if NOATTR.search(text):
-    text = NOATTR.sub(r'\1 #9999 {', text)
+    text = NOATTR.sub(r'\1 #9999\2 {', text)
     text += f'\nattributes #9999 = {{ nounwind {M4_CPU} {M4_FEATURES} }}\n'
 if '--hot' in args and '--size' not in args:
     sys.exit('retarget: --hot only applies with --size')

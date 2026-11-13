@@ -16,7 +16,8 @@ sys.path.insert(0, str(ROOT / 'toolchain'))
 import paths  # noqa: E402
 
 TARGET = ROOT / 'targets/qemu-l475'
-CFLAGS = [*paths.TARGET_M4F, '-isystem', str(paths.newlib_include()), '-O2', '-flto', '-ffunction-sections',
+# -g costs no flash. It lets Kotlin code built with debug information keep its line info when LTO inlines it into C.
+CFLAGS = [*paths.TARGET_M4F, '-isystem', str(paths.newlib_include()), '-O2', '-g', '-flto', '-ffunction-sections',
           '-fdata-sections', '-fexceptions', '-funwind-tables', '-Wall', '-Wextra', '-Wno-unused-parameter',
           '-I', str(ROOT / 'runtime')]
 
