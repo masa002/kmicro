@@ -44,9 +44,9 @@ PASS  hello     text 66892  data 80  bss 18004
 
 ## Status
 
-kmicro is experimental. It grew out of a real device firmware: 24 modules written in Kotlin on an STM32L431 with
-64 KB of RAM and 256 KB of flash. That firmware is not part of this repository; the examples, tests and the
-[board run of the self-test](examples/selftest/stm32l431-report.txt) are.
+kmicro is experimental. It grew out of a real device firmware ([Origin](#origin)): 24 modules written in Kotlin on
+an STM32L431 with 64 KB of RAM and 256 KB of flash. That firmware is not part of this repository; the examples,
+tests and the [board run of the self-test](examples/selftest/stm32l431-report.txt) are.
 
 Most of the language and the standard library behave exactly as on stock Kotlin/Native: `tools/difftest.py` builds
 the same program for the host and for kmicro and compares the output byte for byte. The full list, feature by
@@ -151,7 +151,21 @@ time will be measured again.
 | [tests/](tests) | `run_all.py`, the test programs, the differential tests |
 | [docs/](docs) | [Kotlin support](docs/kotlin-support.md), [how it works](docs/how-it-works.md), [writing Kotlin for a microcontroller](docs/writing-kotlin.md), [design notes](docs/research) |
 
+## Origin
+
+kmicro started inside its author's own hardware project: a board that the author, Masahiro Obara, designed and
+built, with firmware the author wrote, first in C and then module by module in Kotlin (24 modules on an
+STM32L431). kmicro is the runtime and toolchain that made the Kotlin part possible; it was split out of that
+project and is developed on its own.
+
+That firmware is a separate, unpublished project. It is not part of this repository, and nothing here licenses
+it; it uses kmicro like any other program. `support/hw.h` and `tools/gen_regs.py` were first written for it and
+are part of kmicro, under the same Apache License 2.0. kmicro and the firmware were made on the author's own time
+and equipment and are not related to the author's employer.
+
 ## License
+
+Copyright 2026 Masahiro Obara (masa002) and the kmicro contributors.
 
 Apache License 2.0: [LICENSE](LICENSE). Parts follow Kotlin/Native and Apache Harmony sources: [NOTICE](NOTICE).
 
