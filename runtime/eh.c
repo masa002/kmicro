@@ -265,7 +265,8 @@ void Kotlin_runUnhandledExceptionHook(ObjHeader *throwable);   /* stdlib: the ho
 ObjHeader *kmicro_call_catching(void (*fn)(ObjHeader *), ObjHeader *arg, ObjHeader **frame, ObjHeader **slot);
 __attribute__((weak)) void kmicro_on_uncaught(ObjHeader *exception) { (void)exception; }
 
-static int s_uncaught;                               /* uncaught exceptions being reported, one inside another */
+static bool s_hook_ran;                              /* the Kotlin hook runs once, for the first uncaught exception */
+static int s_reports;                                /* reports started: one that throws starts another */
 
 static void put_hex(uint32_t v)
 {
@@ -366,7 +367,9 @@ void kmicro_report_exception(ObjHeader *e)
 
 /* The hook set by setUnhandledExceptionHook (Exceptions.cpp processUnhandledException). Returns NULL when it ran and
  * returned, else the exception to terminate with: the hook's own when it threw, e itself when no hook is set. Inside an
- * interrupt handler the hook is skipped (it may allocate); kmicro_on_uncaught is the C hook that runs there too. */
+ * interrupt handler the hook is skipped (it may allocate); kmicro_on_uncaught is the C hook that runs there too.
+ * The stdlib creates the object that holds the hook on first use: with no hook ever set, that takes two small
+ * allocations, and on a heap that is full at that moment the program stops with "out of memory" before the report. */
 static ObjHeader *run_hook(ObjHeader *e, ObjHeader **frame, ObjHeader **slot)
 {
     if (km_in_interrupt())
@@ -375,20 +378,22 @@ static ObjHeader *run_hook(ObjHeader *e, ObjHeader **frame, ObjHeader **slot)
 }
 
 /* Report e and stop; with hook, as for an exception nothing caught: the Kotlin hook runs first, then the exception it
- * leaves is reported. An exception that escapes from the report (a message getter that throws) is reported in turn. */
+ * leaves is reported. A hook may itself call terminateWithUnhandledException. An exception that escapes from the
+ * report (a message getter that throws) is reported in turn. */
 __attribute__((noreturn)) static void terminate(ObjHeader *e, bool hook)
 {
     struct { FrameOverlay f; ObjHeader *e, *thrown; } fr = { { 0, 0, 0 }, e, 0 };
     EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
-    if (++s_uncaught > 2)
-        kmicro_panic("uncaught Kotlin exception while reporting an uncaught exception");
-    if (s_uncaught == 2) {
-        kmicro_puts("\n");                           /* the first report stopped mid-line */
-    } else if (hook) {
+    if (hook && !s_hook_ran && s_reports == 0) {
+        s_hook_ran = true;
         ObjHeader *t = run_hook(fr.e, (ObjHeader **)&fr, &fr.thrown);
         if (t != NULL)
             fr.e = t;
     }
+    if (s_reports == 2)
+        kmicro_panic("uncaught Kotlin exception while reporting an uncaught exception");
+    if (s_reports++ > 0)
+        kmicro_puts("\n");                           /* the report before stopped mid-line */
     kmicro_report_exception(fr.e);
     kmicro_on_uncaught(fr.e);
     kmicro_panic("uncaught Kotlin exception");
