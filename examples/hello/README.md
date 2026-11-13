@@ -21,7 +21,7 @@ python tools/kbuild.py build/t/hello examples/hello/hello.kt --c-api examples/he
 python tools/qbuild.py build/t/hello/hello.elf examples/hello/main.c build/t/hello/k.o --run
 ```
 
-Output:
+The program prints, after the lines of the build:
 
 ```
 Hello from Kotlin #1, Kotlin #2, Kotlin #3 on a bare Cortex-M4

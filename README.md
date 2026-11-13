@@ -25,6 +25,9 @@ fun main() {
 
 ```
 $ python tools/kbuild.py build/hello hello.kt
+kotlinc-native: compiling 1 file...
+single-core: 113 init-state loads made plain
+build\hello\k.o
 $ python tools/qbuild.py build/hello/hello.elf targets/common/kotlin_main.c build/hello/k.o --run
 qbuild: hello.elf  text 71228  data 80  bss 18864  stack 79812
 Hello from Kotlin #1, Kotlin #2, Kotlin #3 on a bare Cortex-M4
