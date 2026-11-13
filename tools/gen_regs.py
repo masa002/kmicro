@@ -99,6 +99,11 @@ def main():
     ap.add_argument('--package', required=True, help='the Kotlin package of the generated file')
     ap.add_argument('--all', action='store_true', help='every register and constant (slow to compile)')
     a = ap.parse_args()
+    for f in [*a.header, *([a.pins] if a.pins else [])]:
+        if not f.is_file():
+            ap.error(f'{f}: no such file')
+    if a.sources and not a.sources.is_dir():
+        ap.error(f'--sources {a.sources}: no such folder')
     used = None if a.all or not a.sources else used_names(a.sources, a.out)
     defines, types, instances, irqs = {}, {}, {}, {}
     for h in a.header:
@@ -155,6 +160,7 @@ def main():
         pin = re.search(rf'#define\s+{name}_PIN\s+(\d+)u?\b', board)
         out.append(f'internal const val {name}_PORT: UInt = 0x{evaluate(instances[port][1], defines):08X}u   // {port}')
         out.append(f'internal const val {name}_PIN: Int = {pin.group(1)}')
+    a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text('\n'.join(out) + '\n', encoding='utf-8', newline='\n')
     print(f'{a.out.name}: {sum(1 for i in instances if instances[i][0] in types)} peripherals, {nreg} registers, '
           f'{nbit} constants, {len(irqs)} IRQ numbers')
