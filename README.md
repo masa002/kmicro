@@ -66,9 +66,11 @@ Every standard-library function that calls into the runtime is implemented, or s
 
 The short list; [docs/kotlin-support.md](docs/kotlin-support.md) has every case.
 
-- **Regex is big:** a few small patterns need a 32 KB heap and `\p{L}` about 56 KB, many patterns do not fit even
-  in 64 KB, and the engine adds about 240 KB of flash, so a program using it does not fit the STM32L431. Deep backtracking over long
-  input overflows the stack. `RegexOption.CANON_EQ` throws `IllegalArgumentException`.
+- **Regex is big:** the first pattern keeps 11.5 KB of the heap, three small patterns need a 20 KB heap, and a
+  program with about 40 patterns in one function runs out of memory even at 64 KB. A program that uses `Regex` is
+  about 365 KB of flash (234 KB with `--size`), against the STM32L431's 256 KB
+  ([what features cost](docs/writing-kotlin.md#memory)). Deep backtracking over long input overflows the stack.
+  `RegexOption.CANON_EQ` throws `IllegalArgumentException`.
 - **Running out of memory stops the program:** heap exhaustion ends with an out-of-memory report, not a catchable
   `OutOfMemoryError` (one request larger than the whole heap does throw). Kotlin/Native puts constant-size local
   arrays on the stack; kbuild warns about those above 512 bytes.

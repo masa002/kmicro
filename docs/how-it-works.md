@@ -90,6 +90,29 @@ clocks through semihosting. [examples/selftest/stm32l431/board.c](../examples/se
 start code of a real STM32L431. The `main()` of every C example begins with `kmicro_init()`;
 [targets/common/kotlin_main.c](../targets/common/kotlin_main.c) is the C `main` of a Kotlin-only program.
 
+## Sizes
+
+The runtime's memory is static: the heap, the native-memory arena and the root tables are arrays in `.bss`. Each
+size is a macro, set with `-D` when the runtime is compiled: `python tools/qbuild.py ... -D KM_HEAP_BYTES=32768`, or
+the runtime's flags in a board build. When a table is full the program stops with a panic that names its macro,
+such as `kmicro panic: too many globals (raise KM_GLOBALS, now 160)`.
+
+| Macro | Default | RAM | What it sizes |
+|---|---|---|---|
+| `KM_HEAP_BYTES` | 16384 | the value | the Kotlin heap; when it runs out the program stops ([writing-kotlin.md](writing-kotlin.md#memory)) |
+| `KM_INTEROP_BYTES` | 1024 | the value, when the program uses native memory or parses numbers | native memory: `nativeHeap`, `memScoped`, `cstr`, and the scratch memory of `toDouble()`; a request that does not fit throws `OutOfMemoryError` |
+| `KM_GLOBALS` | 160 | 4 B each | reference globals, the standard library's included |
+| `KM_C_ROOTS` | 16 | 4 B each | `kmicro_root()` slots: objects that C code holds |
+| `KM_STABLE_REFS` | 16 | 8 B each | StableRefs alive at once |
+| `KM_TLS_KEYS` | 8 | 12 B each | modules with thread-local globals |
+| `KM_TLS_SLOTS` | 64 | 4 B each | thread-local reference slots, all modules together |
+| `KM_MARK_STACK` | 96 | 4 B each | the collector's mark stack; not a limit: an overflow costs a rescan of the heap |
+| `KM_GC_REMARKS` | 3 | none | how often an interrupt handler that stores references can make the collector mark again; the pass after that runs with interrupts masked |
+| `KM_GC_STRESS` | off | none | `-D KM_GC_STRESS=1`: a full collection before every allocation, and freed memory overwritten; for tests |
+
+Two limits are fixed in `runtime/eh.c`: a stack trace keeps at most 12 frames (`KM_TRACE_MAX`), and the
+uncaught-exception report prints at most 8 exceptions of a cause chain (`KM_CAUSES_MAX`).
+
 ## Calling between C and Kotlin
 
 **Kotlin calls C** through cinterop, as on any Kotlin/Native target: a `.def` file lists the headers, and Kotlin

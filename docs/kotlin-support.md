@@ -105,8 +105,8 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | kotlin.math | partly | newlib libm: results within 2 ulp of stock |
 | unsigned types: arithmetic, parsing, printing | works | |
 | **Regex** | | |
-| matches/find/findAll/groups/named groups/replace/split, options | works | a few small patterns need a 32 KB heap; the engine is about 240 KB of flash, too much for the STM32L431 |
-| lookaround, backreferences, lazy/possessive, Unicode classes | works | `\p{L}` needs about 56 KB of heap; many patterns do not fit even in 64 KB |
+| matches/find/findAll/groups/named groups/replace/split, options | works | the first pattern keeps 11.5 KB of the heap and three small ones need a 20 KB heap; a program that uses Regex is about 365 KB of flash (234 KB with `--size`) ([costs](writing-kotlin.md#memory)) |
+| lookaround, backreferences, lazy/possessive, Unicode classes | works | `\p{L}` alone runs on the 16 KB heap (13.4 KB kept); about 40 patterns in one function run out of memory even at 64 KB (`d_known_regex_heap`) |
 | deep backtracking over long input | does not work | needs ~64 KB of stack; stops with 'kmicro fault: stack overflow' (exit 99) |
 | RegexOption.CANON_EQ | not supported | throws IllegalArgumentException: 'RegexOption.CANON_EQ is not supported on kmicro' |
 | **Time and random** | | |
