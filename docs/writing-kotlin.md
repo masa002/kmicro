@@ -126,19 +126,56 @@ that names its macro, such as `too many globals (raise KM_GLOBALS, now 160)`.
 
 ## Interrupt handlers
 
-A handler can run while the collector is working, so it must not allocate. The runtime stops with a panic when
-Kotlin code in a handler allocates (allocations inside runtime functions are not caught yet), and
-[tools/isr_check.py](../tools/isr_check.py) finds such paths in the machine code before the program runs: name each
-Kotlin handler with `--callback` and its compiler symbol ([how-it-works.md](how-it-works.md#interrupts)).
-A handler may read object references, but storing one into a field or an array can let a collection it interrupted
-free a live object, so keep handler state in primitives and primitive arrays. Allocations hide in these places:
+A handler can run while the collector is working, and the heap is not reentrant, so **a handler must not allocate**.
+The runtime checks every allocation, its own included, and every collection, and stops the program when one comes
+from a handler:
+
+```
+kmicro panic: allocation inside an interrupt handler at 0x0800....
+kmicro panic: garbage collection inside an interrupt handler at 0x0800....
+```
+
+`python tools/symbolize.py app.elf log.txt` names the function at that address. Before the program runs,
+[tools/isr_check.py](../tools/isr_check.py) finds such paths in the machine code: `python tools/isr_check.py app.elf`
+follows every entry of the vector table, so handlers aliased with `--c-api` are found too; `--callback NAME` adds a
+function that handlers reach only through a pointer ([how-it-works.md](how-it-works.md#interrupts)).
+
+What a handler may do:
+
+- **Read and store object references**: fields, array elements, globals. When a handler stores a reference while the
+  collector is marking, the collector marks again; after `KM_GC_REMARKS` passes (3) it marks the last time with
+  interrupts masked. This costs one byte store per reference store. C code that stores a Kotlin reference from a
+  handler calls `km_ref_stored()` ([runtime/kmicro.h](../runtime/kmicro.h)).
+- **Use the atomics**: `AtomicInt`, `AtomicLong`, `AtomicReference`, the atomic arrays, and `@Volatile` fields of any
+  type. They are atomic against handlers: 32-bit values and references with LDREX/STREX (an interrupt in between
+  makes the update retry), 64-bit values with interrupts masked.
+- **Use native memory** with `nativeHeap.alloc` and `nativeHeap.free`: the arena masks interrupts. Not `memScoped` or
+  `cstr`, which may create Kotlin objects.
+- **Print a string that already exists**: `println` of it does not allocate.
+
+What a handler must not do:
+
+- **Create an object**, including the runtime's own allocations: `Int.toString()`, string templates and
+  concatenation, decoding UTF-8, the stack trace of a new exception.
+- **Run a collection**: `GC.collect()` and `kmicro_gc()` stop the program. `GC.schedule()` does nothing inside a
+  handler.
+- **Use a file's globals for the first time** (rule 11): that initialises them, which allocates, and stops the
+  program with `Kotlin globals first used inside an interrupt handler`.
+
+An exception that escapes a handler is reported and stops the program (exit 98). The Kotlin hook set with
+`setUnhandledExceptionHook` does not run for it, because it may allocate; the C hook `kmicro_on_uncaught`
+([porting.md](porting.md#the-board-contract)) does. [examples/irq](../examples/irq) is a worked example: a SysTick
+handler written in Kotlin that touches registers and keeps its state in `@Volatile` fields.
+
+Allocations hide in these places:
 
 7. **`==` and `!=` on `UInt`, `UByte`, `UShort` box their operands.** Compare `a.toInt() == b.toInt()`.
 8. **Nullable unsigned types (`UInt?`) are boxed.** Use a sentinel value instead.
 9. **`throw` allocates the exception, and `IntArray.fill()` can allocate too.** Return an error code, and write a loop.
 10. **`toLong()` on a nullable `CPointer`** initialises the `NativePtr` companion object. Keep pointers non-null.
 11. **The first use of a file's globals initialises the whole file.** Generate a boot-time initialiser
-    (`kbuild.py --init-all kt_init_all`) and call it before enabling interrupts.
+    (`kbuild.py --init-all kt_init_all`; the `--c-api` header may declare it) and call it before enabling
+    interrupts.
 
 ## Speed
 

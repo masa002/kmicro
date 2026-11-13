@@ -57,7 +57,7 @@ feature, is in [docs/kotlin-support.md](docs/kotlin-support.md).
 | `kotlin.random`, `kotlin.time`, `Uuid`, `Platform`, `exitProcess` | clocks and entropy come from board hooks; the QEMU targets provide the clocks |
 | atomics, including the atomic arrays | atomic against interrupt handlers |
 | cinterop: scalars, pointers, strings, globals, enums, structs by value, `staticCFunction` callbacks, varargs, `StableRef` | kbuild runs cinterop for you (`--def`) |
-| interrupt handlers in Kotlin | they must not allocate: [docs/writing-kotlin.md](docs/writing-kotlin.md), [examples/irq](examples/irq) |
+| interrupt handlers in Kotlin | they must not allocate; they may store references and use the atomics: [docs/writing-kotlin.md](docs/writing-kotlin.md#interrupt-handlers), [examples/irq](examples/irq) |
 
 Every standard-library function that calls into the runtime is implemented, or stops the program with
 "... is not supported on kmicro" where it needs threads or an OS (`python tools/missing_natives.py -v` lists them).
