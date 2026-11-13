@@ -5,7 +5,8 @@ usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot
 
 - target triple -> thumbv7em-unknown-none-eabihf (the data layout of armv6kz/armv7 Linux EABI and thumbv7em EABI
   is identical: e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64; checked, not assumed)
-- strips the "target-cpu" / "target-features" function attributes, so the codegen CPU (-mcpu=cortex-m4) applies
+- replaces the "target-cpu" / "target-features" function attributes with the ones clang gives C code built for
+  paths.TARGET_M4F, so Kotlin and the C runtime carry identical attributes
 - --no-tls: single thread, so thread-local storage becomes ordinary storage (no __aeabi_read_tp)
 - --single-core: the init-state check before a file's globals becomes a plain load (no DMB, hoistable out of loops)
 - --size: minsize/optsize on every Kotlin function; --hot REGEX keeps full speed for the functions whose symbol it
@@ -21,10 +22,37 @@ usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot
 - the stdlib's Unicode tables stay in flash instead of being copied to the heap on first use
 """
 import re
+import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import paths  # noqa: E402
 
 EXPECT_DL = 'e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64'
 TLS_RE = re.compile(r'\bthread_local(?:\([a-z]+\))? ')
+
+
+def target_attributes(cache):
+    """The "target-cpu"="..." and "target-features"="..." attributes clang gives a C function compiled with
+    paths.TARGET_M4F, read from an empty one. Kept in the file `cache` for that clang (path, size, time) and flags."""
+    clang = paths.clang()
+    st = clang.stat()
+    key = repr((str(clang), st.st_size, st.st_mtime_ns, paths.TARGET_M4F))
+    try:
+        k, cpu, features = cache.read_text(encoding='utf-8').splitlines()
+        if k == key:
+            return cpu, features
+    except (OSError, ValueError):
+        pass
+    r = subprocess.run([str(clang), *paths.TARGET_M4F, '-S', '-emit-llvm', '-x', 'c', '-', '-o', '-'],
+                       input='void f(void) {}\n', capture_output=True, text=True)
+    cpu = re.search(r'"target-cpu"="[^"]*"', r.stdout)
+    features = re.search(r'"target-features"="[^"]*"', r.stdout)
+    if r.returncode != 0 or not cpu or not features:
+        sys.exit(f'retarget: cannot read the target attributes from {clang}:\n{r.stderr[-2000:]}')
+    cache.write_text(f'{key}\n{cpu.group(0)}\n{features.group(0)}\n', encoding='utf-8')
+    return cpu.group(0), features.group(0)
 
 
 def ir_name(name):
@@ -52,12 +80,12 @@ dl = re.search(r'^target datalayout = "([^"]*)"', text, re.M).group(1)
 if dl != EXPECT_DL:
     sys.exit(f'unexpected data layout {dl}')
 text = re.sub(r'^target triple = "[^"]*"', 'target triple = "thumbv7em-unknown-none-eabihf"', text, count=1, flags=re.M)
-# The exact cpu/feature strings clang gives Cortex-M4 hard-float code: Kotlin functions and the C runtime then
-# carry identical attributes, so LTO may inline runtime hooks (UpdateHeapRef, EnterFrame...) into Kotlin code.
-M4_CPU = '"target-cpu"="cortex-m4"'
-M4_FEATURES = '"target-features"="+armv7e-m,+dsp,+fp16,+hwdiv,+thumb-mode,+vfp2sp,+vfp3d16sp,+vfp4d16sp,-aes,-bf16,-cdecp0,-cdecp1,-cdecp2,-cdecp3,-cdecp4,-cdecp5,-cdecp6,-cdecp7,-crc,-crypto,-d32,-dotprod,-fp-armv8,-fp-armv8d16,-fp-armv8d16sp,-fp-armv8sp,-fp16fml,-fp64,-fullfp16,-hwdiv-arm,-i8mm,-lob,-mve,-mve.fp,-neon,-pacbti,-ras,-sb,-sha2,-vfp2,-vfp3,-vfp3d16,-vfp3sp,-vfp4,-vfp4d16,-vfp4sp"'
-text = re.sub(r'"target-cpu"="[^"]*"', M4_CPU, text)
-text = re.sub(r'"target-features"="[^"]*"', M4_FEATURES, text)
+# The exact cpu/feature strings clang gives the C runtime (paths.TARGET_M4F): Kotlin functions and the runtime then
+# carry identical attributes, so LTO may inline runtime hooks (UpdateHeapRef, EnterFrame...) into Kotlin code. Any
+# difference, from another LLVM version or another CPU, would silently stop that inlining.
+M4_CPU, M4_FEATURES = target_attributes(Path(dst).with_name('target_attributes.txt'))
+text = re.sub(r'"target-cpu"="[^"]*"', lambda m: M4_CPU, text)
+text = re.sub(r'"target-features"="[^"]*"', lambda m: M4_FEATURES, text)
 text = re.sub(r'^(attributes #\d+ = )\{ \}$', lambda m: m.group(1) + '{ "kmicro"="retargeted" }', text, flags=re.M)
 # Definitions with no attribute group at all (the cinterop bridges and wrappers that bridges.py copies) would carry
 # no cpu/features: the inliner then refuses to put a Cortex-M4 callee (hw.c's one-instruction helpers) into them.
