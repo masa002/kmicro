@@ -8,7 +8,9 @@ usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot
 - strips the "target-cpu" / "target-features" function attributes, so the codegen CPU (-mcpu=cortex-m4) applies
 - --no-tls: single thread, so thread-local storage becomes ordinary storage (no __aeabi_read_tp)
 - --single-core: the init-state check before a file's globals becomes a plain load (no DMB, hoistable out of loops)
-- --size: minsize/optsize on every Kotlin function; --hot REGEX keeps full speed for the symbols it matches
+- --size: minsize/optsize on every Kotlin function; --hot REGEX keeps full speed for the functions whose symbol it
+  matches (searched in the symbol as Kotlin/Native writes it, e.g. kfun:pkg#name(kotlin.Int){}kotlin.Int; an error
+  when it matches none). The summaries ('N hot functions', 'single-core: N ...') go to stderr.
 - --stubs writes a C file defining every external function / global as a trapping stub (for size measurements);
   --eh-stubs adds __cxa_end_cleanup, which the ARM backend emits itself for EHABI cleanups (it is not in the IR)
 - --drop-ctors empties @llvm.global_ctors (measures the program without eager module initializers)
@@ -23,6 +25,14 @@ import sys
 
 EXPECT_DL = 'e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64'
 TLS_RE = re.compile(r'\bthread_local(?:\([a-z]+\))? ')
+
+
+def ir_name(name):
+    """A symbol as the IR writes it -> as Kotlin/Native spells it: without quotes, \\XX escapes decoded (UTF-8)."""
+    if not name.startswith('"'):
+        return name
+    raw = re.sub(r'\\([0-9A-Fa-f]{2})', lambda m: chr(int(m.group(1), 16)), name[1:-1])
+    return raw.encode('latin-1', 'replace').decode('utf-8', 'replace')
 
 
 def replace_body(text, name, params, body):
@@ -55,15 +65,25 @@ NOATTR = re.compile(r'^(define [^\n]*\)) \{$', re.M)
 if NOATTR.search(text):
     text = NOATTR.sub(r'\1 #9999 {', text)
     text += f'\nattributes #9999 = {{ nounwind {M4_CPU} {M4_FEATURES} }}\n'
+if '--hot' in args and '--size' not in args:
+    sys.exit('retarget: --hot only applies with --size')
 if '--size' in args:  # optimize for size: LLVM's minsize/optsize on every Kotlin function (= clang -Oz)
     # --hot REGEX: functions whose name matches keep full speed optimisation (their attribute group is cloned
     # without minsize/optsize), e.g. code that runs in a real-time interrupt.
-    hot = re.compile(args[args.index('--hot') + 1]) if '--hot' in args else None
+    hot = None
+    if '--hot' in args:
+        if args.index('--hot') + 1 >= len(args):
+            sys.exit('retarget: --hot needs a regular expression')
+        hot_src = args[args.index('--hot') + 1]
+        try:
+            hot = re.compile(hot_src)
+        except re.error as e:
+            sys.exit(f'retarget: --hot {hot_src!r} is not a valid regular expression: {e}')
     groups = {m.group(1): m.group(2) for m in re.finditer(r'^attributes #(\d+) = \{ (.*) \}$', text, re.M)}
     clones = {}
     if hot:
         def retag(m):
-            name, grp = m.group(2), m.group(4)
+            name, grp = ir_name(m.group(2)), m.group(4)
             if not hot.search(name) or grp not in groups:
                 return m.group(0)
             if grp not in clones:
@@ -76,7 +96,10 @@ if '--size' in args:  # optimize for size: LLVM's minsize/optsize on every Kotli
         text += f'\nattributes #{new_id} = {{ {groups[grp]} }}\n'
     if hot:
         n_hot = len(re.findall(r'^define [^\n]*#9\d{4} [^\n]*\{$', text, re.M))
-        print(f'size: minsize everywhere except {n_hot} hot functions')
+        if n_hot == 0:
+            sys.exit(f'retarget: --hot {hot_src!r} matches no function (symbols look like '
+                     f'kfun:package#function(kotlin.Int){{}}kotlin.Int)')
+        print(f'size: minsize everywhere except {n_hot} hot functions', file=sys.stderr)
 if '--no-tls' in args:
     text = TLS_RE.sub('', text)
 if '--single-core' in args:
@@ -84,7 +107,7 @@ if '--single-core' in args:
     # may not hoist it out of a loop). kmicro runs Kotlin on one core in one thread, and interrupt handlers never
     # initialise globals (the runtime stops if they try), so a plain load is exact: no barrier, hoistable.
     text, n = re.subn(r'load atomic (i32), ptr (@"state_global\$[^"]*") acquire, align 4', r'load \1, ptr \2, align 4', text)
-    print(f'single-core: {n} init-state loads made plain')
+    print(f'single-core: {n} init-state loads made plain', file=sys.stderr)
 if '--drop-ctors' in args:
     text = re.sub(r'^@llvm\.global_ctors = .*$', '', text, count=1, flags=re.M)
 # kotlin.random: constructing any Random, Random(42) too, creates Random.Default (NativeRandom), which seeds itself

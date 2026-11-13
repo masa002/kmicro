@@ -58,7 +58,7 @@ def compile_ir(srcs, out, extra=(), deps=(), force=False):
 
 
 def retarget(ir, ll_out, *opts):
-    sh([sys.executable, HERE / 'retarget.py', ir, ll_out, *opts])
+    sys.stderr.write(sh([sys.executable, HERE / 'retarget.py', ir, ll_out, *opts]).stderr)   # its summaries
     return Path(ll_out)
 
 
