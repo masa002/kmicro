@@ -5,6 +5,9 @@ extern uint32_t _sbss, _ebss;
 
 __attribute__((noinline)) uint32_t probe_bad_read(void) { return *(volatile uint32_t *)0x70000000u; }
 
+const uint32_t *volatile probe_null;
+__attribute__((noinline)) uint32_t probe_null_read(void) { return probe_null[3]; }
+
 __attribute__((noinline)) void probe_undefined(void) { __asm volatile("udf #0"); }
 
 static uint32_t bss_sum(void)
@@ -40,5 +43,7 @@ int main(void)
     return 0;
 #elif PROBE == 3
     return (int)probe_deep(0, bss_sum());
+#elif PROBE == 4
+    return (int)probe_null_read();
 #endif
 }

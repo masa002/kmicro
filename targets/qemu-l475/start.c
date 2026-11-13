@@ -1,5 +1,5 @@
-/* Bare-metal start for the QEMU harness: vector table, FPU on, .data/.bss init, MPU stack guard, init_array, main,
- * semihosting output and exit, a fault report. */
+/* Bare-metal start for the QEMU harness: vector table, FPU on, .data/.bss init, MPU null and stack guards,
+ * init_array, main, semihosting output and exit, a fault report. */
 #include <stdint.h>
 #include <string.h>
 
@@ -9,7 +9,9 @@ int main(void);
 void kmicro_exit(int code);
 void kmicro_puts(const char *s);
 void kmicro_put_int(int32_t v);
+extern const void *const vectors[16];
 
+#define SCB_VTOR  (*(volatile uint32_t *)0xE000ED08)
 #define SCB_SHCSR (*(volatile uint32_t *)0xE000ED24)
 #define SCB_CFSR  (*(volatile uint32_t *)0xE000ED28)
 #define SCB_HFSR  (*(volatile uint32_t *)0xE000ED2C)
@@ -19,6 +21,7 @@ void kmicro_put_int(int32_t v);
 #define MPU_RBAR  (*(volatile uint32_t *)0xE000ED9C)
 #define MPU_RASR  (*(volatile uint32_t *)0xE000EDA0)
 #define MPU_NO_ACCESS(log2_size) ((1u << 28) | (((log2_size) - 1u) << 1) | 1u)   /* XN, AP=000, SIZE, ENABLE */
+#define NULL_GUARD_LOG2 16u                                     /* the first 64 KB of the address space */
 
 /* The FPU goes on before any compiled C code runs. With LTO, main and the Kotlin code it calls can be inlined into
  * the C start function, whose prologue then saves FP registers (vpush): with CP10/CP11 still off that is a fault. */
@@ -34,11 +37,17 @@ __attribute__((naked)) void Reset_Handler(void)
                    "b start_c\n");
 }
 
-/* MPU region 1: the 256 bytes between .bss and the stack (l475.ld), no access. An overflowing stack faults there
- * before it writes .bss, which holds the Kotlin heap and the runtime's globals. PRIVDEFENA keeps the default memory
- * map everywhere else. A frame larger than the guard can still jump it. */
+/* Two MPU regions with no access turn silent memory corruption into a fault report. PRIVDEFENA keeps the default
+ * memory map everywhere else.
+ * Region 0, address 0: on the M4 that is an alias of flash, so reading a null object or a null C pointer would
+ * return the vector table instead of faulting. VTOR points at the flash copy, so exceptions never fetch through it.
+ * Region 1: the 256 bytes between .bss and the stack (l475.ld). An overflowing stack faults there before it writes
+ * .bss, which holds the Kotlin heap and the runtime's globals. A frame larger than the guard can still jump it. */
 static void mpu_guards(void)
 {
+    SCB_VTOR = (uint32_t)vectors;
+    MPU_RBAR = 0x00000000u | 0x10u | 0u;                        /* VALID, region 0 */
+    MPU_RASR = MPU_NO_ACCESS(NULL_GUARD_LOG2);
     MPU_RBAR = (uint32_t)&_sguard | 0x10u | 1u;                 /* VALID, region 1 */
     MPU_RASR = MPU_NO_ACCESS(8);                                /* 256 bytes */
     MPU_CTRL = 5u;                                              /* ENABLE, PRIVDEFENA */
@@ -94,16 +103,21 @@ __attribute__((used, noreturn)) void start_fault(const uint32_t *frame)
     int overflow = (cfsr & ((1u << 4) | (1u << 12))) != 0u                  /* MSTKERR, STKERR: stacking failed */
                    || ((cfsr & (1u << 7)) && within(mmfar, gs, ge))          /* a store into the guard */
                    || (f < ge && !within(f, fs, fs + sizeof start_fault_stack));  /* SP in the guard or past it */
+    int null_access = ((cfsr & (1u << 7)) && mmfar < (1u << NULL_GUARD_LOG2))        /* a load or store */
+                      || ((cfsr & 1u) && readable && frame[6] < (1u << NULL_GUARD_LOG2));  /* a call through null */
+    const char *kind = overflow ? "stack overflow" : null_access ? "null pointer access" : 0;
     kmicro_puts("kmicro fault: ");
-    if (overflow)
-        kmicro_puts("stack overflow (");
+    if (kind) {
+        kmicro_puts(kind);
+        kmicro_puts(" (");
+    }
     if (ipsr >= 2u && ipsr <= 6u) {
         kmicro_puts(names[ipsr]);
     } else {
         kmicro_puts("exception ");
         kmicro_put_int((int32_t)ipsr);
     }
-    if (overflow)
+    if (kind)
         kmicro_puts(")");
     if (readable)
         put_hex(" at ", frame[6]);                                 /* the stacked PC */

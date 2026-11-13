@@ -1,4 +1,4 @@
-"""The QEMU l475 start code: fault report and stack guard. C programs only (startup_probe.c), no Kotlin compile.
+"""The QEMU l475 start code: fault report, stack guard and null guard. C programs only (startup_probe.c), no Kotlin compile.
 
 usage: python -m unittest discover tests/unit       (skipped when LLVM, arm-none-eabi-gcc or QEMU is not installed)
 """
@@ -47,6 +47,13 @@ class StartupTest(unittest.TestCase):
         self.assertEqual(rc, 99, out)
         self.assertIn('kmicro fault: stack overflow (MemManage), no stacked frame', out)
         self.assertNotIn('bss changed', out)
+
+    def test_null_read_faults(self):
+        elf, rc, out = self.run_probe(4)
+        self.assertEqual(rc, 99, out)
+        m = re.search(r'kmicro fault: null pointer access \(MemManage\) at (0x[0-9a-f]{8})\n.* mmfar 0x0000000c', out)
+        self.assertTrue(m, out)
+        self.assertIn('probe_null_read+', self.symbol_at(elf, m.group(1)))
 
 
 if __name__ == '__main__':
