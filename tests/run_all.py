@@ -109,6 +109,15 @@ def eh_without_exceptions(d):
             d / 'eh.o']
 
 
+def board_build(d):
+    """The board build of the selftest example, with the Kotlin build folder of the selftest test: the options are the
+    same, so kotlinc-native does not run again. The image is for a board and is not run. The build is the test:
+    board.c and the runtime compile with build.py's flags, and the link fits 256 KB of flash and 64 KB of RAM with
+    8 KB left for the stack (stm32l431.ld)."""
+    _built.pop(BUILD / SELFTEST.folder, None)       # build.py writes that folder's objects: a later test builds again
+    return [sys.executable, ROOT / 'examples/selftest/stm32l431/build.py', '--kotlin-dir', BUILD / SELFTEST.folder]
+
+
 ADD = Kotlin('add', ['tests/add/add.kt'])
 GC = Kotlin('gc', ['tests/gc/gc.kt'])
 STRINGS = Kotlin('strings', ['tests/strings/strings.kt'])
@@ -248,6 +257,7 @@ TESTS = [
     Test('selftest_size', Kotlin('selftest', SELFTEST.srcs, dict(SELFTEST_API, size=True, init_all='kt_init_all',
                                                                     hot=r'^kfun:selftest#(gcChains|coroEvent)\(')),
          ['examples/selftest/main.c']),
+    Test('selftest_stm32l431', command=board_build),
     Test('irq', IRQ, ['examples/irq/main.c', 'support/hw.c'],
          checks=[Check('isr_check', ['tools/isr_check.py', '{elf}']),
                  Check('gen_regs', ['tools/gen_regs.py', '--header', 'examples/irq/systick.h', '--sources',
@@ -431,7 +441,7 @@ def run_test(t, args):
     if t.command:
         r = subprocess.run([str(a) for a in t.command(d)], capture_output=True, timeout=600)
         objs, rc, got = None, r.returncode, normalized((r.stdout + r.stderr).decode('utf-8', 'replace'))
-        note = 'fails as expected'
+        note = 'fails as expected' if t.exit else got.partition('\n')[0]
     else:
         try:
             objs = build_kotlin(t.kotlin, args.kotlin, log) if t.kotlin else []

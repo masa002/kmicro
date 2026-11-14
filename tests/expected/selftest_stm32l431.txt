@@ -1,0 +1,2 @@
+selftest.elf: flash {N} B of 256 KB, RAM {N} B of 64 KB (the rest is stack)
+$ROOT/build/stm32l431/selftest.hex
