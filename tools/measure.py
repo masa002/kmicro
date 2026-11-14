@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'toolchain'))
+import binutils  # noqa: E402
 import paths  # noqa: E402
 
 T = paths.TARGET_M4F
@@ -57,11 +58,11 @@ def main():
     sh([paths.ld_lld(), f'--entry={roots[0]}', *[f'--undefined={r}' for r in roots[1:]], '--gc-sections',
         '-Ttext=0x08000000', '--lto-O2', '-o', elf, out / 'k.o', out / 'stubs.o', f'-L{paths.newlib_lib()}', '-lc_nano', '-lnosys', paths.libgcc()])
     sizes = {}
-    for line in sh([paths.gcc_bin('size'), '-A', elf]).splitlines():
+    for line in binutils.output('size', elf, '-A').splitlines():
         p = line.split()
         if len(p) == 3 and p[1].isdigit() and int(p[1]) > 0 and not p[0].startswith(('.comment', '.ARM.attr', '.debug', '.relro')):
             sizes[p[0]] = int(p[1])
-    syms = sh([paths.gcc_bin('nm'), '-S', '--size-sort', elf])
+    syms = binutils.output('nm', elf, '-S', '--size-sort')
     kept_stubs, kotlin_bytes = [], 0
     for line in syms.splitlines():
         p = line.split(maxsplit=3)

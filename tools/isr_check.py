@@ -27,13 +27,12 @@ cannot be read or has no handler.
 """
 import argparse
 import re
-import subprocess
 import sys
 from collections import deque
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'toolchain'))
-import paths  # noqa: E402
+import binutils  # noqa: E402
 
 ALLOC = {'AllocInstance', 'AllocArrayInstance', 'kmicro_alloc_object', 'kmicro_alloc_array', 'alloc_block'}
 BOX = re.compile(r'<U?(Int|Byte|Short|Long)-box>')
@@ -175,10 +174,8 @@ def analyse(disasm, vectors, callbacks=(), boxing=False):
 
 
 def objdump(elf, *args):
-    """objdump ARGS ELF, run in the ELF's folder: on Windows binutils open files through the ANSI code page, so they
-    cannot reach a folder named in Japanese."""
-    r = subprocess.run([str(paths.gcc_bin('objdump').resolve()), *args, elf.name], cwd=elf.parent,
-                       capture_output=True, text=True, errors='replace')
+    """The output of objdump ARGS ELF."""
+    r = binutils.run('objdump', elf, *args)
     if r.returncode != 0:
         print(f'isr_check: objdump {" ".join(args)} {elf} failed: {r.stderr.strip()[-500:]}', file=sys.stderr)
         sys.exit(2)

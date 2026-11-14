@@ -13,22 +13,18 @@ first, and the function that contains them, each with its file:line (arm-none-ea
 import argparse
 import bisect
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'toolchain'))
-import paths  # noqa: E402
+import binutils  # noqa: E402
 
-NM = str(paths.gcc_bin('nm'))
-READELF = str(paths.gcc_bin('readelf'))
-ADDR2LINE = str(paths.gcc_bin('addr2line'))
 HEX = re.compile(r'(0x)?[0-9a-fA-F]+')
 AT = re.compile(r'at (0x[0-9a-fA-F]{8})')
 
 
 def load(elf):
-    r = subprocess.run([NM, '-n', '-S', elf], capture_output=True, text=True, errors='replace')
+    r = binutils.run('nm', elf, '-n', '-S')
     if r.returncode != 0:
         sys.exit(f'symbolize: nm failed on {elf}: {r.stderr.strip()}')
     addrs, names = [], []
@@ -54,8 +50,7 @@ def name_of(addrs, names, a, exact=False):
 
 
 def has_lines(elf):
-    r = subprocess.run([READELF, '-S', '-W', elf], capture_output=True, text=True, errors='replace')
-    return '.debug_line' in r.stdout
+    return '.debug_line' in binutils.run('readelf', elf, '-S', '-W').stdout
 
 
 def source_lines(elf, trace, exact=False):
@@ -65,8 +60,7 @@ def source_lines(elf, trace, exact=False):
         return {}
     back = 0 if exact else 1
     calls = list(dict.fromkeys(f'0x{(a & ~1) - back:x}' for a in trace))
-    r = subprocess.run([ADDR2LINE, '-a', '-f', '-i', '-s', '-e', elf, *calls], capture_output=True, text=True,
-                       errors='replace')
+    r = binutils.run('addr2line', elf, '-a', '-f', '-i', '-s', '-e', after=calls)
     out, cur = {}, None
     lines = iter(r.stdout.splitlines())
     for line in lines:
