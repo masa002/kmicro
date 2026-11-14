@@ -73,10 +73,11 @@ A program that shows a feature that does not work is named `d_known_<topic>.kt`;
 `tests/`), its C driver (or `targets/common/kotlin_main.c` for `fun main()`) and its exit code. Run it, read
 `build/t/<name>/run.log` and copy that to `tests/expected/<name>.txt`, with `{N}` where a number may vary.
 
-CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the unit tests, `run_all.py` and `run_all.py --stress`
-on Linux and the unit tests and `run_all.py` on Windows, on every pull request, and difftest with and without
-`--stress` on main and once a week. A weekly job runs the unit tests and `run_all.py` with the newest Kotlin release;
-it may fail, and that fails nothing else.
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every pull request: the unit tests, `run_all.py`
+and `run_all.py --stress` on Linux for the default core, `run_all.py --cpu CORE` for each of the other cores
+(cortex-m0plus, cortex-m3, cortex-m4, cortex-m7, cortex-m23, cortex-m33, cortex-m33f), and the unit tests and
+`run_all.py` on Windows. It runs difftest with and without `--stress` on main and once a week. A weekly job runs the
+unit tests and `run_all.py` with the newest Kotlin release; it may fail, and that fails nothing else.
 
 ## Documentation
 

@@ -2,8 +2,9 @@
 #   unit      the tool tests without any toolchain: the tests that need one skip
 #   qemu      the toolchains of toolchain/versions.txt, then the tool tests with them (the start code's QEMU probes
 #             included) and tests/run_all.py on QEMU, as is and under GC stress
-#   windows   the same on Windows, without the run under GC stress
-#   difftest tools/difftest.py, as is and under GC stress (long), and missing_natives --check on the IR of its
+#   cores     tests/run_all.py for each of the other cores (--cpu), on the QEMU machine that runs its code
+#   windows   the unit tests and tests/run_all.py on Windows
+#   difftest  tools/difftest.py, as is and under GC stress (long), and missing_natives --check on the IR of its
 #             programs: on pushes to main, by hand and weekly
 #   next-kotlin  the tool tests and tests/run_all.py with the newest Kotlin release instead of the tested one: by
 #             hand and weekly. It may fail without failing the run
@@ -93,6 +94,61 @@ jobs:
         with:
           name: run_all-logs
           path: build/t/**/*.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # The job qemu runs the default core, the Cortex-M4F. This one runs the suite for the others: ARMv6-M code
+  # (cortex-m0plus) and the Cortex-M4 without an FPU on the STM32L475, the Cortex-M3 and M7 on their MPS2 machines,
+  # ARMv8-M code (cortex-m23, cortex-m33, cortex-m33f) on mps2-an505. No --stress here.
+  cores:
+    name: ${{ matrix.cpu }} (run_all)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        cpu: [cortex-m0plus, cortex-m3, cortex-m4, cortex-m7, cortex-m23, cortex-m33, cortex-m33f]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Kotlin/Native version
+        id: versions
+        run: |
+          v=$(awk '$1 == "kotlin-native" && $3 == "linux-x64" { print $2; exit }' toolchain/versions.txt)
+          echo "kotlin-native=$v" >> "$GITHUB_OUTPUT"
+      - name: Cache ~/.konan (the LLVM and sysroot that Kotlin/Native downloads)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ steps.versions.outputs.kotlin-native }}-qemu
+      - name: Install Kotlin/Native, xPack GCC and xPack QEMU (toolchain/versions.txt, SHA-256 checked)
+        run: |
+          set -euo pipefail
+          mkdir -p ~/toolchains ~/downloads
+          for tool in kotlin-native arm-gcc qemu; do
+            read -r sha url < <(awk -v t="$tool" \
+              '$1 == t && $3 == "linux-x64" { sha = $4; getline; print sha, $1; exit }' toolchain/versions.txt)
+            file=~/downloads/"$tool.tar.gz"
+            echo "$tool: $url"
+            curl -fsSL --retry 3 -o "$file" "$url"
+            echo "$sha  $file" | sha256sum -c -
+            tar -xzf "$file" -C ~/toolchains
+          done
+          if [ -n "${JAVA_HOME_21_X64:-}" ]; then echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"; fi
+      - name: python tests/run_all.py --cpu ${{ matrix.cpu }}
+        env:
+          CPU: ${{ matrix.cpu }}
+        run: python tests/run_all.py --cpu "$CPU"
+      - name: Keep the test logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: run_all-logs-${{ matrix.cpu }}
+          path: build/t-*/**/*.log
           if-no-files-found: ignore
           retention-days: 14
 
