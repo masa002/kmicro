@@ -156,7 +156,7 @@ def retarget(ir, ll_out, *opts):
 
 
 def lto_object(ll, obj, opt='-O2'):
-    sh([paths.clang(), *paths.TARGET_M4F, opt, '-flto', '-c', '-x', 'ir', ll, '-o', obj])
+    sh([paths.clang(), *paths.target_flags(), opt, '-flto', '-c', '-x', 'ir', ll, '-o', obj])
     return Path(obj)
 
 
@@ -214,7 +214,7 @@ def def_headers(def_file, include_dirs=()):
         return [v for m in re.finditer(rf'^{name}(?:\.(?:linux_arm32_hfp|linux|arm32))?\s*=(.*)$', head, re.M)
                 for v in m.group(1).split()]
     src = ''.join(f'#include <{h}>\n' for h in values('headers')) + tail.partition('\n')[2]
-    r = subprocess.run([str(a) for a in [paths.clang(), *paths.TARGET_M4F, '-isystem', paths.newlib_include(),
+    r = subprocess.run([str(a) for a in [paths.clang(), *paths.target_flags(), '-isystem', paths.newlib_include(),
                                          *(x for d in [def_file.parent, *include_dirs] for x in ('-I', d)),
                                          *values('compilerOpts'), '-x', 'c', '-M', '-MG', '-MV', '-MT', 'x', '-']],
                        input=src, capture_output=True, text=True, encoding='utf-8', errors='replace')
@@ -563,7 +563,7 @@ def c_flags(header, include_dirs=(), defines=()):
     """clang flags that read a C header as qbuild compiles C: Cortex-M4F, newlib, runtime/ and support/ on the include
     path, then the header's own folder and `include_dirs`; `defines` as NAME or NAME=VALUE."""
     root = HERE.parent
-    return [*paths.TARGET_M4F, '-isystem', paths.newlib_include(), '-I', root / 'runtime', '-I', root / 'support',
+    return [*paths.target_flags(), '-isystem', paths.newlib_include(), '-I', root / 'runtime', '-I', root / 'support',
             '-I', Path(header).resolve().parent, *(x for d in include_dirs for x in ('-I', d)),
             *('-D' + d for d in defines)]
 

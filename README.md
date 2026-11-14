@@ -97,8 +97,8 @@ Limits by design:
 - **One compiler version.** kmicro reads the IR of Kotlin/Native 2.4.21. It builds on the `linux_arm32_hfp` target,
   which JetBrains has deprecated, so a later compiler may not offer it.
 - **One CPU, tested: Cortex-M4F.** The compiler target is hard-float, so the core needs an FPU. The CPU is one setting,
-  `TARGET_M4F` in [toolchain/paths.py](toolchain/paths.py), so a Cortex-M7 should need only that (untested); a core
-  without an FPU would need the soft-float calling convention.
+  `--cpu` (the table `CORES` in [toolchain/paths.py](toolchain/paths.py)), so a Cortex-M7 should need only that
+  (untested); a core without an FPU would need the soft-float calling convention.
 - **One thread.** Interrupts are fine, with the rules in [docs/writing-kotlin.md](docs/writing-kotlin.md). There are
   no threads: `Worker` and `WeakReference` are not supported.
 - **The standard library only.** kotlinx libraries are untested.

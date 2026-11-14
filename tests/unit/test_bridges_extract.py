@@ -168,7 +168,7 @@ class Extract(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             ll = Path(d) / 'bridges.ll'
             ll.write_text(self.text, encoding='utf-8')
-            r = subprocess.run([str(clang), *paths.TARGET_M4F, '-Wno-override-module', '-c', '-x', 'ir', str(ll),
+            r = subprocess.run([str(clang), *paths.target_flags(), '-Wno-override-module', '-c', '-x', 'ir', str(ll),
                                 '-o', str(Path(d) / 'bridges.o')], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
 

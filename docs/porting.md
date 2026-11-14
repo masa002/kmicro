@@ -89,7 +89,7 @@ The files are `runtime/*.c`, `runtime/*.cpp` and `runtime/dtoa/*.cpp`.
 
 | Flags | Why |
 |---|---|
-| `--target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard` | the Cortex-M4F, with the values retarget.py gives the Kotlin code (`TARGET_M4F` in [toolchain/paths.py](../toolchain/paths.py)) |
+| `--target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard` | the Cortex-M4F, with the values retarget.py gives the Kotlin code (`cortex-m4f` in `CORES`, [toolchain/paths.py](../toolchain/paths.py)) |
 | `-isystem <arm-none-eabi-gcc>/arm-none-eabi/include` | newlib's headers |
 | `-O2 -flto` | the runtime is LLVM bitcode like `k.o`, so ld.lld optimises both as one program and inlines the runtime's hooks (the garbage collector's frame push, an array access, a reference store) into the Kotlin functions |
 | `-ffunction-sections -fdata-sections` | `--gc-sections` drops what the program does not use |

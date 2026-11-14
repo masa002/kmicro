@@ -6,7 +6,7 @@ usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot
 - target triple -> thumbv7em-unknown-none-eabihf (the data layout of armv6kz/armv7 Linux EABI and thumbv7em EABI
   is identical: e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64; checked, not assumed)
 - replaces the "target-cpu" / "target-features" function attributes with the ones clang gives C code built for
-  paths.TARGET_M4F, so Kotlin and the C runtime carry identical attributes
+  paths.target_flags(), so Kotlin and the C runtime carry identical attributes
 - --no-tls: single thread, so thread-local storage becomes ordinary storage (no __aeabi_read_tp)
 - --single-core: the init-state check before a file's globals becomes a plain load (no DMB, hoistable out of loops)
 - --size: minsize/optsize on every Kotlin function; --hot REGEX keeps full speed for the functions whose symbol it
@@ -38,10 +38,10 @@ TLS_RE = re.compile(r'^(@(?:"[^"\n]*"|[\w.$-]+) = [^"\n]*?)\bthread_local(?:\([a
 
 def target_attributes(cache):
     """The "target-cpu"="..." and "target-features"="..." attributes clang gives a C function compiled with
-    paths.TARGET_M4F, read from an empty one. Kept in the file `cache` for that clang (path, size, time) and flags."""
+    paths.target_flags(), read from an empty one. Kept in the file `cache` for that clang (path, size, time) and flags."""
     clang = paths.clang()
     st = clang.stat()
-    key = repr((str(clang), st.st_size, st.st_mtime_ns, paths.TARGET_M4F))
+    key = repr((str(clang), st.st_size, st.st_mtime_ns, paths.target_flags()))
     cpu_re, features_re = r'"target-cpu"="[^"]*"', r'"target-features"="[^"]*"'
     try:
         k, cpu, features = cache.read_text(encoding='utf-8').splitlines()
@@ -49,7 +49,7 @@ def target_attributes(cache):
             return cpu, features
     except (OSError, ValueError):
         pass
-    r = subprocess.run([str(clang), *paths.TARGET_M4F, '-S', '-emit-llvm', '-x', 'c', '-', '-o', '-'],
+    r = subprocess.run([str(clang), *paths.target_flags(), '-S', '-emit-llvm', '-x', 'c', '-', '-o', '-'],
                        input='void f(void) {}\n', capture_output=True, text=True, errors='replace')
     cpu = re.search(cpu_re, r.stdout)
     features = re.search(features_re, r.stdout)
@@ -89,8 +89,8 @@ if not dl:
 dl = dl.group(1)
 if dl != EXPECT_DL:
     sys.exit(f'unexpected data layout {dl}')
-text = re.sub(r'^target triple = "[^"]*"', 'target triple = "thumbv7em-unknown-none-eabihf"', text, count=1, flags=re.M)
-# The exact cpu/feature strings clang gives the C runtime (paths.TARGET_M4F): Kotlin functions and the runtime then
+text = re.sub(r'^target triple = "[^"]*"', f'target triple = "{paths.triple()}"', text, count=1, flags=re.M)
+# The exact cpu/feature strings clang gives the C runtime (paths.target_flags()): Kotlin functions and the runtime then
 # carry identical attributes, so LTO may inline runtime hooks (UpdateHeapRef, EnterFrame...) into Kotlin code. Any
 # difference, from another LLVM version or another CPU, would silently stop that inlining.
 M4_CPU, M4_FEATURES = target_attributes(Path(dst).with_name('target_attributes.txt'))

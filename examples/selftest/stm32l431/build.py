@@ -21,7 +21,8 @@ import binutils  # noqa: E402
 import paths  # noqa: E402
 
 OUT = ROOT / 'build/stm32l431'
-CFLAGS = [*paths.TARGET_M4F, '-isystem', str(paths.newlib_include()), '-O2', '-flto', '-ffunction-sections',
+paths.select_cpu('cortex-m4f')                   # this board's core
+CFLAGS = [*paths.target_flags(), '-isystem', str(paths.newlib_include()), '-O2', '-flto', '-ffunction-sections',
           '-fdata-sections', '-fexceptions', '-funwind-tables', '-Wall', '-Wextra', '-Wno-unused-parameter',
           '-I', str(ROOT / 'runtime'), '-I', str(EXAMPLE)]
 CXXFLAGS = ['-std=c++17', '-fno-rtti', '-Wno-unused-variable', '-Wno-unused-but-set-variable']

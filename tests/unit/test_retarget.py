@@ -1,5 +1,5 @@
 """toolchain/retarget.py on a small IR module shaped like kotlinc-native's output: the target attributes equal clang's
-for paths.TARGET_M4F, --no-tls, --single-core, --hot, and the stdlib rewrites (Random seed, hex float parser, Unicode
+for paths.target_flags(), --no-tls, --single-core, --hot, and the stdlib rewrites (Random seed, hex float parser, Unicode
 tables). The output must compile with clang.
 
 usage: python -m unittest discover tests/unit       (skipped when the LLVM of Kotlin/Native is not installed)
@@ -191,13 +191,13 @@ class RetargetTest(unittest.TestCase):
         self.assertIn('%1 = getelementptr inbounds i8, ptr @1, i32 0, !dbg !15', text)
         self.assertIn('%seed = call i64 @kmicro_random_seed(), !dbg !17', text)
         self.assertRegex(text, r'define double @"[^"]*parseDouble[^"]*"\(ptr %0, ptr %1\) #\d+ \{')
-        c = subprocess.run([str(paths.clang()), *paths.TARGET_M4F, '-O2', '-c', '-x', 'ir', OUT / 'debug_out.ll',
+        c = subprocess.run([str(paths.clang()), *paths.target_flags(), '-O2', '-c', '-x', 'ir', OUT / 'debug_out.ll',
                             '-o', OUT / 'debug_out.o'], capture_output=True, text=True)
         self.assertEqual(c.returncode, 0, c.stderr)
         self.assertNotIn('invalid debug info', c.stderr)
 
     def test_attributes_equal_clang(self):
-        c = subprocess.run([str(paths.clang()), *paths.TARGET_M4F, '-S', '-emit-llvm', '-x', 'c', '-', '-o', '-'],
+        c = subprocess.run([str(paths.clang()), *paths.target_flags(), '-S', '-emit-llvm', '-x', 'c', '-', '-o', '-'],
                            input='int g(int x) { return x + 1; }\n', capture_output=True, text=True)
         want = {re.search(r'"target-cpu"="[^"]*"', c.stdout).group(0),
                 re.search(r'"target-features"="[^"]*"', c.stdout).group(0)}
@@ -235,7 +235,7 @@ class RetargetTest(unittest.TestCase):
             self.assertIn(const + '\n', text)
         self.assertIn('@"kvar:demo.thread_local x" = internal global i32 0, align 4\n', text)
         self.assertIn('@"state_thread_local$demo" = internal global i32 0, align 4\n', text)
-        c = subprocess.run([str(paths.clang()), *paths.TARGET_M4F, '-O2', '-c', '-x', 'ir', OUT / 'out.ll',
+        c = subprocess.run([str(paths.clang()), *paths.target_flags(), '-O2', '-c', '-x', 'ir', OUT / 'out.ll',
                             '-o', OUT / 'out.o'], capture_output=True, text=True)
         self.assertEqual(c.returncode, 0, c.stderr)
 
@@ -253,7 +253,7 @@ class RetargetTest(unittest.TestCase):
         for opts in ((), ('--no-tls', '--single-core', '--size', '--hot', 'fast')):
             r, _ = self.retarget(*opts)
             self.assertEqual(r.returncode, 0, r.stderr)
-            c = subprocess.run([str(paths.clang()), *paths.TARGET_M4F, '-O2', '-c', '-x', 'ir', OUT / 'out.ll',
+            c = subprocess.run([str(paths.clang()), *paths.target_flags(), '-O2', '-c', '-x', 'ir', OUT / 'out.ll',
                                 '-o', OUT / 'out.o'], capture_output=True, text=True)
             self.assertEqual(c.returncode, 0, c.stderr)
 

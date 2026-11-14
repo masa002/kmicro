@@ -1,6 +1,6 @@
-"""Build a QEMU test image: Kotlin LTO object(s) + the kmicro runtime + C code, for an emulated Cortex-M4.
+"""Build a QEMU test image: Kotlin LTO object(s) + the kmicro runtime + C code, for an emulated Cortex-M.
 
-usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--target l475|an386] [--run]
+usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--cpu CORE] [--target l475|an386] [--run]
                               [--timeout SECONDS]
 
     FILE       C (.c), C++ (.cpp) and assembly (.s, .S) files, compiled with the runtime's flags, and objects (.o, .a)
@@ -8,6 +8,8 @@ usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--
                main.c support/hw.c
     -D, -I     a definition or include folder for every C file, e.g. -D KM_HEAP_BYTES=32768 (runtime/ and support/
                are always on the include path)
+    --cpu      the core to compile for (toolchain/paths.py CORES; default cortex-m4f, or KMICRO_CPU). The objects
+               from kbuild must be built for the same core
     --target   l475 (default): QEMU b-l475e-iot01a, an STM32L475 (targets/qemu-l475), the layout programs run on.
                an386: QEMU mps2-an386 (targets/qemu-an386: 4 MB of code, 16 MB of RAM, newlib stdio over
                semihosting), for tests that need more memory than a microcontroller has
@@ -37,10 +39,16 @@ TARGETS = {   # start code and linker script, QEMU machine, the newlib system-ca
     'l475': (ROOT / 'targets/qemu-l475', 'l475.ld', 'b-l475e-iot01a', ['-lnosys']),
     'an386': (ROOT / 'targets/qemu-an386', 'an386.ld', 'mps2-an386', ['-lrdimon_nano', '--wrap=_exit']),
 }
-# -g costs no flash. It lets Kotlin code built with debug information keep its line info when LTO inlines it into C.
-CFLAGS = [*paths.TARGET_M4F, '-isystem', str(paths.newlib_include()), '-O2', '-g', '-flto', '-ffunction-sections',
-          '-fdata-sections', '-fexceptions', '-funwind-tables', '-Wall', '-Wextra', '-Wno-unused-parameter',
-          '-I', str(ROOT / 'runtime'), '-I', str(ROOT / 'support')]
+
+
+def cflags():
+    """The flags of every C file. -g costs no flash: it lets Kotlin code built with debug information keep its line
+    info when LTO inlines it into C."""
+    return [*paths.target_flags(), '-isystem', str(paths.newlib_include()), '-O2', '-g', '-flto',
+            '-ffunction-sections', '-fdata-sections', '-fexceptions', '-funwind-tables', '-Wall', '-Wextra',
+            '-Wno-unused-parameter', '-I', str(ROOT / 'runtime'), '-I', str(ROOT / 'support')]
+
+
 CXXFLAGS = ['-std=c++17', '-fno-rtti', '-Wno-unused-variable', '-Wno-unused-but-set-variable']
 C_SOURCES = ('.c', '.cpp', '.s', '.S')
 # The names Kotlin code calls the runtime by: the natives of the standard library and the compiler's entry points.
@@ -67,9 +75,9 @@ def compile_one(src, obj, flags):
     """src -> obj, shown warnings and all. Written under a temporary name first: an interrupted or concurrent build
     never leaves a half-written object behind."""
     if src.suffix in ('.s', '.S'):
-        cmd = [paths.clang(), *paths.TARGET_M4F, *(flags if src.suffix == '.S' else []), '-c', src]
+        cmd = [paths.clang(), *paths.target_flags(), *(flags if src.suffix == '.S' else []), '-c', src]
     else:
-        cmd = [paths.clang(), *CFLAGS, *(CXXFLAGS if src.suffix == '.cpp' else []), *flags, '-c', src]
+        cmd = [paths.clang(), *cflags(), *(CXXFLAGS if src.suffix == '.cpp' else []), *flags, '-c', src]
     obj.parent.mkdir(parents=True, exist_ok=True)
     tmp = obj.with_name(f'{obj.name}.{os.getpid()}.tmp')
     r = run([*cmd, '-o', tmp])
@@ -86,7 +94,7 @@ def runtime_objects(defs):
     rt = ROOT / 'runtime'
     sources = [*sorted(rt.glob('*.c')), *sorted(rt.glob('*.cpp')), *sorted((rt / 'dtoa').glob('*.cpp'))]
     headers = max(p.stat().st_mtime for p in [*rt.rglob('*.h'), *rt.rglob('*.hpp'), Path(__file__)])
-    key = hashlib.sha1('\n'.join([str(paths.clang()), *CFLAGS, *defs]).encode()).hexdigest()[:12]
+    key = hashlib.sha1('\n'.join([str(paths.clang()), *cflags(), *defs]).encode()).hexdigest()[:12]
     cache = ROOT / 'build/qbuild' / f'runtime-{key}'
     objs = []
     for s in sources:
@@ -184,6 +192,7 @@ def parse_args():
     ap.add_argument('files', type=Path, nargs='+', help=hide)
     ap.add_argument('-D', dest='defs', action='append', default=[], help=hide)
     ap.add_argument('-I', dest='incs', action='append', default=[], help=hide)
+    ap.add_argument('--cpu', choices=sorted(paths.CORES), help=hide)
     ap.add_argument('--target', choices=sorted(TARGETS), default='l475', help=hide)
     ap.add_argument('--run', action='store_true', help=hide)
     ap.add_argument('--timeout', type=float, default=120, help=hide)
@@ -199,6 +208,7 @@ def main():
             fail(f'qbuild: no such file: {f}')
         if f.suffix not in (*C_SOURCES, '.o', '.a'):
             fail(f'qbuild: {f}: expected .c, .cpp, .s, .S, .o or .a')
+    paths.select_cpu(args.cpu)
     tdir, script, machine, syslibs = TARGETS[args.target]
     defs = [f'-D{d}' for d in args.defs]
     incs = [f'-I{i}' for i in args.incs]

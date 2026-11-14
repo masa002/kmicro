@@ -101,7 +101,7 @@ class Test:
 def eh_without_exceptions(d):
     """runtime/eh.c with qbuild's flags but no -fexceptions: the build must stop with eh.c's #error."""
     import qbuild
-    return [paths.clang(), *[f for f in qbuild.CFLAGS if f != '-fexceptions'], '-c', ROOT / 'runtime/eh.c', '-o',
+    return [paths.clang(), *[f for f in qbuild.cflags() if f != '-fexceptions'], '-c', ROOT / 'runtime/eh.c', '-o',
             d / 'eh.o']
 
 
