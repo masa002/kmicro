@@ -505,6 +505,18 @@ def add_kotlin_main(ll_text, required=False, name='kmicro_kotlin_main'):
     return [f'define void @{name}() uwtable {{', f'  call void @"{sym}"(ptr @theEmptyArray)', '  ret void', '}']
 
 
+def root_classes(ll_text):
+    """The classes of the root package, by their names in the IR (`Outer.Inner`; `\\C3\\89cran` for Écran): those whose
+    class record (@"kclass:<name>", a TypeInfo) has the empty string as its package name, the 12th field. The name
+    alone does not tell: `calibration.Table` is an object inside a root-package class or one of the package
+    calibration, and a package without top-level functions leaves no other trace."""
+    empty = set(re.findall(r'^(@\d+) = [^\n]*@"kclass:kotlin\.String"[^\n]*\[0 x i8\] zeroinitializer \}$', ll_text,
+                           re.M))
+    return [m.group(1) for m in re.finditer(
+        r'^@"kclass:([^"]+?)(?:#internal)?" = [^\n]*?%struct\.TypeInfo \{ (?:[^,\n]+, ){11}ptr (@\d+), ', ll_text, re.M)
+        if m.group(2) in empty]
+
+
 def add_init_all(ll_text, package, name='kt_init_all'):
     """`void <name>(void)`: the globals of `package` and its sub-packages created now, file-level ones and those of
     object declarations (and companion objects). Kotlin initialises each on first use; called at boot (thread context,
@@ -512,7 +524,7 @@ def add_init_all(ll_text, package, name='kt_init_all'):
     if package:
         mine = re.escape(package) + r'[.$][^"]*'
     else:                                      # the root package: its files, and classes outside any package
-        mine = r'(?:<root>\$[^"]*|[A-Z][^"$]*)'
+        mine = '(?:' + '|'.join([r'<root>\$[^"]*', *map(re.escape, root_classes(ll_text))]) + ')'
     pairs = sorted(set(re.findall(
         r'call void @CallInitGlobalPossiblyLock\(ptr noundef (@"state_global\$' + mine + r'"), '
         r'ptr noundef (@"kfun:[^"]*\$init_global[^"]*")\)', ll_text)))
