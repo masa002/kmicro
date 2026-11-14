@@ -75,3 +75,15 @@ fun circularCause() {
 fun messageThrows() {
     throw Broken()
 }
+
+// The report names a class as toString() does: a local class by its simple name, an anonymous object as Throwable.
+@CName("k_local_class")
+fun localClass() {
+    class LocalError : Exception("local")
+    throw LocalError()
+}
+
+@CName("k_anonymous_object")
+fun anonymousObject() {
+    throw object : IllegalStateException("anonymous") {}
+}

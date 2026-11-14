@@ -215,11 +215,13 @@ has the rules and the Kotlin constructs that allocate where it is not obvious.
 
 ## Reading a stack trace
 
-An uncaught exception prints its qualified type, its whole message and its stack trace, then each cause as
-`Caused by: ...` with its own frames. Frames that a cause shares with the exception above it become
-`... and N more common stack frames skipped`, as in `printStackTrace()`. The report allocates nothing. It leaves out
-suppressed exceptions (`e.printStackTrace()` in a catch block shows them) and does not call a custom `toString()`.
-A stack trace is a list of return addresses; [tools/symbolize.py](../tools/symbolize.py) names them from the ELF.
+An uncaught exception prints its type, its whole message and its stack trace, then each cause as
+`Caused by: ...` with its own frames. The type is named as `Throwable.toString()` names it: the qualified name, the
+simple name for a local class, `Throwable` for an anonymous object. Frames that a cause shares with the exception
+above it become `... and N more common stack frames skipped`, as in `printStackTrace()`. The report allocates nothing.
+It leaves out suppressed exceptions (`e.printStackTrace()` in a catch block shows them) and does not call a custom
+`toString()`. A stack trace is a list of return addresses; [tools/symbolize.py](../tools/symbolize.py) names them from
+the ELF.
 
 Before the report, the hook set with `setUnhandledExceptionHook` runs, as on stock Kotlin/Native; if it throws, its
 exception is reported instead. It may end the program itself with `terminateWithUnhandledException(it)`.

@@ -308,6 +308,9 @@ KM_NOTHROW ObjHeader *Kotlin_getExceptionObject(void *holder, ObjHeader **result
 ObjHeader *Kotlin_Throwable_getMessage(ObjHeader *throwable, ObjHeader **result);
 ObjHeader *Kotlin_Throwable_getStackTrace(ObjHeader *throwable, ObjHeader **result);
 void Kotlin_io_Console_print(const ObjHeader *message);   /* strings.c: any length, in chunks, no allocation */
+void km_print_from(const ObjHeader *s, uint32_t from);    /* strings.c: the same, from the character at an index */
+KM_NOTHROW int32_t Kotlin_String_getStringLength(const ObjHeader *s);
+uint16_t Kotlin_String_get(const ObjHeader *s, int32_t index);
 __attribute__((weak)) ObjHeader *km_throwable_cause(ObjHeader *throwable, ObjHeader **result)
     __asm__("kfun:kotlin.Throwable#<get-cause>(){}kotlin.Throwable?");   /* the virtual getter */
 void Kotlin_runUnhandledExceptionHook(ObjHeader *throwable);   /* stdlib: the hook, or rethrows when none is set */
@@ -331,15 +334,29 @@ static void put_kstr(const ObjHeader *s)
         Kotlin_io_Console_print(s);
 }
 
-/* "<package>.<Class>: <message>", as Throwable.toString() prints it */
+/* "<Class>: <message>", as Throwable.toString() prints it. The class is its qualifiedName ?: simpleName ?: "Throwable"
+ * (TypeInfoNames.kt): the flags tell which names a class has. A local class has only a simple name, the end of its
+ * relative name ("local$LocalError"); the class of an anonymous object has none. */
 static void put_throwable(ObjHeader *e, ObjHeader **msg)
 {
     const TypeInfo *t = km_type_info(e);
-    if (t->packageName_ && ((const ArrayHeader *)t->packageName_)->count_ > 3) {
-        put_kstr(t->packageName_);
+    const ObjHeader *pkg = (t->flags_ & KM_TF_REFLECTION_SHOW_PKG_NAME) ? t->packageName_ : NULL;
+    const ObjHeader *rel = (t->flags_ & KM_TF_REFLECTION_SHOW_REL_NAME) ? t->relativeName_ : NULL;
+    int32_t from = 0;                                /* where the name to print starts in rel */
+    if (rel == NULL) {
+        kmicro_puts("Throwable");
+    } else if (pkg == NULL) {                        /* the simple name: after the last '.', then after the last '$' */
+        for (int32_t i = 0, n = Kotlin_String_getStringLength(rel); i < n; i++) {
+            uint16_t c = Kotlin_String_get(rel, i);
+            if (c == '.' || c == '$')
+                from = i + 1;
+        }
+    } else if (Kotlin_String_getStringLength(pkg) > 0) {
+        put_kstr(pkg);
         kmicro_puts(".");
     }
-    put_kstr(t->relativeName_);
+    if (rel != NULL)
+        km_print_from(rel, (uint32_t)from);
     Kotlin_Throwable_getMessage(e, msg);
     if (*msg != NULL) {
         kmicro_puts(": ");
