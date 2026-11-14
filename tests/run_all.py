@@ -186,6 +186,7 @@ TESTS = [
     Test('cinterop_shapes', SHAPES, ['tests/cinterop_shapes/drv.c']),
     Test('cinterop_callback_throws', SHAPES, ['tests/cinterop_shapes/drv.c'], exit=98,
          case={'TEST_CALLBACK_THROWS': 1}),
+    Test('stdio', Kotlin('stdio', ['tests/stdio/stdio.kt']), ['tests/stdio/main.c']),
     Test('qbuild_c_files', None, ['tests/qbuild/init.c', 'support/hw.c']),
     Test('qbuild_undefined', None, ['tests/qbuild/undefined.c'], fails='link', exit=1),
     Test('qbuild_folder_name', ADD, ['tests/add/main.c'], folder='テスト フォルダ', copy=True),

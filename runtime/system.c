@@ -87,6 +87,19 @@ static ObjHeader *read_line(ObjHeader **result)
 ObjHeader *Kotlin_io_Console_readlnOrNull(ObjHeader **result) { return read_line(result); }
 ObjHeader *Kotlin_io_Console_readLine(ObjHeader **result) { return read_line(result); }
 
+/* ---- newlib's stdio (printf, puts; from C, or from Kotlin through platform.posix) ---- */
+
+/* The system call newlib's streams write through, which fails in libnosys: stdout and stderr go where println goes.
+ * Weak: a board's own _write takes its place. Without one, kmicro_puts and kmicro_write must not print with stdio
+ * themselves: they would be called again from inside it. */
+__attribute__((weak)) int _write(int fd, const char *buf, int len)
+{
+    if (fd != 1 && fd != 2)
+        return -1;
+    kmicro_write(buf, (size_t)len);
+    return len;
+}
+
 /* ---- Uuid.random(): random bytes from the board ---- */
 
 /* Fills buf with n bytes from a true entropy source (a hardware RNG). There is no safe default, so without the hook
