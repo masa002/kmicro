@@ -17,8 +17,10 @@ extern const void *const vectors[16];
 #define SCB_MMFAR (*(volatile uint32_t *)0xE000ED34)
 #define SCB_BFAR  (*(volatile uint32_t *)0xE000ED38)
 #define MPU_CTRL  (*(volatile uint32_t *)0xE000ED94)
+#define MPU_RNR   (*(volatile uint32_t *)0xE000ED98)
 #define MPU_RBAR  (*(volatile uint32_t *)0xE000ED9C)
-#define MPU_RASR  (*(volatile uint32_t *)0xE000EDA0)
+#define MPU_RASR  (*(volatile uint32_t *)0xE000EDA0)                              /* ARMv6-M, ARMv7-M */
+#define MPU_RLAR  (*(volatile uint32_t *)0xE000EDA0)                              /* ARMv8-M */
 #define MPU_NO_ACCESS(log2_size) ((1u << 28) | (((log2_size) - 1u) << 1) | 1u)   /* XN, AP=000, SIZE, ENABLE */
 #define NULL_GUARD_LOG2 16u                                     /* the first 64 KB of the address space */
 #define STACK_GUARD_LOG2 12u                                    /* 4 KB, as l475.ld reserves */
@@ -44,21 +46,39 @@ __attribute__((naked)) void Reset_Handler(void)
                    ".ltorg\n");
 }
 
-/* Two MPU regions with no access turn silent memory corruption into a fault report. PRIVDEFENA keeps the default
+/* Two MPU guards with no access turn silent memory corruption into a fault report. PRIVDEFENA keeps the default
  * memory map everywhere else.
- * Region 0, address 0: on the M4 that is an alias of flash, so reading a null object or a null C pointer would
+ * Guard 0, address 0: on the M4 that is an alias of flash, so reading a null object or a null C pointer would
  * return the vector table instead of faulting. VTOR points at the flash copy, so exceptions never fetch through it.
- * Region 1: the 4 KB between .bss and the stack (l475.ld). An overflowing stack faults there before it writes
+ * Guard 1: the 4 KB between .bss and the stack (l475.ld). An overflowing stack faults there before it writes
  * .bss, which holds the Kotlin heap and the runtime's globals. A function whose frame is larger than the guard could
  * step over it without writing into it; the largest frames are 1024 bytes in the runtime's C code and 2984 bytes in
  * the standard library (Regex), and kbuild warns about Kotlin arrays on the stack above 512 bytes. */
+#if __ARM_ARCH >= 8
+/* The MPU of ARMv8-M gives a region a base and a limit, and none of its access permissions refuses a privileged
+ * read. An address that lies in two regions faults whatever they allow, so a guard is the same region twice there:
+ * regions 2n and 2n + 1. */
+static void mpu_no_access(uint32_t n, uint32_t base, uint32_t log2_size)
+{
+    for (uint32_t i = 2u * n; i < 2u * n + 2u; i++) {
+        MPU_RNR = i;
+        MPU_RBAR = base | 5u;                                   /* AP=10: read-only, privileged; XN */
+        MPU_RLAR = (base + (1u << log2_size) - 32u) | 1u;       /* LIMIT: the last 32 bytes; ENABLE */
+    }
+}
+#else
+static void mpu_no_access(uint32_t n, uint32_t base, uint32_t log2_size)
+{
+    MPU_RBAR = base | 0x10u | n;                                /* VALID, region n */
+    MPU_RASR = MPU_NO_ACCESS(log2_size);
+}
+#endif
+
 static void mpu_guards(void)
 {
     SCB_VTOR = (uint32_t)vectors;
-    MPU_RBAR = 0x00000000u | 0x10u | 0u;                        /* VALID, region 0 */
-    MPU_RASR = MPU_NO_ACCESS(NULL_GUARD_LOG2);
-    MPU_RBAR = (uint32_t)&_sguard | 0x10u | 1u;                 /* VALID, region 1 */
-    MPU_RASR = MPU_NO_ACCESS(STACK_GUARD_LOG2);
+    mpu_no_access(0u, 0x00000000u, NULL_GUARD_LOG2);
+    mpu_no_access(1u, (uint32_t)&_sguard, STACK_GUARD_LOG2);
     MPU_CTRL = 5u;                                              /* ENABLE, PRIVDEFENA */
     __asm volatile("dsb\n isb");
 }

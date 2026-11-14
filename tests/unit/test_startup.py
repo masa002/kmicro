@@ -1,5 +1,5 @@
-"""The QEMU l475 start code: fault report, stack guard, null guard and clocks. C programs only (startup_probe.c), no
-Kotlin compile.
+"""The QEMU l475 start code: fault report, stack guard, null guard and clocks, on the default core and on an ARMv8-M
+one. C programs only (startup_probe.c), no Kotlin compile.
 
 usage: python -m unittest discover tests/unit       (skipped when LLVM, arm-none-eabi-gcc or QEMU is not installed)
 """
@@ -18,11 +18,13 @@ HAVE_TOOLS = all(paths._find(t.env, t.patterns, t.what) for t in (paths.llvm, pa
 
 @unittest.skipUnless(HAVE_TOOLS, 'needs LLVM, arm-none-eabi-gcc and QEMU (python toolchain/paths.py)')
 class StartupTest(unittest.TestCase):
+    CPU = None                                  # qbuild --cpu; None: the default core (or KMICRO_CPU)
+
     def run_probe(self, probe):
-        elf = ROOT / 'build/unit/startup' / f'probe{probe}.elf'
+        elf = ROOT / 'build/unit' / '-'.join(filter(None, ['startup', self.CPU])) / f'probe{probe}.elf'
         r = subprocess.run([sys.executable, ROOT / 'tools/qbuild.py', elf, Path(__file__).parent / 'startup_probe.c',
-                            '-D', f'PROBE={probe}', '--run'], capture_output=True, text=True, errors='replace',
-                           timeout=300)
+                            '-D', f'PROBE={probe}', '--run', *(['--cpu', self.CPU] if self.CPU else [])],
+                           capture_output=True, text=True, errors='replace', timeout=300)
         return elf, r.returncode, r.stdout + r.stderr
 
     def symbolized(self, elf, log):
@@ -63,6 +65,11 @@ class StartupTest(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         self.assertIn('monotonic: ok', out)
         self.assertIn('wall clock: ok', out)
+
+
+class StartupArmv8MTest(StartupTest):
+    """The same start code on the Cortex-M33 of QEMU mps2-an505: the MPU of ARMv8-M, in the Secure state."""
+    CPU = 'cortex-m33'
 
 
 if __name__ == '__main__':
