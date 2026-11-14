@@ -30,6 +30,9 @@ on QEMU's STM32L475 (or mps2-an386, for a test that says so) and checks:
   missing_natives), its exit code and its output against tests/expected/<name>.<check>.txt (not with --stress,
   which builds another runtime than users get).
 
+The programs run with qbuild --icount: QEMU's clock is the number of instructions run, so a timer interrupt lands on
+the same instruction in every run. One test (host_clock) keeps the host's clock, which is qbuild's default.
+
 Several tests can share one Kotlin build and one C driver: the driver then tells the cases apart by a TEST_* macro,
 which run_all defines in a small file that includes the driver (build/t/<name>/case_<driver>), so that the runtime,
 compiled once per set of -D values, is shared. A test can instead expect its Kotlin build, its link or a command to
@@ -102,6 +105,7 @@ class Test:
     bridges: bool = True                # link the cinterop bridges (bridges.o) that kn.build made
     folder: str = None                  # the build folder's name, if not the test's
     copy: bool = False                  # compile copies of the C files, made in the build folder
+    host_clock: bool = False            # run without qbuild --icount: timers follow the host's clock
 
 
 def eh_without_exceptions(d):
@@ -205,6 +209,7 @@ TESTS = [
     Test('qbuild_c_files', None, ['tests/qbuild/init.c', 'support/hw.c']),
     Test('qbuild_undefined', None, ['tests/qbuild/undefined.c'], fails='link', exit=1),
     Test('qbuild_folder_name', ADD, ['tests/add/main.c'], folder='テスト フォルダ', copy=True),
+    Test('qbuild_icount', None, ['tests/qbuild/ticks.c']),
     # interrupt handlers: the run-time guards, isr_check, --init-all, reference stores while the collector marks
     isr('isr_alloc', 'TEST_ALLOC', checks=[Check('isr_check', ['tools/isr_check.py', '{elf}'], exit=1), SYMBOLIZE]),
     isr('isr_to_string', 'TEST_TO_STRING'),
@@ -218,9 +223,9 @@ TESTS = [
     Test('isr_init_window_tls', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98,
          case={'TEST_THREAD_LOCAL': 1}),
     isr('isr_swap_fields', 'TEST_SWAP_FIELDS', exit=0, heap=32768, defs=['KM_GC_STRESS=1'],
-        case={'RVR': '200u', 'ROUNDS': 40000}),
+        case={'RVR': '1000u', 'ROUNDS': 40000}),
     isr('isr_swap_slots', 'TEST_SWAP_SLOTS', exit=0, heap=32768, defs=['KM_GC_STRESS=1'],
-        case={'RVR': '200u', 'ROUNDS': 40000}),
+        case={'RVR': '1000u', 'ROUNDS': 40000}),
     # runtime natives: platform values, console input, entropy, and the APIs kmicro does not support
     native('natives_platform', 'TEST_PLATFORM', exit=3,
            checks=[Check('missing_natives', ['tools/missing_natives.py', '--check', '--ir', '{kotlin}/m4.ll'])]),
@@ -263,7 +268,7 @@ TESTS = [
                                                                     hot=r'^kfun:selftest#(gcChains|coroEvent)\(')),
          ['examples/selftest/main.c']),
     Test('selftest_stm32l431', command=board_build),
-    Test('irq', IRQ, ['examples/irq/main.c', 'support/hw.c'],
+    Test('irq', IRQ, ['examples/irq/main.c', 'support/hw.c'], host_clock=True,
          checks=[Check('isr_check', ['tools/isr_check.py', '{elf}']),
                  Check('gen_regs', ['tools/gen_regs.py', '--header', 'examples/irq/systick.h', '--sources',
                                     'examples/irq', '--out', '{dir}/gen/Regs.kt', '--package', 'irq'],
@@ -380,7 +385,7 @@ def qbuild(t, d, objs, args):
     cmd = [sys.executable, ROOT / 'tools/qbuild.py', d / f'{t.name}.elf', *c_files(t, d), *objs,
            *(x for v in defs for x in ('-D', v)), *([] if t.target == 'l475' else ['--target', t.target]),
            *(['--large'] if t.large else []),
-           *([] if t.fails else ['--run', '--timeout', str(timeout)])]
+           *([] if t.fails else ['--run', '--timeout', str(timeout), *([] if t.host_clock else ['--icount'])])]
     r = subprocess.run([str(a) for a in cmd], capture_output=True, timeout=timeout + 1800)
     return r.returncode, normalized((r.stdout + r.stderr).decode('utf-8', 'replace'))
 
