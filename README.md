@@ -29,7 +29,7 @@ kotlinc-native: compiling 1 file...
 single-core: 113 init-state loads made plain
 build\hello\k.o
 $ python tools/qbuild.py build/hello/hello.elf targets/common/kotlin_main.c build/hello/k.o --run
-qbuild: hello.elf  text 71228  data 80  bss 18864  stack 79812
+qbuild: hello.elf  text 71764  data 80  bss 18732  stack 73728
 Hello from Kotlin #1, Kotlin #2, Kotlin #3 on a bare Cortex-M4
 qemu: exit 0
 ```
@@ -71,7 +71,7 @@ The short list; [docs/kotlin-support.md](docs/kotlin-support.md) has every case.
 
 - **Regex is big:** the first pattern keeps 11.5 KB of the heap, three small patterns need a 20 KB heap, and a
   program that creates about 30 patterns in one function runs out of memory even at 64 KB. A program that uses
-  `Regex` is about 365 KB of flash (234 KB with `--size`), against the STM32L431's 256 KB
+  `Regex` is about 366 KB of flash (235 KB with `--size`), against the STM32L431's 256 KB
   ([what features cost](docs/writing-kotlin.md#memory)). Deep backtracking over long input overflows the stack.
   `RegexOption.CANON_EQ` throws `IllegalArgumentException`.
 - **Running out of memory stops the program:** heap exhaustion ends with an out-of-memory report, not a catchable
@@ -162,8 +162,8 @@ an STM32L431.
 | one full collection | 1.8 ms |
 
 \* Measured before [#3](https://github.com/masa002/kmicro/issues/3) stopped the stack-trace walk from visiting the
-same frame several times. On QEMU the same check now executes 9,853 instructions: 7,131 to create the exception with
-its message and stack trace, 2,722 from the throw to the catch.
+same frame several times. On QEMU the same check now executes 9,901 instructions: 7,164 to create the exception with
+its message and stack trace, 2,737 from the throw to the catch.
 
 ## Repository layout
 
