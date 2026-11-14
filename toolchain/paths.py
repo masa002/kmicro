@@ -81,6 +81,11 @@ def triple():
     return CORES[cpu()][0].replace('-none-', '-unknown-none-')
 
 
+def arch():
+    """The architecture of the core, as in its triple: thumbv6m, thumbv7m, thumbv7em, thumbv8m.base, thumbv8m.main."""
+    return CORES[cpu()][0].split('-')[0]
+
+
 def target_flags():
     """The clang flags that choose the core: target, CPU, FPU and calling convention."""
     t, flags, _ = CORES[cpu()]
