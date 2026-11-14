@@ -71,6 +71,8 @@ The start code runs these steps, in this order:
    The entry reaches the C start function with a jump (`b`, or `bx` through a register), not with a call (`bl`),
    and the start function never returns. After the jump lr still has its reset value (0xFFFFFFFF on a Cortex-M4),
    which is the address of no function: the stack trace of an exception and the search for its handler end there.
+   A Cortex-M0 or M0+ gives the reset value of lr as unknown: set it to 0xFFFFFFFF before the jump, as the QEMU
+   start code does (`ldr r0, =0xFFFFFFFF`, `mov lr, r0`).
    After `bl`, lr points into `Reset_Handler`, and the unwind entry of a naked function says "nothing on the stack,
    return through lr": unwinding that frame gives the same frame again, and libgcc's search for a handler would never
    end. The runtime stops the walk at such a frame (`__gnu_Unwind_Find_exidx` in [runtime/eh.c](../runtime/eh.c)),
