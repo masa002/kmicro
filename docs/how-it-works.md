@@ -34,7 +34,8 @@ them from the command line, and [tools/qbuild.py](../tools/qbuild.py) links the 
 [porting.md](porting.md) is the same link for a board: the runtime's flags, the linker script and the libraries.
 
 ```
-python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--target l475|an386] [--run] [--timeout S]
+python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--target l475|an386] [--large] [--run]
+                       [--timeout S]
 ```
 
 The files are any number of C, C++ and assembly files and the objects kbuild printed (`k.o`, and `bridges.o` when
@@ -44,6 +45,10 @@ for QEMU's `mps2-an386` (4 MB of code, 16 MB of RAM) instead of the STM32L475, f
 than a microcontroller has. `--run` runs the image and exits with its exit code, 124 after `--timeout` seconds (120
 by default). qbuild prints a size line, `qbuild: app.elf  text N  data N  bss N  stack N`, where the stack is the
 RAM above `.bss`, without the stack guard on a target that has one (`qemu-l475`); `bss` leaves the guard out too.
+
+The STM32L475 has 1 MB of flash and 96 KB of RAM, but qbuild links a program into the memory of the STM32L431,
+256 KB of flash and 64 KB of RAM: a program that does not fit fails to link, and one that needs more stack than
+those 64 KB leave stops with `kmicro fault: stack overflow`. `--large` links it for the whole STM32L475 instead.
 
 Link-time optimisation treats the runtime and the Kotlin code as one program. The runtime's hooks, such as the
 frame push of the garbage collector or an array access, are inlined into the Kotlin functions that call them. For

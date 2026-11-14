@@ -1,7 +1,7 @@
 """Build a QEMU test image: Kotlin LTO object(s) + the kmicro runtime + C code, for an emulated Cortex-M.
 
-usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--cpu CORE] [--target NAME] [--run]
-                              [--timeout SECONDS]
+usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--cpu CORE] [--target NAME] [--large]
+                              [--run] [--timeout SECONDS]
 
     FILE       C (.c), C++ (.cpp) and assembly (.s, .S) files, compiled with the runtime's flags, and objects (.o, .a)
                linked as they are: the k.o (and bridges.o) that tools/kbuild.py prints. Several C files are fine, e.g.
@@ -17,6 +17,9 @@ usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--
                an385, an500: the start code and the layout of l475 on QEMU mps2-an385 (a Cortex-M3; the default for
                cortex-m3) and mps2-an500 (a Cortex-M7 with a double-precision FPU; the default for cortex-m7 and
                cortex-m7-sp)
+    --large    l475, an385 and an500 give a program the memory of the STM32L431 kmicro aims at, 256 KB of flash and
+               64 KB of RAM: one that does not fit fails to link, and the stack ends where it would end on that chip.
+               With --large the program gets the memory of the STM32L475: 1 MB of flash and 96 KB of RAM
     --run      run the image on QEMU and exit with the program's exit code (124 when it runs out of time)
     --timeout  seconds a --run may take (default 120)
 
@@ -60,6 +63,8 @@ def cflags():
 
 CXXFLAGS = ['-std=c++17', '-fno-rtti', '-Wno-unused-variable', '-Wno-unused-but-set-variable']
 C_SOURCES = ('.c', '.cpp', '.s', '.S')
+NO_ROOM = ('qbuild: the program does not fit the STM32L431 (256 KB of flash, 64 KB of RAM); --large links it for the '
+           'memory of the STM32L475 (1 MB, 96 KB)')
 # The names Kotlin code calls the runtime by: the natives of the standard library and the compiler's entry points.
 # Only these are stubbed when missing, and only when a Kotlin object calls them.
 RUNTIME_NAME = re.compile(r'(Kotlin_|Konan_|Throw[A-Z]|_ZN6kotlin|__cxa_)\w*$|(getCached|in)[A-Za-z]+Box(Cache)?$')
@@ -203,6 +208,7 @@ def parse_args():
     ap.add_argument('-I', dest='incs', action='append', default=[], help=hide)
     ap.add_argument('--cpu', choices=sorted(paths.CORES), help=hide)
     ap.add_argument('--target', choices=sorted(TARGETS), help=hide)
+    ap.add_argument('--large', action='store_true', help=hide)
     ap.add_argument('--run', action='store_true', help=hide)
     ap.add_argument('--timeout', type=float, default=120, help=hide)
     return ap.parse_intermixed_args()
@@ -240,7 +246,7 @@ def main():
     stubs_s, stubs_o = bdir / 'autostubs.s', bdir / 'autostubs.o'
     link = [paths.ld_lld(), '-T', tdir / script, '--gc-sections', '--lto-O2', '--target2=abs', '--no-demangle',
             '--error-limit=0', '-o', out, *objs, *rt, *given, f'-L{paths.newlib_lib()}', '-lc_nano', '-lm',
-            *syslibs, paths.libgcc()]
+            *syslibs, paths.libgcc(), *(['--defsym=kmicro_large=1'] if args.large else [])]
     stubbed = []
     for _ in range(3):
         r = run([*link, *([stubs_o] if stubbed else [])], check=False)
@@ -250,7 +256,8 @@ def main():
         if errors:
             fail('qbuild: link failed\n' + '\n'.join('  ' + e for e in errors))
         if not new:
-            fail(f'qbuild: link failed\n{r.stderr[-4000:]}')
+            no_room = 'will not fit in region' in r.stderr and script != 'an386.ld' and not args.large
+            fail(f'qbuild: link failed\n{r.stderr[-4000:]}' + (NO_ROOM if no_room else ''))
         stubbed = sorted({*stubbed, *new})
         write_stubs(stubs_s, stubbed)
         compile_one(stubs_s, stubs_o, [])
