@@ -115,7 +115,7 @@ static void pop_record(void)
 /* The Cortex-M exception number of the running code (IPSR): 0 in thread code. */
 static uint32_t running_context(void)
 {
-#if defined(__ARM_ARCH_7EM__) || defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_6M__) || defined(__ARM_ARCH_8M_MAIN__)
+#if defined(__ARM_ARCH_PROFILE) && __ARM_ARCH_PROFILE == 'M'
     uint32_t ipsr;
     __asm volatile("mrs %0, ipsr" : "=r"(ipsr));
     return ipsr & 0x1FFu;
