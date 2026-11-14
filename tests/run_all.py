@@ -253,6 +253,7 @@ TESTS = [
                  Check('gen_regs', ['tools/gen_regs.py', '--header', 'examples/irq/systick.h', '--sources',
                                     'examples/irq', '--out', '{dir}/gen/Regs.kt', '--package', 'irq'],
                        same=('{dir}/gen/Regs.kt', 'examples/irq/Regs.kt'))]),
+    Test('irq_an386', IRQ, ['examples/irq/main.c', 'support/hw.c'], target='an386'),
 ]
 STACK_GUARD = 4096                      # targets/qemu-l475/l475.ld
 M4F_MACHINE = ('cortex-m0', 'cortex-m0plus', 'cortex-m1', 'cortex-m3', 'cortex-m4', 'cortex-m4f')   # run on one
