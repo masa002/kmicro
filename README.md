@@ -3,6 +3,7 @@
 </h1>
 
 [![CI](https://github.com/masa002/kmicro/actions/workflows/ci.yml/badge.svg)](https://github.com/masa002/kmicro/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/masa002/kmicro)](https://github.com/masa002/kmicro/releases)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Kotlin/Native 2.4.21](https://img.shields.io/badge/Kotlin%2FNative-2.4.21-informational)](https://github.com/JetBrains/kotlin/releases/tag/v2.4.21)
 [![Target: Cortex-M4F](https://img.shields.io/badge/target-Cortex--M4F%2C%20bare%20metal-informational)](docs/how-it-works.md)
@@ -181,7 +182,8 @@ its message and stack trace, 2,737 from the throw to the catch.
 ## Contributing
 
 Bug reports, fixes and tests are welcome: [CONTRIBUTING.md](CONTRIBUTING.md) says how to build, test and send a
-change, and [docs/roadmap.md](docs/roadmap.md) where the open work is. Report a security problem privately, as
+change, and [docs/roadmap.md](docs/roadmap.md) where the open work is and how releases are numbered.
+[CHANGELOG.md](CHANGELOG.md) lists what each release contains. Report a security problem privately, as
 [SECURITY.md](SECURITY.md) describes.
 
 ## Origin
