@@ -77,8 +77,14 @@ args = sys.argv[1:]
 src, dst = args[0], args[1]
 stubs = args[args.index('--stubs') + 1] if '--stubs' in args else None
 
-text = open(src, encoding='utf-8').read()
-dl = re.search(r'^target datalayout = "([^"]*)"', text, re.M).group(1)
+try:
+    text = open(src, encoding='utf-8').read()
+except UnicodeDecodeError:              # bitcode, or another binary file
+    text = ''
+dl = re.search(r'^target datalayout = "([^"]*)"', text, re.M)
+if not dl:
+    sys.exit(f'retarget: {src} is not textual LLVM IR (no target datalayout)')
+dl = dl.group(1)
 if dl != EXPECT_DL:
     sys.exit(f'unexpected data layout {dl}')
 text = re.sub(r'^target triple = "[^"]*"', 'target triple = "thumbv7em-unknown-none-eabihf"', text, count=1, flags=re.M)
