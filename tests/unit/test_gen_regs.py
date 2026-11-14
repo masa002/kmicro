@@ -1,8 +1,8 @@
 """tools/gen_regs.py on a CMSIS-style header written here: register addresses from struct layouts and instance macros,
 bit constants, IRQ numbers, a board pin map, and only the names the Kotlin sources use; then on C that such headers
 also hold: array sizes from macros and divisions, struct tags, two registers in one declaration, octal and
-floating-point constants, ports after GPIOH. No compiler needed (tests/run_all.py's irq test compiles a generated
-file).
+floating-point constants, ports after GPIOH, and the warnings for what is left out. No compiler needed
+(tests/run_all.py's irq test compiles a generated file).
 
 python -m unittest discover -s tests/unit
 """
@@ -168,6 +168,42 @@ typedef struct
             board.write_text(text, encoding='utf-8')
             r, _ = self.gen('--all', '--pins', board, *more)
             self.assertEqual((r.returncode, r.stderr), (1, f'gen_regs: {board}: {message}\n'))
+
+    def test_names_left_out_are_named(self):
+        r, _ = self.gen('--sources', self.d / 'src')
+        self.assertEqual((r.returncode, r.stderr), (0, ''))
+        more = self.more("""/* what gen_regs.py does not read:
+   a bit field, a union */
+typedef struct
+{
+  __IO uint32_t CR1 : 4;
+  __IO uint32_t SR;
+} SPI_TypeDef;
+typedef struct
+{
+  union { __IO uint32_t CR; __IO uint16_t CR16; } U;
+  __IO uint32_t CNT;
+} TIM_TypeDef;
+#define SPI1       ((SPI_TypeDef *) PERIPH_BASE)
+#define TIM2       ((TIM_TypeDef *) PERIPH_BASE)
+#define UART4      ((USART_TypeDef *) PERIPH_BASE)
+#define GPIOI      ((GPIO_TypeDef *) GPIOI_BASE)
+#define HSE_VALUE  8e6
+#define LSE_VALUE  32768.0
+""")
+        (self.d / 'src/more.kt').write_text('fun more() = SPI1.SR + TIM2.CNT + UART4.DR + GPIOI.MODER + HSE_VALUE\n',
+                                            encoding='utf-8')
+        r, lines = self.gen('--sources', self.d / 'src', *more)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stderr.splitlines(), [
+            'gen_regs: warning: GPIOI left out: its address GPIOI_BASE is no integer constant, at more.h line 16',
+            'gen_regs: warning: HSE_VALUE left out: 8e6 is no integer constant, at more.h line 17',
+            'gen_regs: warning: SPI1 left out: struct SPI_TypeDef not understood at more.h line 3: uint32_t CR1 : 4',
+            'gen_regs: warning: TIM2 left out: struct TIM_TypeDef not understood at more.h line 8: union { uint32_t CR',
+            'gen_regs: warning: UART4 left out: no struct USART_TypeDef found in the headers'])
+        self.assertIn('internal object GPIOA {', lines)
+        r, _ = self.gen('--all', *more)                                    # nobody asked for LSE_VALUE
+        self.assertEqual((r.returncode, r.stderr), (0, ''))
 
     def test_missing_inputs_are_one_line_errors(self):
         r, _ = self.gen('--sources', self.d / 'nowhere')
