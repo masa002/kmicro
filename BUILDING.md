@@ -11,7 +11,9 @@
 | Java (JDK or JRE) | 21 | runs `kotlinc-native` and `cinterop` | `JAVA_HOME`, else `java` on `PATH` |
 | Python | 3.10 or later (3.11 tested) | the build scripts | `PATH` |
 
-Each variable names the tool's top folder (for LLVM, its `bin` folder).
+Each variable names the tool's top folder (for LLVM, its `bin` folder). When `KONAN_DATA_DIR` is set, Kotlin/Native
+keeps its downloads in the folder it names instead of `~/.konan`, and kmicro looks for the LLVM in its
+`dependencies` folder first.
 [toolchain/paths.py](toolchain/paths.py) is the only place that knows these paths.
 [toolchain/versions.txt](toolchain/versions.txt) lists the tested version of each tool for each host, with its
 download and the download's SHA-256. When several versions of a tool are installed, kmicro uses the tested one,
@@ -23,9 +25,9 @@ else the newest, with a warning.
    release (<https://github.com/JetBrains/kotlin/releases/tag/v2.4.21>) and unpack it into `~/toolchains`.
    [toolchain/versions.txt](toolchain/versions.txt) has the SHA-256 of each host's archive.
 2. **The compiler's LLVM.** The first compile for `linux_arm32_hfp` downloads the compiler's dependencies into
-   `~/.konan/dependencies`: LLVM 21 and a Linux ARM sysroot, a few hundred MB. It is the essentials build of LLVM on
-   Windows and Linux; on macOS, the dev build that konan.properties names (versions.txt names each).
-   `python tests/run_all.py add` does that compile.
+   `~/.konan/dependencies` (`$KONAN_DATA_DIR/dependencies` when that variable is set): LLVM 21 and a Linux ARM
+   sysroot, a few hundred MB. It is the essentials build of LLVM on Windows and Linux; on macOS, the dev build that
+   konan.properties names (versions.txt names each). `python tests/run_all.py add` does that compile.
 3. **xPack GCC** from <https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases>, unpacked into
    `~/toolchains`. kmicro compiles with clang, but links newlib-nano and libgcc from this toolchain and uses its
    binutils.

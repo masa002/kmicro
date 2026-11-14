@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'toolchain'))
 import paths  # noqa: E402
 
-ENV_VARS = ('KMICRO_KOTLIN_NATIVE', 'KMICRO_LLVM', 'KMICRO_ARM_GCC', 'KMICRO_QEMU')
+ENV_VARS = ('KMICRO_KOTLIN_NATIVE', 'KMICRO_LLVM', 'KMICRO_ARM_GCC', 'KMICRO_QEMU', 'KONAN_DATA_DIR')
 
 
 class VersionChoice(unittest.TestCase):
@@ -26,6 +26,7 @@ class VersionChoice(unittest.TestCase):
     def tearDown(self):
         paths.HOME = self.saved[0]
         for k, v in self.saved[1].items():
+            os.environ.pop(k, None)
             if v is not None:
                 os.environ[k] = v
         self.tmp.cleanup()
@@ -62,6 +63,23 @@ class VersionChoice(unittest.TestCase):
                      'llvm-21-aarch64-macos-dev-97', 'llvm-21-x86_64-macos-dev-83'):
             self.assertTrue(paths._tested('llvm', self.home / '.konan/dependencies' / name / 'bin'), name)
 
+    def pick_llvm(self):
+        return paths._find(paths.llvm.env, paths.llvm.patterns, paths.llvm.what, paths.llvm.tool)
+
+    def test_llvm_under_konan_data_dir(self):
+        # KONAN_DATA_DIR moves the downloads of Kotlin/Native away from ~/.konan
+        data = self.home / 'data'
+        in_data = data / 'dependencies/llvm-21-x86_64-windows-essentials-150/bin'
+        in_home = self.home / '.konan/dependencies/llvm-21-x86_64-windows-essentials-150/bin'
+        in_data.mkdir(parents=True)
+        self.assertIsNone(self.pick_llvm())
+        os.environ['KONAN_DATA_DIR'] = str(data)
+        self.assertEqual(self.pick_llvm(), in_data)
+        in_home.mkdir(parents=True)
+        self.assertEqual(self.pick_llvm(), in_data)            # before the home folder
+        os.environ['KONAN_DATA_DIR'] = str(self.home / 'empty')
+        self.assertEqual(self.pick_llvm(), in_home)
+
 
 class Check(unittest.TestCase):
     def run_check(self, **env):
@@ -83,6 +101,16 @@ class Check(unittest.TestCase):
             r = self.run_check(KMICRO_QEMU=str(Path(d) / 'nothing-here'))
         self.assertNotEqual(r.returncode, 0)
         self.assertIn('KMICRO_QEMU', r.stdout + r.stderr)
+
+    def test_not_found_names_konan_data_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = {'USERPROFILE' if paths.WINDOWS else 'HOME': str(Path(d) / 'home')}
+            r = self.run_check(KONAN_DATA_DIR=str(Path(d) / 'data'), **home)
+        llvm = [line for line in r.stdout.splitlines() if line.startswith('LLVM')]
+        self.assertEqual(len(llvm), 1, r.stdout + r.stderr)
+        self.assertIn('NOT FOUND', llvm[0])
+        self.assertIn(str(Path(d) / 'data' / 'dependencies'), llvm[0])
+        self.assertIn('(KONAN_DATA_DIR)', llvm[0])
 
 
 if __name__ == '__main__':
