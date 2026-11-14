@@ -1,6 +1,8 @@
 """tools/gen_regs.py on a CMSIS-style header written here: register addresses from struct layouts and instance macros,
-bit constants, IRQ numbers, a board pin map, and only the names the Kotlin sources use. No compiler needed
-(tests/run_all.py's irq test compiles a generated file).
+bit constants, IRQ numbers, a board pin map, and only the names the Kotlin sources use; then on C that such headers
+also hold: array sizes from macros and divisions, struct tags, two registers in one declaration, octal and
+floating-point constants, ports after GPIOH. No compiler needed (tests/run_all.py's irq test compiles a generated
+file).
 
 python -m unittest discover -s tests/unit
 """
@@ -98,6 +100,74 @@ class GenRegs(unittest.TestCase):
         self.assertIn('    const val BSRR: UInt = 0x48000414u', lines)
         self.assertIn('internal const val GPIO_MODER_MODE1: UInt = 0xCu', lines)
         self.assertIn('internal const val SysTick_IRQn: Int = -1', lines)
+
+    def more(self, text):
+        """The options for a second header, read after device.h."""
+        (self.d / 'more.h').write_text(text, encoding='utf-8')
+        return '--header', self.d / 'more.h'
+
+    def test_array_sizes_from_a_macro_and_a_division(self):
+        r, lines = self.gen('--all', *self.more("""#define DMA_CHANNELS 4U
+typedef struct
+{
+  __IO uint32_t CTRL;
+  __IO uint32_t CH[DMA_CHANNELS];
+  uint32_t      RESERVED0[(0x20 - 0x14) / 4];
+  __IO uint32_t STATUS;
+} DMA_TypeDef;
+#define DMA1_BASE 0x40020000UL
+#define DMA1      ((DMA_TypeDef *) DMA1_BASE)
+"""))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('    const val CH: UInt = 0x40020004u   // [4] x 4 B', lines)
+        self.assertIn('    const val STATUS: UInt = 0x40020020u', lines)
+
+    def test_struct_tag_and_several_declarators(self):
+        r, lines = self.gen('--all', *self.more("""typedef struct tim
+{
+  __IO uint32_t CR1, CR2[2];
+  __IO uint16_t SR, DIER;
+  __IO uint32_t CNT;
+} TIM_TypeDef;
+#define TIM2      ((TIM_TypeDef *) PERIPH_BASE)
+"""))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(lines[lines.index('internal object TIM2 {'):][1:7],
+                         ['    const val BASE: UInt = 0x40000000u',
+                          '    const val CR1: UInt = 0x40000000u',
+                          '    const val CR2: UInt = 0x40000004u   // [2] x 4 B',
+                          '    const val SR: UInt = 0x4000000Cu',
+                          '    const val DIER: UInt = 0x4000000Eu',
+                          '    const val CNT: UInt = 0x40000010u'])
+
+    def test_c_integer_constants(self):
+        r, lines = self.gen('--all', *self.more('#define MODE_MASK  017\n#define HALF_RANGE (0x100 / 2)\n'
+                                                '#define LOW_BITS   (0x107 % 8)\n#define HSE_VALUE  8e6\n'
+                                                '#define RATIO      1.5\n#define NO_OCTAL   08\n'
+                                                '#define NO_VALUE   (1 / 0)\n'))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for line in ['internal const val MODE_MASK: UInt = 0xFu', 'internal const val HALF_RANGE: UInt = 0x80u',
+                     'internal const val LOW_BITS: UInt = 0x7u']:
+            self.assertIn(line, lines)
+        for name in ('HSE_VALUE', 'RATIO', 'NO_OCTAL', 'NO_VALUE'):        # no integers: left out
+            self.assertFalse(any(name in line for line in lines), name)
+
+    def test_pin_map_ports_and_pin_expressions(self):
+        more = self.more('#define GPIOI_BASE (AHB2PERIPH_BASE + 0x2000UL)\n'
+                         '#define GPIOI      ((GPIO_TypeDef *) GPIOI_BASE)\n')
+        board = self.d / 'board.h'
+        board.write_bytes(b'#define BTN_PORT GPIOI   /* 5 \xb5s */\n#define BTN_PIN  (1u + 10u)\n')
+        r, lines = self.gen('--all', '--pins', board, *more)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('internal const val BTN_PORT: UInt = 0x48002000u   // GPIOI', lines)
+        self.assertIn('internal const val BTN_PIN: Int = 11', lines)
+        for text, message in (('#define BTN_PORT GPIOK\n#define BTN_PIN 1\n',
+                               'BTN_PORT is GPIOK, which the headers do not define'),
+                              ('#define BTN_PORT GPIOA\n#define BTN_PIN PIN_B\n', 'BTN_PIN is not a pin number'),
+                              ('#define BTN_PORT GPIOA\n', 'BTN_PIN is not a pin number')):
+            board.write_text(text, encoding='utf-8')
+            r, _ = self.gen('--all', '--pins', board, *more)
+            self.assertEqual((r.returncode, r.stderr), (1, f'gen_regs: {board}: {message}\n'))
 
     def test_missing_inputs_are_one_line_errors(self):
         r, _ = self.gen('--sources', self.d / 'nowhere')
