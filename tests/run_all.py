@@ -1,8 +1,10 @@
 """kmicro regression suite: the test programs and the examples, built the way a user builds them and run on QEMU.
 
-usage: python tests/run_all.py [NAME ...] [--kotlin] [--stress] [-v]
+usage: python tests/run_all.py [NAME ...] [--cpu CORE] [--kotlin] [--stress] [-v]
 
     NAME      a test (an unknown name lists them); default: every test
+    --cpu     the core to build for (toolchain/paths.py CORES; default cortex-m4f). Each core has its own build
+              folder, build/t-<core>, and runs on the QEMU machine qbuild chooses for it
     --kotlin  recompile the Kotlin sources even when their saved IR is current
     --stress  the runtime collects garbage at every allocation (KM_GC_STRESS)
     -v        print what each test builds and runs: the build messages and the program's output
@@ -12,7 +14,9 @@ when a source or an option changed), links them with its C files and the runtime
 on QEMU's STM32L475 (or mps2-an386, for a test that says so) and checks:
 
 - the exit code;
-- the output, line by line against tests/expected/<name>.txt. There {N} stands for a number, {X} for hex digits and
+- the output, line by line against tests/expected/<name>.txt (tests/expected/<architecture>/<name>.txt, for example
+  thumbv6m, when that file exists: the output of an architecture can differ, as a stack trace does with other
+  inlining). There {N} stands for a number, {X} for hex digits and
   {*} for any text within a line, and a line {...} for any number of lines: they mark what differs between runs or
   under --stress, such as heap statistics, addresses and times;
 - that qbuild stubbed no runtime native (a board link would fail on it);
@@ -251,6 +255,7 @@ TESTS = [
                        same=('{dir}/gen/Regs.kt', 'examples/irq/Regs.kt'))]),
 ]
 STACK_GUARD = 4096                      # targets/qemu-l475/l475.ld
+M4F_MACHINE = ('cortex-m0', 'cortex-m0plus', 'cortex-m1', 'cortex-m3', 'cortex-m4', 'cortex-m4f')   # run on one
 PATH_OPTIONS = ('c_api', 'defs', 'libs', 'deps', 'include_dirs')
 QBUILD_SIZE = re.compile(r'^qbuild: .*  text (\d+)  data (\d+)  bss (\d+).*\n', re.M)
 QBUILD_STUBS = re.compile(r'^qbuild: warning: \d+ runtime symbols stubbed .*$', re.M)
@@ -267,7 +272,7 @@ def normalized(text):
     text = text.replace('\r\n', '\n')
     for root in sorted({str(ROOT), ROOT.as_posix()}, key=len, reverse=True):
         text = re.sub(re.escape(root) + r'([^\s\'"():,]*)', lambda m: '$ROOT' + m.group(1).replace('\\', '/'), text)
-    return text
+    return text.replace(BUILD.relative_to(ROOT).as_posix() + '/', 'build/t/')   # a core's own build folder
 
 
 def pattern(expected):
@@ -287,7 +292,10 @@ def pattern(expected):
 
 def compare(name, got, log_name):
     """got against tests/expected/<name>.txt; raises Failed with a diff when they differ."""
-    path = EXPECTED / f'{name}.txt'
+    # an architecture's own expectation, where its output differs (an ARMv6-M trace has one more frame)
+    path = EXPECTED / paths.arch() / f'{name}.txt'
+    if not path.exists():
+        path = EXPECTED / f'{name}.txt'
     shown = path.relative_to(ROOT).as_posix()
     if not path.exists():
         raise Failed(f'{shown} is missing (the output is in {log_name})')
@@ -354,7 +362,7 @@ def qbuild(t, d, objs, args):
     defs = dict.fromkeys([f'KM_HEAP_BYTES={t.heap}', *t.defs, *(['KM_GC_STRESS=1'] if args.stress else [])])
     timeout = 120 * (10 if args.stress else 1)
     cmd = [sys.executable, ROOT / 'tools/qbuild.py', d / f'{t.name}.elf', *c_files(t, d), *objs,
-           *(x for v in defs for x in ('-D', v)), '--target', t.target,
+           *(x for v in defs for x in ('-D', v)), *([] if t.target == 'l475' else ['--target', t.target]),
            *([] if t.fails else ['--run', '--timeout', str(timeout)])]
     r = subprocess.run([str(a) for a in cmd], capture_output=True, timeout=timeout + 1800)
     return r.returncode, normalized((r.stdout + r.stderr).decode('utf-8', 'replace'))
@@ -461,6 +469,7 @@ def parse_args():
                                  formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog='tests: ' + ' '.join(names))
     ap.add_argument('names', nargs='*', help=argparse.SUPPRESS)
+    ap.add_argument('--cpu', choices=sorted(paths.CORES), help=argparse.SUPPRESS)
     ap.add_argument('--kotlin', action='store_true', help=argparse.SUPPRESS)
     ap.add_argument('--stress', action='store_true', help=argparse.SUPPRESS)
     ap.add_argument('-v', '--verbose', action='store_true', help=argparse.SUPPRESS)
@@ -474,9 +483,17 @@ def parse_args():
 def main():
     sys.stdout.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
     args = parse_args()
+    global BUILD
+    cpu = paths.select_cpu(args.cpu)
+    if cpu != paths.DEFAULT_CPU:
+        BUILD = ROOT / f'build/t-{cpu}'
     selected = [t for t in TESTS if not args.names or t.name in args.names]
-    failed = 0
+    failed = skipped = 0
     for t in selected:
+        if t.target != 'l475' and cpu not in M4F_MACHINE:
+            skipped += 1
+            print(f'SKIP  {t.name:28s} runs on QEMU {t.target}, a Cortex-M4F, which does not run {cpu} code')
+            continue
         try:
             print(f'PASS  {t.name:28s} {run_test(t, args)}')
         except Failed as e:
@@ -487,7 +504,8 @@ def main():
         except Exception as e:                    # noqa: BLE001 - report it and go on with the next test
             failed += 1
             print(f'FAIL  {t.name:28s} {type(e).__name__}: {e}')
-    print(f'{len(selected) - failed} passed, {failed} failed')
+    print(f'{len(selected) - failed - skipped} passed, {failed} failed'
+          + (f', {skipped} skipped' if skipped else '') + ('' if cpu == paths.DEFAULT_CPU else f'  ({cpu})'))
     sys.exit(1 if failed else 0)
 
 

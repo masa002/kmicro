@@ -1,10 +1,12 @@
 """Differential test: the same Kotlin program on the official runtime (built for this computer) and on kmicro
 (Cortex-M4, QEMU). The outputs must be byte-identical.
 
-usage: python tools/difftest.py [NAME ...] [--stress] [--size]
+usage: python tools/difftest.py [NAME ...] [--cpu CORE] [--stress] [--size]
 
     NAME      a program in tests/diff (d_strings, d_collections ...). Default: every tests/diff/d_*.kt except the
               d_known_* ones, which show what kmicro does not support yet and run only when named
+    --cpu     the core of the kmicro side (toolchain/paths.py CORES; default cortex-m4f); each core has its own
+              build folder, build/diff-<core>
     --stress  the kmicro side collects garbage at every allocation (KM_GC_STRESS)
     --size    the kmicro side is built for size, as tools/kbuild.py --size does
 
@@ -35,6 +37,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'toolchain'))
 import kn  # noqa: E402
 import paths  # noqa: E402
+sys.path.insert(0, str(ROOT / 'tools'))
+import qbuild  # noqa: E402
 
 OUT = ROOT / 'build/diff'
 DIFF = ROOT / 'tests/diff'
@@ -113,7 +117,8 @@ def kmicro(name, src, opts, stress, size):
     timeout = 3000 if stress else 300                # stress collects before every allocation: legitimately slow
     try:
         # in the image's folder, with its bare name: on Windows QEMU opens files through the ANSI code page
-        q = subprocess.run([str(paths.qemu_system_arm().resolve()), '-machine', 'b-l475e-iot01a', '-nographic',
+        machine = qbuild.TARGETS[qbuild.DEFAULT_TARGET.get(paths.cpu(), 'l475')][2]
+        q = subprocess.run([str(paths.qemu_system_arm().resolve()), '-machine', machine, '-nographic',
                             '-semihosting-config', 'enable=on,target=native', '-kernel', elf.name, '-serial', 'none',
                             '-monitor', 'none'], capture_output=True, timeout=timeout, cwd=elf.parent)
     except subprocess.TimeoutExpired:
@@ -160,12 +165,16 @@ def kb(n):
 
 def main():
     sys.stdout.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
-    ap = argparse.ArgumentParser(usage='python tools/difftest.py [NAME ...] [--stress] [--size]', description=__doc__,
+    ap = argparse.ArgumentParser(usage='python tools/difftest.py [NAME ...] [--cpu CORE] [--stress] [--size]', description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('names', nargs='*', help=argparse.SUPPRESS)
+    ap.add_argument('--cpu', choices=sorted(paths.CORES), help=argparse.SUPPRESS)
     ap.add_argument('--stress', action='store_true', help=argparse.SUPPRESS)
     ap.add_argument('--size', action='store_true', help=argparse.SUPPRESS)
     args = ap.parse_args()
+    global OUT
+    if paths.select_cpu(args.cpu) != paths.DEFAULT_CPU:
+        OUT = ROOT / f'build/diff-{paths.cpu()}'
     available = sorted(p.stem for p in DIFF.glob('d_*.kt'))
     unknown = [n for n in args.names if n not in available]
     if unknown:
