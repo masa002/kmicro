@@ -1,0 +1,2 @@
+largest stack frames of qbuild_folder_name.elf (bytes a call takes, LTO-merged):
+{*}
