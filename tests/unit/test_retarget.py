@@ -219,6 +219,26 @@ class RetargetTest(unittest.TestCase):
         self.assertIn('%0 = load i32, ptr @"state_global$demo", align 4', body(text, 'kfun:state#touch(){}'))
         self.assertIn('single-core: 1 init-state loads made plain', r.stderr)
 
+    def test_string_constants_are_not_edited(self):
+        # -Xbinary=latin1Strings=true stores a literal as its text, which may be the text a rewrite looks for
+        strings = ('a thread_local value', '@tls = internal thread_local(initialexec) global i32 0, align 4',
+                   'load atomic i32, ptr @"state_global$demo" acquire, align 4', 'attributes #1 = { }',
+                   '"target-cpu"="arm1176jzf-s" "target-features"="+vfp2"', 'define void @bridge() {',
+                   'call i64 @Kotlin_system_getSteadyTimeNanos()', '@llvm.global_ctors = ')
+        consts = ['@str%d = internal unnamed_addr constant [%d x i8] c"%s"' % (i, len(s), s.replace('"', r'\22'))
+                  for i, s in enumerate(strings)]
+        tls = '@"kvar:demo.thread_local x" = internal thread_local(initialexec) global i32 0, align 4'
+        (OUT / 'strings.ll').write_text('\n'.join([MODULE, *consts, tls, '']), encoding='utf-8')
+        r, text = self.retarget('--no-tls', '--single-core', '--size', '--drop-ctors', src='strings.ll')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for const in consts:
+            self.assertIn(const + '\n', text)
+        self.assertIn('@"kvar:demo.thread_local x" = internal global i32 0, align 4\n', text)
+        self.assertIn('@"state_thread_local$demo" = internal global i32 0, align 4\n', text)
+        c = subprocess.run([str(paths.clang()), *paths.TARGET_M4F, '-O2', '-c', '-x', 'ir', OUT / 'out.ll',
+                            '-o', OUT / 'out.o'], capture_output=True, text=True)
+        self.assertEqual(c.returncode, 0, c.stderr)
+
     def test_cut_off_attribute_cache_is_rebuilt(self):
         self.retarget()
         cache = OUT / 'target_attributes.txt'
