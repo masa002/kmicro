@@ -51,7 +51,7 @@ else the newest, with a warning.
    A version other than the tested one is marked `(untested: kmicro is tested with ...)`. A missing tool or file is
    named (`NOT FOUND`, `MISSING`), and paths.py then exits 1.
 7. `python tests/run_all.py` builds and runs every test program and example on QEMU, one PASS or FAIL line each, and
-   ends with the count: 69 tests, `69 passed, 0 failed`. `python -m unittest discover -s tests/unit` tests the tools.
+   ends with the count: 70 tests, `70 passed, 0 failed`. `python -m unittest discover -s tests/unit` tests the tools.
 
 ## Hosts
 

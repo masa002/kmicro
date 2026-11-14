@@ -62,16 +62,23 @@ bool run_init(Frame &fr, void (*init)(void))
 }
 } // namespace
 
+/* A file's globals are created on first use, which allocates: never in an interrupt handler. A handler that finds
+ * them being created has interrupted that first use and would read them unset; it cannot wait for the thread code. */
+static void refuse_in_handler(uintptr_t st)
+{
+    if (!km_in_interrupt())
+        return;
+    if (st == BEING_INITIALIZED)
+        kmicro_panic("Kotlin globals used inside an interrupt handler while the thread code creates them");
+    kmicro_panic("Kotlin globals first used inside an interrupt handler");
+}
+
 void CallInitGlobalPossiblyLock(uintptr_t *state, void (*init)(void))
 {
     uintptr_t st = *state;
     if (st == INITIALIZED)
         return;
-    if (km_in_interrupt()) {                         /* a file's globals are created on first use: never in a handler */
-        if (st == BEING_INITIALIZED)                 /* the handler interrupted that first use: they are still unset */
-            kmicro_panic("Kotlin globals used inside an interrupt handler while the thread code creates them");
-        kmicro_panic("Kotlin globals first used inside an interrupt handler");
-    }
+    refuse_in_handler(st);
     if (st == BEING_INITIALIZED)                     /* the initializer itself uses its file's globals */
         return;
     if (st == FAILED_TO_INITIALIZE)
@@ -89,9 +96,18 @@ void CallInitGlobalPossiblyLock(uintptr_t *state, void (*init)(void))
 
 void CallInitThreadLocal(volatile uintptr_t *global_state, uintptr_t *local_state, void (*init)(void))
 {
-    if (*local_state == FAILED_TO_INITIALIZE || (global_state != nullptr && *global_state == FAILED_TO_INITIALIZE))
+    /* The @ThreadLocal globals of a file. The stock runtime marks them initialised before it runs the initializer;
+     * kmicro keeps "being initialised" until it is done, so that a handler that interrupts it is stopped as for
+     * ordinary globals. The compiled code calls this function whenever the state is not INITIALIZED. */
+    uintptr_t st = *local_state;
+    if (st == INITIALIZED)
+        return;
+    refuse_in_handler(st);
+    if (st == BEING_INITIALIZED)                     /* the initializer itself uses its file's thread-locals */
+        return;
+    if (st == FAILED_TO_INITIALIZE || (global_state != nullptr && *global_state == FAILED_TO_INITIALIZE))
         ThrowFileFailedToInitializeException(nullptr);
-    *local_state = INITIALIZED;
+    *local_state = BEING_INITIALIZED;
     Frame fr;
     EnterFrame(fr.start(), 0, Frame::kSlots);
     if (run_init(fr, init)) {
@@ -99,6 +115,7 @@ void CallInitThreadLocal(volatile uintptr_t *global_state, uintptr_t *local_stat
         ThrowFileFailedToInitializeException(fr.reason);
     }
     LeaveFrame(fr.start(), 0, Frame::kSlots);
+    *local_state = INITIALIZED;
 }
 
 /* Calls fn(arg). Returns nullptr when it returns, else the Kotlin exception it threw, kept in *slot, a slot of the

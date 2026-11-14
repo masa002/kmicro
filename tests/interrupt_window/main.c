@@ -2,6 +2,12 @@
  * program, because the globals are still unset and a handler cannot wait for the thread code. */
 #include "kmicro.h"
 
+/* run_all builds this file once for ordinary globals (window.kt) and once, with TEST_THREAD_LOCAL defined, for
+ * @ThreadLocal globals (window_tls.kt). */
+#if defined(TEST_THREAD_LOCAL)
+#define w_thread_use w_thread_use_local
+#define w_handler_use w_handler_use_local
+#endif
 int32_t w_thread_use(void);             /* Kotlin: the first use; its initializer pends SysTick */
 int32_t w_handler_use(void);            /* Kotlin: reads a global of the same file */
 
