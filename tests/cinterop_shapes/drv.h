@@ -32,7 +32,7 @@ static inline uint32_t sum_to(uint32_t n)
 static inline uint32_t add_one_asm(uint32_t v)
 {
     uint32_t r;
-    __asm__("add %0, %1, #1" : "=r"(r) : "r"(v));
+    __asm__("adds %0, %1, #1" : "=l"(r) : "l"(v) : "cc");    /* a form every Cortex-M has, ARMv6-M included */
     return r;
 }
 

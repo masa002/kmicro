@@ -1,0 +1,6 @@
+Uncaught Kotlin exception: Throwable: anonymous
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+kmicro panic: uncaught Kotlin exception

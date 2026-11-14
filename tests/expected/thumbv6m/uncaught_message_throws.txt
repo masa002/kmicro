@@ -1,0 +1,12 @@
+Uncaught Kotlin exception: Broken
+Uncaught Kotlin exception: kotlin.IllegalStateException: message failed
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+kmicro panic: uncaught Kotlin exception

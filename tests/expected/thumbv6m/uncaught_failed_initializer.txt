@@ -1,0 +1,10 @@
+Uncaught Kotlin exception: kotlin.native.internal.FileFailedToInitializeException: There was an error during file or class initialization
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+Caused by: kotlin.IllegalStateException: config block missing
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+kmicro panic: uncaught Kotlin exception

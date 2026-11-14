@@ -34,6 +34,9 @@ def reg_count(regs):
 def frames(disasm):
     """objdump -d text -> {function: bytes its prologue takes from the stack}."""
     out, name, seen, imm = {}, None, 0, {}
+    # literal pools: ARMv6-M code loads a frame size that no instruction can hold from one (ldr r7, [pc, #N])
+    words = {int(a, 16): int(v, 16)
+             for a, v in re.findall(r'^\s*([0-9a-f]+):\s+\.word\s+0x([0-9a-f]+)', disasm, re.M)}
     for line in disasm.splitlines():
         m = re.match(r'^[0-9a-f]+ <(.+)>:$', line)
         if m:
@@ -53,6 +56,14 @@ def frames(disasm):
         elif op in ('movw', 'mov.w', 'mov', 'movs') and re.match(r'^(\w+), #(\d+)$', args):
             r, v = re.match(r'^(\w+), #(\d+)$', args).groups()
             imm[r] = int(v)
+        elif op == 'ldr' and re.match(r'^(\w+), \[pc, ', args) and '@ (' in m.group(2):
+            literal = int(m.group(2).split('@ (')[1].split()[0].rstrip(')'), 16)
+            if literal in words:
+                imm[args.split(',')[0]] = words[literal]
+        elif op == 'add' and re.match(r'^sp,\s*(?:sp,\s*)?(\w+)$', args):
+            v = imm.get(re.match(r'^sp,\s*(?:sp,\s*)?(\w+)$', args).group(1), 0)
+            if v >= 1 << 31:                   # add sp, rN with a negative size from a literal pool
+                out[name] += (1 << 32) - v
         elif op in ('sub', 'sub.w', 'subw') and args.startswith('sp,'):
             m2 = re.match(r'^sp,\s*(?:sp,\s*)?(#(\d+)|(\w+))$', args)
             if m2:

@@ -1,0 +1,7 @@
+Uncaught Kotlin exception: Loop: loop
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+Caused by: [CIRCULAR REFERENCE, SEE ABOVE: Loop: loop]
+kmicro panic: uncaught Kotlin exception
