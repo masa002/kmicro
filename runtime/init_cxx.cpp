@@ -27,7 +27,7 @@ void kmicro_panic(const char *what) __attribute__((noreturn));
 /* kmicro.h's km_in_interrupt (that header is C) */
 static inline bool km_in_interrupt()
 {
-#if defined(__ARM_ARCH_7EM__) || defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_6M__) || defined(__ARM_ARCH_8M_MAIN__)
+#if defined(__ARM_ARCH_PROFILE) && __ARM_ARCH_PROFILE == 'M'
     unsigned ipsr;
     __asm volatile("mrs %0, ipsr" : "=r"(ipsr));
     return (ipsr & 0x1FFu) != 0u;

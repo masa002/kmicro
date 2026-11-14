@@ -135,7 +135,7 @@ extern const TypeInfo *theArrayTypeInfo, *theStringTypeInfo, *theCharArrayTypeIn
 /* True inside an exception/interrupt handler (Cortex-M IPSR != 0); always false where there is no IPSR. */
 static inline int km_in_interrupt(void)
 {
-#if defined(__ARM_ARCH_7EM__) || defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_6M__) || defined(__ARM_ARCH_8M_MAIN__)
+#if defined(__ARM_ARCH_PROFILE) && __ARM_ARCH_PROFILE == 'M'
     unsigned ipsr;
     __asm volatile("mrs %0, ipsr" : "=r"(ipsr));
     return (ipsr & 0x1FFu) != 0u;
