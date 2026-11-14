@@ -6,7 +6,7 @@ Each tool is looked up in this order: its environment variable, then the usual i
                           default: ~/toolchains/kotlin-native-prebuilt-*-2.4.21
     KMICRO_LLVM           the LLVM bin folder Kotlin/Native downloads on its first run (clang, ld.lld)
                           default: ~/.konan/dependencies/llvm-*-essentials-*/bin (Windows, Linux), llvm-*-dev-*/bin
-                          (macOS)
+                          (macOS); the folder that KONAN_DATA_DIR names is searched before ~/.konan
     KMICRO_ARM_GCC        xPack arm-none-eabi-gcc (newlib, libgcc, objcopy, size, objdump)
                           default: ~/toolchains/xpack-arm-none-eabi-gcc-*
     KMICRO_QEMU           xPack QEMU Arm (only for the emulator targets and tests)
@@ -112,6 +112,20 @@ def _tested(tool, p):
     return any(v in Path(p).as_posix() for v in tested_versions().get(tool, []))
 
 
+def _places(patterns):
+    """(folder, pattern below it) in the order searched. Kotlin/Native keeps its downloads in ~/.konan, or in the
+    folder that KONAN_DATA_DIR names: that folder is searched first."""
+    data = os.environ.get('KONAN_DATA_DIR')
+    konan = [(Path(data), pat[len('.konan/'):]) for pat in patterns if data and pat.startswith('.konan/')]
+    return konan + [(HOME, pat) for pat in patterns]
+
+
+def _where(patterns):
+    """The first place searched, for the message that says a tool was not found."""
+    root, pat = _places(patterns)[0]
+    return f'{root / pat}' + ('' if root is HOME else ' (KONAN_DATA_DIR)')
+
+
 def _find(env, patterns, what, tool=None):
     v = os.environ.get(env)
     if v:
@@ -119,8 +133,8 @@ def _find(env, patterns, what, tool=None):
         if not p.exists():
             sys.exit(f'kmicro: {env}={v} does not exist ({what})')
         return p
-    for pat in patterns:
-        hits = sorted(HOME.glob(pat), key=version_key)
+    for root, pat in _places(patterns):
+        hits = sorted(root.glob(pat), key=version_key)
         if hits:
             tested = [h for h in hits if tool and _tested(tool, h)]
             return (tested or hits)[-1]
@@ -147,7 +161,7 @@ class _Lazy:
             self._p = _find(self.env, self.patterns, self.what, self.tool)
             if self._p is None:
                 sys.exit(f'kmicro: {self.what} not found. Set {self.env} or install it under '
-                         f'{HOME / self.patterns[0]} (see BUILDING.md).')
+                         f'{_where(self.patterns)} (see BUILDING.md).')
             if not os.environ.get(self.env) and not _tested(self.tool, self._p):
                 warn_once(f'{self._p} is not the tested version of {self.what} '
                           f'({", ".join(tested_versions().get(self.tool, []))}; toolchain/versions.txt)')
@@ -358,7 +372,7 @@ def report():
     for name, lazy, files in rows:
         p = _find(lazy.env, lazy.patterns, lazy.what, lazy.tool)
         if p is None:
-            print(f'{name:18s} NOT FOUND: set {lazy.env} or install it under {HOME / lazy.patterns[0]}')
+            print(f'{name:18s} NOT FOUND: set {lazy.env} or install it under {_where(lazy.patterns)}')
             bad += 1
             continue
         lazy._p = p
