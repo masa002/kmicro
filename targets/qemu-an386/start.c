@@ -15,17 +15,22 @@ int main(void);
 void kmicro_exit(int code) __attribute__((noreturn));
 
 /* The FPU goes on before any compiled C code runs. With LTO, main and the Kotlin code it calls can be inlined into
- * the C start function, whose prologue then saves FP registers (vpush): with CP10/CP11 still off that is a fault. */
+ * the C start function, whose prologue then saves FP registers (vpush): with CP10/CP11 still off that is a fault.
+ * A core without an FPU skips that. The assembly keeps to the forms every Cortex-M has (see targets/qemu-l475). */
 __attribute__((naked)) void Reset_Handler(void)
 {
-    __asm volatile("movw r0, #0xED88\n"
-                   "movt r0, #0xE000\n"                         /* CPACR */
+#if defined(__ARM_FP)
+    __asm volatile("ldr r0, =0xE000ED88\n"                      /* CPACR */
                    "ldr r1, [r0]\n"
-                   "orr r1, r1, #(0xF << 20)\n"                  /* CP10/CP11 full access (FPU) */
+                   "ldr r2, =0x00F00000\n"                      /* CP10/CP11 full access (FPU) */
+                   "orrs r1, r2\n"
                    "str r1, [r0]\n"
                    "dsb\n"
-                   "isb\n"
-                   "b start_c\n");
+                   "isb\n");
+#endif
+    __asm volatile("ldr r0, =start_c\n"
+                   "bx r0\n"
+                   ".ltorg\n");
 }
 
 /* main in a function of its own: whatever LTO inlines into it, start_c keeps a small frame, so clearing .bss can
@@ -111,14 +116,17 @@ __attribute__((used, noreturn)) void start_fault(const uint32_t *frame)
 
 __attribute__((naked)) static void fault(void)
 {
-    __asm volatile("tst lr, #4\n"
-                   "ite eq\n"
-                   "mrseq r0, msp\n"
-                   "mrsne r0, psp\n"
-                   "movw r1, #:lower16:start_fault_stack + 256\n"
-                   "movt r1, #:upper16:start_fault_stack + 256\n"
+    __asm volatile("mov r1, lr\n"                               /* EXC_RETURN bit 2: the frame is on PSP */
+                   "movs r2, #4\n"
+                   "mrs r0, msp\n"
+                   "tst r1, r2\n"
+                   "beq 1f\n"
+                   "mrs r0, psp\n"
+                   "1:\n"
+                   "ldr r1, =start_fault_stack + 256\n"
                    "mov sp, r1\n"
-                   "b start_fault\n");
+                   "bl start_fault\n"                           /* never returns */
+                   ".ltorg\n");
 }
 
 __attribute__((section(".isr_vector"), used))

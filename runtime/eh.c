@@ -275,13 +275,14 @@ _Unwind_Reason_Code __gxx_personality_v0(_Unwind_State state, _Unwind_Control_Bl
 }
 
 /* End of a cleanup pad: resume the exception whose pad ran, the top record (its control block is its first member).
- * Tail-call with the pad's own registers: _Unwind_Resume snapshots them, and the PC comes from the control block
- * (UCB_SAVED_CALLSITE_ADDR). */
+ * Called with the pad's own registers (but lr, which the pad's function has saved): _Unwind_Resume snapshots them, and
+ * the PC comes from the control block (UCB_SAVED_CALLSITE_ADDR). The jump is a bl, which never returns: on ARMv6-M a
+ * plain branch reaches 2 KB only. */
 __attribute__((naked)) void __cxa_end_cleanup(void)
 {
     __asm volatile("ldr r0, =km_eh_current\n"
                    "ldr r0, [r0]\n"
-                   "b _Unwind_Resume\n"
+                   "bl _Unwind_Resume\n"
                    ".ltorg\n");
 }
 

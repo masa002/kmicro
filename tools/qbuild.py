@@ -46,7 +46,7 @@ def cflags():
     info when LTO inlines it into C."""
     return [*paths.target_flags(), '-isystem', str(paths.newlib_include()), '-O2', '-g', '-flto',
             '-ffunction-sections', '-fdata-sections', '-fexceptions', '-funwind-tables', '-Wall', '-Wextra',
-            '-Wno-unused-parameter', '-I', str(ROOT / 'runtime'), '-I', str(ROOT / 'support')]
+            '-Wno-unused-parameter', '-Wno-atomic-alignment', '-I', str(ROOT / 'runtime'), '-I', str(ROOT / 'support')]
 
 
 CXXFLAGS = ['-std=c++17', '-fno-rtti', '-Wno-unused-variable', '-Wno-unused-but-set-variable']
