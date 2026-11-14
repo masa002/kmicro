@@ -165,6 +165,13 @@ ld.lld -T board.ld --gc-sections --lto-O2 --target2=abs -o app.elf <C objects> <
   kmicro's personality routine never reads them, and the STM32L431 example links without it.
 - `-lc_nano -lm`: newlib-nano and its libm (`memcpy`, string functions, `kotlin.math`). `-lnosys`: empty system
   calls, as there is no operating system.
+- newlib's `printf` and `puts`, from C or from Kotlin through `platform.posix`, write through the system call
+  `_write`. The runtime has a weak `_write` that passes standard output and standard error to `kmicro_write`, so the
+  text goes where `println` goes; a board's own `_write` replaces it. Without one, `kmicro_puts` and `kmicro_write`
+  must not print with `printf` themselves. `stdout` is line buffered: at its first write it takes 1,032 bytes with
+  `malloc`, and libnosys's `_sbrk` hands out the RAM from the linker symbol `end` upwards, without a limit. In the
+  linker scripts here `end` is the low end of the stack's RAM, so a program that prints with `printf` has that much
+  less stack.
 - `libgcc.a`: the ARM EHABI unwinder and the compiler helpers. Newlib and libgcc come from the
   `thumb/v7e-m+fp/hard` multilib, the one for a Cortex-M4F with the hard-float calling convention.
 

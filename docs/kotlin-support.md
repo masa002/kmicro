@@ -138,7 +138,7 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | header static inline functions, with loops, inline assembly or restrict pointers | works | |
 | StableRef | works | at most `KM_STABLE_REFS` (16) live at once |
 | C calling Kotlin by plain names (--c-api) | works | the prototypes are checked against the Kotlin functions |
-| platform.posix | partly | string/printf functions work; generated for glibc: errno and usleep missing, time_t size differs from newlib |
+| platform.posix | partly | the string functions, `snprintf` and `printf` work, and `printf` prints where `println` does ([tests/stdio](../tests/stdio)); generated for glibc: errno and usleep missing, time_t size differs from newlib |
 | **Build and tools** | | |
 | a Kotlin-only program with `fun main()` | works | link [targets/common/kotlin_main.c](../targets/common/kotlin_main.c) as the C main |
 | interrupt handlers written in Kotlin | works | the allocation guard covers the runtime's own allocations and collections; isr_check reads the vector table; [examples/irq](../examples/irq) |

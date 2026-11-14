@@ -124,7 +124,8 @@ __attribute__((naked)) static void fault(void)
 __attribute__((section(".isr_vector"), used))
 const void *const vectors[16] = { &_estack, Reset_Handler, fault, fault, fault, fault, fault };
 
-void kmicro_puts(const char *s) { fputs(s, stdout); }
+/* Not through stdout: newlib's streams write through the runtime's _write, which calls this function. */
+void kmicro_puts(const char *s) { semi(0x04, (void *)s); }     /* SYS_WRITE0 */
 
 void kmicro_exit(int code)
 {
