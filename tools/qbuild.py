@@ -156,7 +156,9 @@ def write_stubs(path, names):
 
 
 def size_line(out):
-    """The size line, with the stack: the RAM between the end of .bss and the top of the stack. On Windows binutils
+    """The size line, with the stack: the RAM between the end of .bss and the top of the stack. A target with a
+    stack guard (qemu-l475: _eguard) has the guard and the unused bytes around it in between; they are counted
+    neither as bss nor as stack, so bss is what the program takes and the stack what it can use. On Windows binutils
     and QEMU open files through the ANSI code page, so a folder named in Japanese is out of their reach: they run in
     the image's folder and get its bare name."""
     here = dict(cwd=out.parent)
@@ -164,10 +166,13 @@ def size_line(out):
     syms = {}
     for line in run([paths.gcc_bin('nm').resolve(), out.name], **here).stdout.splitlines():
         p = line.split()
-        if len(p) == 3 and p[2] in ('_estack', '_ebss'):
+        if len(p) == 3 and p[2] in ('_estack', '_ebss', '_eguard'):
             syms[p[2]] = int(p[0], 16)
-    stack = f'  stack {syms["_estack"] - syms["_ebss"]}' if len(syms) == 2 else ''
-    return f'qbuild: {out.name}  text {t}  data {d}  bss {b}{stack}'
+    if '_estack' not in syms or '_ebss' not in syms:
+        return f'qbuild: {out.name}  text {t}  data {d}  bss {b}'
+    guard = syms.get('_eguard', syms['_ebss']) - syms['_ebss']
+    stack = syms['_estack'] - syms['_ebss'] - guard
+    return f'qbuild: {out.name}  text {t}  data {d}  bss {int(b) - guard}  stack {stack}'
 
 
 def parse_args():

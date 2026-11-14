@@ -28,6 +28,11 @@ fun deep() {
     for (depth in intArrayOf(100, 300, 100_000)) println("depth $depth: sum ${sum(build(depth))}")
 }
 
+// String.toDouble(): its frames are among the largest of the runtime (main.c walks the stack down to the guard
+// with it).
+@CName("k_parse")
+fun parse(text: Int): Int = ("3.14" + text).toDouble().times(1000).toInt()
+
 abstract class Base {
     init { println("Base sees " + describe()) }
     abstract fun describe(): String

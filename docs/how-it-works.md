@@ -43,7 +43,7 @@ values, and `-I` to every C file; `runtime/` and `support/` are always on the in
 for QEMU's `mps2-an386` (4 MB of code, 16 MB of RAM) instead of the STM32L475, for a program that needs more memory
 than a microcontroller has. `--run` runs the image and exits with its exit code, 124 after `--timeout` seconds (120
 by default). qbuild prints a size line, `qbuild: app.elf  text N  data N  bss N  stack N`, where the stack is the
-RAM above `.bss`.
+RAM above `.bss`, without the stack guard on a target that has one (`qemu-l475`); `bss` leaves the guard out too.
 
 Link-time optimisation treats the runtime and the Kotlin code as one program. The runtime's hooks, such as the
 frame push of the garbage collector or an array access, are inlined into the Kotlin functions that call them. For

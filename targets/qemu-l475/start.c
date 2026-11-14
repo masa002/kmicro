@@ -21,6 +21,7 @@ extern const void *const vectors[16];
 #define MPU_RASR  (*(volatile uint32_t *)0xE000EDA0)
 #define MPU_NO_ACCESS(log2_size) ((1u << 28) | (((log2_size) - 1u) << 1) | 1u)   /* XN, AP=000, SIZE, ENABLE */
 #define NULL_GUARD_LOG2 16u                                     /* the first 64 KB of the address space */
+#define STACK_GUARD_LOG2 12u                                    /* 4 KB, as l475.ld reserves */
 
 /* The FPU goes on before any compiled C code runs. With LTO, main and the Kotlin code it calls can be inlined into
  * the C start function, whose prologue then saves FP registers (vpush): with CP10/CP11 still off that is a fault. */
@@ -40,15 +41,17 @@ __attribute__((naked)) void Reset_Handler(void)
  * memory map everywhere else.
  * Region 0, address 0: on the M4 that is an alias of flash, so reading a null object or a null C pointer would
  * return the vector table instead of faulting. VTOR points at the flash copy, so exceptions never fetch through it.
- * Region 1: the 256 bytes between .bss and the stack (l475.ld). An overflowing stack faults there before it writes
- * .bss, which holds the Kotlin heap and the runtime's globals. A frame larger than the guard can still jump it. */
+ * Region 1: the 4 KB between .bss and the stack (l475.ld). An overflowing stack faults there before it writes
+ * .bss, which holds the Kotlin heap and the runtime's globals. A function whose frame is larger than the guard could
+ * step over it without writing into it; the largest frames are 1024 bytes in the runtime's C code and 2984 bytes in
+ * the standard library (Regex), and kbuild warns about Kotlin arrays on the stack above 512 bytes. */
 static void mpu_guards(void)
 {
     SCB_VTOR = (uint32_t)vectors;
     MPU_RBAR = 0x00000000u | 0x10u | 0u;                        /* VALID, region 0 */
     MPU_RASR = MPU_NO_ACCESS(NULL_GUARD_LOG2);
     MPU_RBAR = (uint32_t)&_sguard | 0x10u | 1u;                 /* VALID, region 1 */
-    MPU_RASR = MPU_NO_ACCESS(8);                                /* 256 bytes */
+    MPU_RASR = MPU_NO_ACCESS(STACK_GUARD_LOG2);
     MPU_CTRL = 5u;                                              /* ENABLE, PRIVDEFENA */
     __asm volatile("dsb\n isb");
 }

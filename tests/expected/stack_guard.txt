@@ -1,0 +1,1 @@
+stack 4096 bytes above the guard: toDouble 3141, words changed below the guard 0
