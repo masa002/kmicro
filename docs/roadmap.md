@@ -30,7 +30,7 @@ the version in [BUILDING.md](../BUILDING.md) is the only supported one.
 
 - **Tested:** Cortex-M4F, on QEMU's emulated STM32L475 (`qemu-l475`, the test target) and on an STM32L431 board
   ([the recorded run](../examples/selftest/stm32l431-report.txt)).
-- **Untested:** a Cortex-M7 should need only another CPU in `TARGET_M4F` ([toolchain/paths.py](../toolchain/paths.py)).
+- **Untested:** a Cortex-M7 should need only another entry of `CORES` ([toolchain/paths.py](../toolchain/paths.py)).
 - **Not supported:** a core without an FPU, which would need the soft-float calling convention, and threads: the
   runtime is single-threaded, and interrupt handlers follow
   [the rules](writing-kotlin.md#interrupt-handlers).

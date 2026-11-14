@@ -112,7 +112,7 @@ def ir_functions(text, kind):
 def runtime_functions(tmp):
     """{name: (signature, source file)} of every function runtime/ defines."""
     rt = ROOT / 'runtime'
-    flags = [*paths.TARGET_M4F, '-isystem', str(paths.newlib_include()), '-O0', '-fexceptions', '-funwind-tables',
+    flags = [*paths.target_flags(), '-isystem', str(paths.newlib_include()), '-O0', '-fexceptions', '-funwind-tables',
              '-w', '-I', str(rt)]
     defined = {}
     for src in [*sorted(rt.glob('*.c')), *sorted(rt.glob('*.cpp')), *sorted((rt / 'dtoa').glob('*.cpp'))]:

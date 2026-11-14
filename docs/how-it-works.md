@@ -55,7 +55,7 @@ What retarget.py changes:
 | Change | Why |
 |---|---|
 | target triple `thumbv7em-unknown-none-eabihf` | the code generator then emits Thumb-2 for Cortex-M |
-| `target-cpu` / `target-features` = clang's values for `TARGET_M4F` ([toolchain/paths.py](../toolchain/paths.py)) | LTO inlines runtime hooks into Kotlin code; the values are read from clang once and kept in `target_attributes.txt` next to the output |
+| `target-cpu` / `target-features` = clang's values for the core (`CORES` in [toolchain/paths.py](../toolchain/paths.py)) | LTO inlines runtime hooks into Kotlin code; the values are read from clang once and kept in `target_attributes.txt` next to the output |
 | `thread_local` removed (`--no-tls`) | one thread; no `__aeabi_read_tp` on bare metal |
 | init-state loads made plain (`--single-core`) | each access to a file's globals checks its init state with an acquire load (a `DMB`); with one core and one thread a plain load is exact and can leave the loop |
 | `minsize` everywhere except `--hot` functions (`--size`) | a firmware keeps real-time code fast and the rest small |

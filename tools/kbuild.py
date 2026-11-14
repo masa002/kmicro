@@ -16,6 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'toolchain'))
 import kn  # noqa: E402
+import paths  # noqa: E402
 
 VALUE_OPTIONS = ('--kotlinc',)            # their value starts with '-': `--kotlinc -ea` is read as `--kotlinc=-ea`
 
@@ -50,6 +51,7 @@ def parser():
                         '(file-level ones and those of objects); call it at boot, before interrupts are enabled, and '
                         'no interrupt handler runs a first-use initialisation of that code (the standard library '
                         'still initialises its own objects on first use)')
+    paths.add_cpu_option(p)
     p.add_argument('--size', action='store_true', help='optimise all Kotlin code for size (minsize)')
     p.add_argument('--hot', metavar='REGEX', help='with --size: keep full speed for the functions whose symbol '
                                                   'matches REGEX')
@@ -101,6 +103,7 @@ def parse(argv):
 
 def main():
     a = parse(sys.argv[1:])
+    paths.select_cpu(a.cpu)
     objs = kn.build(a.sources, a.outdir, libs=a.libs, c_api=a.c_api, package=a.package, init_all=a.init_all,
                     size=a.size, hot=a.hot, force=a.force, kotlinc_args=a.kotlinc_args, include_dirs=a.include_dirs,
                     main=True if a.main else None, defs=a.defs, stack_array_limit=a.stack_array_limit,

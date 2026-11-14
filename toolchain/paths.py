@@ -30,8 +30,66 @@ WINDOWS = os.name == 'nt'
 EXE = '.exe' if WINDOWS else ''
 KOTLIN_NATIVE_VERSION = '2.4.21'          # retarget.py reads this compiler's IR; other versions are untested
 
-ML = 'thumb/v7e-m+fp/hard'                 # newlib / libgcc multilib for Cortex-M4F, hard float
-TARGET_M4F = ['--target=thumbv7em-none-eabihf', '-mcpu=cortex-m4', '-mfpu=fpv4-sp-d16', '-mfloat-abi=hard']
+# The cores kmicro builds for: the clang target, the flags that choose the core and its floating-point unit, and the
+# newlib / libgcc multilib of the xPack GCC that matches them. A core without an FPU uses the soft-float calling
+# convention. Every 32-bit little-endian Thumb target has the data layout that retarget.py expects.
+_SOFT = ['-mfpu=none', '-mfloat-abi=soft']
+CORES = {
+    'cortex-m0': ('thumbv6m-none-eabi', ['-mcpu=cortex-m0', *_SOFT], 'thumb/v6-m/nofp'),
+    'cortex-m0plus': ('thumbv6m-none-eabi', ['-mcpu=cortex-m0plus', *_SOFT], 'thumb/v6-m/nofp'),
+    'cortex-m1': ('thumbv6m-none-eabi', ['-mcpu=cortex-m1', *_SOFT], 'thumb/v6-m/nofp'),
+    'cortex-m3': ('thumbv7m-none-eabi', ['-mcpu=cortex-m3', *_SOFT], 'thumb/v7-m/nofp'),
+    'cortex-m4': ('thumbv7em-none-eabi', ['-mcpu=cortex-m4', *_SOFT], 'thumb/v7e-m/nofp'),
+    'cortex-m4f': ('thumbv7em-none-eabihf', ['-mcpu=cortex-m4', '-mfpu=fpv4-sp-d16', '-mfloat-abi=hard'],
+                   'thumb/v7e-m+fp/hard'),
+    'cortex-m7': ('thumbv7em-none-eabihf', ['-mcpu=cortex-m7', '-mfpu=fpv5-d16', '-mfloat-abi=hard'],
+                  'thumb/v7e-m+dp/hard'),
+    'cortex-m7-sp': ('thumbv7em-none-eabihf', ['-mcpu=cortex-m7', '-mfpu=fpv5-sp-d16', '-mfloat-abi=hard'],
+                     'thumb/v7e-m+fp/hard'),
+    'cortex-m23': ('thumbv8m.base-none-eabi', ['-mcpu=cortex-m23', *_SOFT], 'thumb/v8-m.base/nofp'),
+    'cortex-m33': ('thumbv8m.main-none-eabi', ['-mcpu=cortex-m33', *_SOFT], 'thumb/v8-m.main/nofp'),
+    'cortex-m33f': ('thumbv8m.main-none-eabihf', ['-mcpu=cortex-m33', '-mfpu=fpv5-sp-d16', '-mfloat-abi=hard'],
+                    'thumb/v8-m.main+fp/hard'),
+}
+DEFAULT_CPU = 'cortex-m4f'
+
+
+def cpu():
+    """The core this process builds for: KMICRO_CPU (which --cpu sets, for the tools a tool starts too), else the
+    Cortex-M4F."""
+    name = os.environ.get('KMICRO_CPU') or DEFAULT_CPU
+    if name not in CORES:
+        sys.exit(f'kmicro: unknown core {name} (KMICRO_CPU or --cpu); kmicro knows: {" ".join(CORES)}')
+    return name
+
+
+def select_cpu(name):
+    """--cpu NAME of a tool: checks the name and makes it the core of this process and of the tools it starts."""
+    if name:
+        os.environ['KMICRO_CPU'] = name
+    return cpu()
+
+
+def add_cpu_option(parser, help_text=None):
+    parser.add_argument('--cpu', metavar='CORE', choices=sorted(CORES),
+                        help=help_text or f'the core to build for (default {DEFAULT_CPU}, or KMICRO_CPU): '
+                                          + ', '.join(sorted(CORES)))
+
+
+def triple():
+    """The LLVM target triple of the core, as retarget.py writes it into the IR."""
+    return CORES[cpu()][0].replace('-none-', '-unknown-none-')
+
+
+def target_flags():
+    """The clang flags that choose the core: target, CPU, FPU and calling convention."""
+    t, flags, _ = CORES[cpu()]
+    return [f'--target={t}', *flags]
+
+
+def multilib():
+    """The newlib / libgcc multilib folder of the xPack GCC for the core."""
+    return CORES[cpu()][2]
 
 
 @functools.lru_cache(maxsize=None)
@@ -145,12 +203,13 @@ def newlib_include():
 
 
 def newlib_lib():
-    return arm_gcc() / 'arm-none-eabi/lib' / ML
+    return arm_gcc() / 'arm-none-eabi/lib' / multilib()
 
 
 def libgcc():
     dirs = sorted((arm_gcc() / 'lib/gcc/arm-none-eabi').glob('*'), key=version_key)
-    return _exe(arm_gcc, Path('lib/gcc/arm-none-eabi') / (dirs[-1].name if dirs else '<version>') / ML / 'libgcc.a')
+    version = dirs[-1].name if dirs else '<version>'
+    return _exe(arm_gcc, Path('lib/gcc/arm-none-eabi') / version / multilib() / 'libgcc.a')
 
 
 def qemu_system_arm():
@@ -305,7 +364,7 @@ def report():
         lazy._p = p
         missing = [f for f in files if not (p / f).exists()]
         if lazy is arm_gcc and not missing:
-            missing = [] if libgcc_ok() else [f'lib/gcc/arm-none-eabi/*/{ML}/libgcc.a']
+            missing = [] if libgcc_ok() else [f'lib/gcc/arm-none-eabi/*/{multilib()}/libgcc.a']
         version = (kotlin_native_version() if lazy is kotlin_native else
                    _first_line([p / f'clang{EXE}', '--version']) if lazy is llvm else
                    _first_line([p / f'bin/arm-none-eabi-gcc{EXE}', '-dumpversion']) if lazy is arm_gcc else
@@ -338,7 +397,7 @@ def report():
 
 def libgcc_ok():
     dirs = sorted((arm_gcc() / 'lib/gcc/arm-none-eabi').glob('*'), key=version_key)
-    return bool(dirs) and (dirs[-1] / ML / 'libgcc.a').exists()
+    return bool(dirs) and (dirs[-1] / multilib() / 'libgcc.a').exists()
 
 
 if __name__ == '__main__':                 # python toolchain/paths.py: show what was found

@@ -20,7 +20,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'toolchain'))
 import binutils  # noqa: E402
 import paths  # noqa: E402
 
-T = paths.TARGET_M4F
 TOOLS = Path(__file__).resolve().parent.parent / 'toolchain'
 
 
@@ -52,8 +51,9 @@ def main():
     if not roots:
         sys.exit('no roots found')
     stub_names = set(re.findall(r'void (\S+)\(void\)', stubs.read_text()))
-    sh([paths.clang(), *T, '-O2', '-flto', '-c', '-x', 'ir', ll, '-o', out / 'k.o'])
-    sh([paths.clang(), *T, '-O2', '-ffunction-sections', '-w', '-c', stubs, '-o', out / 'stubs.o'])
+    sh([paths.clang(), *paths.target_flags(), '-O2', '-flto', '-c', '-x', 'ir', ll, '-o', out / 'k.o'])
+    sh([paths.clang(), *paths.target_flags(), '-O2', '-ffunction-sections', '-w', '-c', stubs, '-o',
+        out / 'stubs.o'])
     elf = out / 'p.elf'
     sh([paths.ld_lld(), f'--entry={roots[0]}', *[f'--undefined={r}' for r in roots[1:]], '--gc-sections',
         '-Ttext=0x08000000', '--lto-O2', '-o', elf, out / 'k.o', out / 'stubs.o', f'-L{paths.newlib_lib()}', '-lc_nano', '-lnosys', paths.libgcc()])
