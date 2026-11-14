@@ -21,17 +21,17 @@ compared with the same program without it.
 
 | Feature | Flash (`--size`) | Heap kept | Heap peak | Stack |
 |---|---|---|---|---|
-| one `Regex`: `Regex("[a-z]+[0-9]").containsMatchIn("abc1")` | 315.4 KB (191.6 KB) | 11,768 B | 13,360 B | 4,684 B |
-| three small `Regex` patterns | 316.6 KB (192.1 KB) | 12,080 B | 16,344 B: out of memory on the default 16 KB heap, runs at 20 KB | 4,748 B |
-| `"3.14".toDouble()` | 48.6 KB (42.5 KB), and 1 KB of RAM for the native-memory arena | 48 B | 136 B | 1,380 B |
-| `"Grüße".uppercase()`, `"ÉCOLE".lowercase()`; ASCII text takes the same flash | 43.4 KB (33.9 KB) | 0 B | 56 B: the result strings | 444 B |
-| `Char.isLetter()` on `'é'` and `'ж'` | 3.6 KB (3.4 KB) | 0 B | 0 B | 172 B |
-| `Char.category` | 31.0 KB (23.5 KB) | 984 B: the 30 `CharCategory` entries | 984 B | 860 B |
+| one `Regex`: `Regex("[a-z]+[0-9]").containsMatchIn("abc1")` | 315.8 KB (191.7 KB) | 11,768 B | 13,360 B | 4,684 B |
+| three small `Regex` patterns | 317.0 KB (192.1 KB) | 12,080 B | 16,344 B: out of memory on the default 16 KB heap, runs at 20 KB | 4,748 B |
+| `"3.14".toDouble()` | 48.7 KB (42.5 KB), and 1 KB of RAM for the native-memory arena | 48 B | 136 B | 1,348 B |
+| `"Grüße".uppercase()`, `"ÉCOLE".lowercase()`; ASCII text takes the same flash | 44.0 KB (33.9 KB) | 0 B | 56 B: the result strings | 444 B |
+| `Char.isLetter()` on `'é'` and `'ж'` | 3.6 KB (3.4 KB) | 0 B | 0 B | 148 B |
+| `Char.category` | 31.0 KB (23.5 KB) | 984 B: the 30 `CharCategory` entries | 984 B | 844 B |
 | `val buf = ByteArray(4096)` in a function | 0.4 KB (0.1 KB) | 0 B | 0 B | 4,148 B |
 | one `throw`, caught in the same function | 0.5 KB (0.3 KB) | 0 B | 112 B: the exception and its stack trace | 1,056 B |
 
 - **Flash** is the growth of the image, without and with `kbuild.py --size`. Parts are shared: the features do not
-  add up. A program that uses one `Regex` is 365 KB of flash (234 KB with `--size`), against the STM32L431's 256 KB.
+  add up. A program that uses one `Regex` is 366 KB of flash (235 KB with `--size`), against the STM32L431's 256 KB.
 - **Heap kept** is still live after the call and a full collection: tables the standard library keeps for good.
 - **Heap peak** is the most live data during the call, measured with `-D KM_GC_STRESS=1` (a collection before every
   allocation). A heap needs more than that, because free memory comes in pieces: three `Regex` patterns peak at
@@ -78,7 +78,7 @@ compared with the same program without it.
    A local array of constant size that never leaves its function lives on the stack (Kotlin/Native, up to 64 KB per function). Keep a big buffer in a top-level val or a class field; --stack-array-limit sets the limit. tools/frames.py shows the frames after linking.
    build\buf\k.o
    $ python tools/qbuild.py build/buf/buf.elf targets/common/kotlin_main.c build/buf/k.o
-   qbuild: buf.elf  text 49100  data 80  bss 18864  stack 79820
+   qbuild: buf.elf  text 49636  data 80  bss 18724  stack 73728
    $ python tools/frames.py build/buf/buf.elf --top 3
    largest stack frames of buf.elf (bytes a call takes, LTO-merged):
        4160  run_main
@@ -95,8 +95,8 @@ compared with the same program without it.
    stack run into the heap. The guard is 4 KB, larger than any frame of the runtime's C code (1024 bytes at most)
    and of the standard library (2984 bytes, in `Regex`), so a call cannot step over it; only a function of your own
    with a larger frame could (rule 4, `tools/frames.py`). qbuild's size line shows the RAM above the guard
-   (`stack 79820` above); on `qemu-l475` the guard, the 256 unused bytes below it and its alignment take 4352 to
-   8447 bytes, which the size line counts neither as `bss` nor as stack.
+   (`stack 73728` above); on `qemu-l475` the guard, the 256 unused bytes below it and its alignment take 4352 to
+   8444 bytes, which the size line counts neither as `bss` nor as stack.
    Reading through null is not an exception either: a property read before its initializer ran (a constructor
    that calls an overridden function) or a null C pointer stops the program on `qemu-l475` with
    `kmicro fault: null pointer access`, exit 99, not with a `NullPointerException`.
@@ -189,8 +189,8 @@ Allocations hide in these places:
 ## Speed
 
 12. **Exceptions are for errors.** One throw and catch took about 1.6 ms in the recorded run, which still walked some
-    stack frames more than once. On QEMU the same check now executes 9,853 instructions: 7,131 to create the
-    exception with its message and stack trace, 2,722 from the throw to the catch. The unwinder reads its tables
+    stack frames more than once. On QEMU the same check now executes 9,901 instructions: 7,164 to create the
+    exception with its message and stack trace, 2,737 from the throw to the catch. The unwinder reads its tables
     from flash.
 13. **Hoist globals and arrays into locals before a loop,** and check the size once before it. LLVM then drops the
     bounds check of every element.
