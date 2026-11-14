@@ -149,10 +149,12 @@ an STM32L431.
 
 ## Numbers
 
-[examples/selftest](examples/selftest) on an STM32L431 at 16 MHz, 16 KB Kotlin heap
-([full report](examples/selftest/stm32l431-report.txt)):
+[examples/selftest](examples/selftest) on an STM32L431 at 16 MHz, 16 KB Kotlin heap. The times are from the board
+run recorded on 2026-10-16 ([full report](examples/selftest/stm32l431-report.txt)), made with earlier versions of the
+runtime, of `board.c` and of the build steps, before release 0.1.0. The run has not been repeated with the
+current runtime:
 
-| Check | Time |
+| Check | Time on 2026-10-16 |
 |---|---|
 | runtime start (module initializers) | 111 µs |
 | classes, interface, virtual calls | 53 µs |
@@ -162,9 +164,9 @@ an STM32L431.
 | coroutine: 300 suspend/resume cycles | 49 ms |
 | one full collection | 1.8 ms |
 
-\* Measured before [#3](https://github.com/masa002/kmicro/issues/3) stopped the stack-trace walk from visiting the
-same frame several times. On QEMU the same check now executes 9,901 instructions: 7,164 to create the exception with
-its message and stack trace, 2,737 from the throw to the catch.
+\* The runtime of that run visited the same frame several times when it walked the stack for a stack trace;
+[#3](https://github.com/masa002/kmicro/issues/3) stopped that. On QEMU the same check now executes 9,901
+instructions: 7,164 to create the exception with its message and stack trace, 2,737 from the throw to the catch.
 
 ## Repository layout
 

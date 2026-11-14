@@ -7,8 +7,10 @@ coroutines (see [examples/selftest](../examples/selftest), `tests/diff` and the 
 
 The rules below come from a device firmware with 24 Kotlin modules on an STM32L431 (64 KB RAM, 256 KB flash) and
 from kmicro's own tests. That firmware is not part of this repository, so the numbers taken from it are reported,
-not reproducible here. Times are at 16 MHz on the STM32L431. Sizes and instruction counts were measured on QEMU's
-emulated STM32L475 (`qemu-l475`, the target qbuild links for) with the current runtime.
+not reproducible here. Times are at 16 MHz on the STM32L431, from the board run recorded on 2026-10-16 with an
+earlier version of the runtime, before release 0.1.0 ([report](../examples/selftest/stm32l431-report.txt)); the run
+has not been repeated with the current runtime. Sizes and instruction counts were measured on QEMU's emulated
+STM32L475 (`qemu-l475`, the target qbuild links for) with the current runtime.
 
 ## Memory
 
@@ -44,8 +46,8 @@ compared with the same program without it.
 
 1. **Allocate up front.** The collector does not move objects, so a list that keeps growing fragments the heap. Keep
    buffers in arrays sized at start, and use ring buffers for queues.
-2. **An allocation may run a full collection** (1.8 ms for a 16 KB heap). Keep allocation out of timing-critical
-   code.
+2. **An allocation may run a full collection** (1.8 ms for a 16 KB heap in the recorded run). Keep allocation out
+   of timing-critical code.
 3. **Size the heap from `live_peak_bytes`, with a margin.** `kmicro_stats()` reports it: the most live data a
    collection found. It is a lower bound (live data between two collections can be higher) and 0 before the first
    collection. `peak_bytes` counts garbage too, so it reaches the heap size at the first collection. The selftest
