@@ -208,7 +208,10 @@ TESTS = [
     Test('stdio', Kotlin('stdio', ['tests/stdio/stdio.kt']), ['tests/stdio/main.c']),
     Test('qbuild_c_files', None, ['tests/qbuild/init.c', 'support/hw.c']),
     Test('qbuild_undefined', None, ['tests/qbuild/undefined.c'], fails='link', exit=1),
-    Test('qbuild_folder_name', ADD, ['tests/add/main.c'], folder='テスト フォルダ', copy=True),
+    # a folder name that no single ANSI code page holds (テ is outside 1252, é outside 932), with a space
+    Test('qbuild_folder_name', ADD, ['tests/add/main.c'], folder='テスト café', copy=True,
+         checks=[Check('symbolize', ['tools/symbolize.py', '{elf}', '0x08000101']),
+                 Check('frames', ['tools/frames.py', '{elf}', '--top', '1'])]),
     Test('qbuild_icount', None, ['tests/qbuild/ticks.c']),
     # interrupt handlers: the run-time guards, isr_check, --init-all, reference stores while the collector marks
     isr('isr_alloc', 'TEST_ALLOC', checks=[Check('isr_check', ['tools/isr_check.py', '{elf}'], exit=1), SYMBOLIZE]),
