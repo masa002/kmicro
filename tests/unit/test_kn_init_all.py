@@ -14,6 +14,22 @@ def init(state, fn):
     return f'  call void @CallInitGlobalPossiblyLock(ptr noundef @"state_global${state}", ptr noundef @"kfun:{fn}")\n'
 
 
+# the root package: a lower-case name, Écran as the IR writes it, a private object. The package cfg has no function.
+ROOT_OBJECTS = ['Registry', 'Registry.Companion', r'\C3\89cran', 'calibration', 'hidden']
+STRING = ('@%d = internal unnamed_addr constant { ptr, i32, i32, i16, [%d x i8] } { ptr getelementptr (i8, ptr '
+          '@"kclass:kotlin.String", i32 1), i32 3, i32 %d, i16 %d, [%d x i8] %s }\n')
+
+
+def kclass(name, package_name, private=False):
+    """A class record as kotlinc-native writes it: the 12th field of the TypeInfo is the string of its package."""
+    sym = f'kclass:{name}#internal' if private else f'kclass:{name}'
+    return (f'@"{sym}" = {"internal " if private else ""}constant {{ %struct.TypeInfo, [3 x ptr] }} '
+            f'{{ %struct.TypeInfo {{ ptr @"{sym}", ptr null, i32 0, i32 8, ptr @"kclass:kotlin.Any", '
+            f'ptr @"krefs:{name}", i32 1, ptr null, i32 0, i32 0, ptr @"kifacetable:{name}", ptr {package_name}, '
+            'ptr @9, i32 770, i32 436, ptr null, ptr @Kotlin_processObjectInMark, i32 8 }, [3 x ptr] '
+            'zeroinitializer }\n')
+
+
 IR = ('define void @"kfun:loop#step(){}"() {\n'
       + init('loop$C:/src/loop.kt', 'loop.$init_global$loop.kt#internal')
       + init('loop.Loop', 'loop.Loop.$init_global#internal')
@@ -22,9 +38,12 @@ IR = ('define void @"kfun:loop#step(){}"() {\n'
       + init('loop.io.Uart', 'loop.io.Uart.$init_global#internal')
       + init('loopy.Other', 'loopy.Other.$init_global#internal')
       + init('kotlin.collections.ArrayList', 'kotlin.collections.ArrayList.$init_global#internal')
+      + init('cfg.Settings', 'cfg.Settings.$init_global#internal')
       + 'define void @"kfun:#main(){}"() {\n'
       + init('<root>$C:/src/main.kt', '$init_global$main.kt#internal')
-      + init('Registry', 'Registry.$init_global#internal'))
+      + ''.join(init(n, n + '.$init_global#internal') for n in ROOT_OBJECTS)
+      + STRING % (1, 0, 0, 1, 0, 'zeroinitializer') + STRING % (2, 6, 98404, 0, 6, r'c"c\00f\00g\00"')
+      + ''.join(kclass(n, '@1', private=n == 'hidden') for n in ROOT_OBJECTS) + kclass('cfg.Settings', '@2'))
 
 
 def states(lines):
@@ -41,7 +60,7 @@ class InitAll(unittest.TestCase):
         self.assertEqual(states(kn.add_init_all(IR, 'loop.io')), ['loop.io$C:/src/io.kt', 'loop.io.Uart'])
 
     def test_root_package(self):
-        self.assertEqual(states(kn.add_init_all(IR, '')), ['<root>$C:/src/main.kt', 'Registry'])
+        self.assertEqual(states(kn.add_init_all(IR, '')), ['<root>$C:/src/main.kt', *sorted(ROOT_OBJECTS)])
 
     def test_function_shape(self):
         lines = kn.add_init_all(IR, 'loop', 'boot_init')
