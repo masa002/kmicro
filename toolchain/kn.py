@@ -488,6 +488,28 @@ def check_stack_arrays(ll_text, limit=512, error=False):
     print('kmicro: warning: ' + '\nkmicro: warning: '.join(msgs) + '\n' + note, file=sys.stderr)
 
 
+def regex_users(ll_text):
+    """The program's functions that call something with a kotlin.text.Regex in its signature (a constructor, a member,
+    split or replace with one), by symbol: they link the Regex engine. The stdlib's own functions do not count: every
+    String.toDouble() brings the engine and the hexadecimal parser that uses it into the IR, and retarget.py replaces
+    that parser, so they are not linked."""
+    return [name for name, body in ((m.group(1).strip('"'), m.group(2)) for m in re.finditer(
+                r'^define [^@\n]*@("[^"]+"|[\w.$]+)\([^\n]*\{$(.*?)^\}$', ll_text, re.M | re.S))
+            if not name.startswith('kfun:kotlin.') and re.search(r'@"kfun:[^"]*kotlin\.text\.Regex\b', body)]
+
+
+def check_regex(ll_text):
+    """Warn about a program that uses Regex: it does not fit the STM32L431 unless it is built for size."""
+    users = [kotlin_name(u) for u in regex_users(ll_text)]
+    if not users:
+        return
+    names = ', '.join(users[:3]) + (f' and {len(users) - 3} more' if len(users) > 3 else '')
+    print(f'kmicro: warning: {names} use{"s" if len(users) == 1 else ""} Regex: a program with the Regex engine is at '
+          'least 320 KB of flash, or 233 KB with --size (the STM32L431 has 256 KB)\n'
+          'split(","), indexOf, startsWith or a matcher written by hand need no Regex engine. '
+          'docs/writing-kotlin.md lists what features cost.', file=sys.stderr)
+
+
 MAIN = re.compile(r'^define [^@\n]*@"(kfun:([\w.]*)#main\((kotlin\.Array<kotlin\.String>)?\)\{\})"\(', re.M)
 SUSPEND_MAIN = re.compile(r'^define [^@\n]*@"kfun:([\w.]*)#main#suspend\((?:kotlin\.Array<kotlin\.String>;)?'
                           r'kotlin\.coroutines\.Continuation<kotlin\.Unit>\)', re.M)
@@ -678,6 +700,7 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
         if init_all:
             lines += add_init_all(text, package, init_all)
     check_stack_arrays(text, stack_array_limit, stack_array_error)
+    check_regex(text)
     if main is not False:
         lines += add_kotlin_main(text, required=bool(main))
     lbd = out / 'ir/out.LinkBitcodeDependencies.ll'
