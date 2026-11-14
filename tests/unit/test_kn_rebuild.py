@@ -1,5 +1,5 @@
-"""toolchain/kn.py compile_ir(): when the saved IR is reused and when kotlinc-native runs again (no compiler needed:
-the compiler call is replaced by a fake that writes the IR files).
+"""toolchain/kn.py compile_ir(): when the saved IR is reused and when kotlinc-native runs again, and the klibs of
+kbuild --def (no compiler needed: the compiler call is replaced by a fake that writes the IR files or the klib).
 
 python -m unittest discover -s tests/unit
 """
@@ -39,6 +39,9 @@ class Rebuild(unittest.TestCase):
             self.calls += 1
             if self.fail:
                 return SimpleNamespace(returncode=1, stdout='', stderr='e.kt:1:1: error: boom\n')
+            if tool == 'cinterop':
+                Path(args[args.index('-o') + 1] + '.klib').write_text('klib\n')
+                return SimpleNamespace(returncode=0, stdout='', stderr='')
             for name in ('out.Codegen.ll', 'out.LinkBitcodeDependencies.ll'):
                 (self.d / 'out/ir' / name).write_text('; ir\n')
             return SimpleNamespace(returncode=0, stdout='', stderr='')
@@ -112,6 +115,24 @@ class Rebuild(unittest.TestCase):
             self.compile()
         self.fail = False
         self.assertEqual(self.compile(), 1)
+
+    def test_two_defs_with_one_file_name(self):
+        defs = [self.d / 'uart/driver.def', self.d / 'spi/driver.def']
+        for f in defs:
+            f.parent.mkdir()
+            f.write_text('headers = driver.h\n')
+
+        def klibs():
+            before = self.calls
+            with contextlib.redirect_stderr(io.StringIO()):     # 'cinterop: ...'
+                made = [kn.cinterop(f, kn.klib_base(f, self.d / 'out', defs)) for f in defs]
+            return made, self.calls - before
+        (uart, spi), runs = klibs()
+        self.assertEqual((runs, uart.exists(), spi.exists()), (2, True, True))
+        self.assertNotEqual(uart, spi)
+        self.assertRegex(uart.name, r'^driver-[0-9a-f]{8}\.klib$')
+        self.assertEqual(klibs(), ([uart, spi], 0))
+        self.assertEqual(kn.klib_base(defs[0], self.d / 'out', defs[:1]), self.d / 'out/driver')
 
 
 if __name__ == '__main__':

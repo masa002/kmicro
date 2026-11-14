@@ -15,6 +15,7 @@
 A program built this way runs on the kmicro runtime (runtime/): see docs/how-it-works.md.
 """
 import bisect
+import hashlib
 import json
 import os
 import re
@@ -605,6 +606,18 @@ def c_declarations(*headers, include_dirs=(), defines=()):
     return names
 
 
+def klib_base(def_file, out, defs):
+    """Where the klib of `def_file`, one of the build's `defs`, goes (without .klib): out/<file name>. When another
+    .def of the build has the same file name (uart/driver.def, spi/driver.def), out/<file name>-<the first 8 hex
+    digits of the SHA-1 of its absolute path>: the two klibs and their key files stay apart."""
+    def where(d):
+        return os.path.normcase(os.path.abspath(d))
+    stem = Path(def_file).stem
+    if len({where(d) for d in defs if Path(d).stem.lower() == stem.lower()}) > 1:
+        stem += '-' + hashlib.sha1(where(def_file).encode('utf-8')).hexdigest()[:8]
+    return Path(out) / stem
+
+
 def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, size=False, hot=None, force=False,
           kotlinc_args=(), include_dirs=(), main=None, defs=(), stack_array_limit=512, stack_array_error=False):
     """Kotlin sources -> [out/k.o] (+ out/bridges.o when the program calls C through cinterop), ready to link with
@@ -630,8 +643,8 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
     out = Path(out)
     if hot and not size:
         sys.exit('kmicro: hot (--hot) needs size (--size)')
-    libs = [*libs, *(cinterop(d, out / Path(d).stem, [Path(d).parent, *include_dirs], def_headers(d, include_dirs),
-                              force) for d in defs)]
+    libs = [*libs, *(cinterop(d, klib_base(d, out, defs), [Path(d).parent, *include_dirs],
+                              def_headers(d, include_dirs), force) for d in defs)]
     extra = [*(x for lib in libs for x in ('-l', Path(os.path.abspath(lib)).as_posix())), *kotlinc_args]
     for w in compile_ir(srcs, out, extra, [*libs, *deps], force):
         print(w, file=sys.stderr)             # (stdout is kbuild's list of objects)
