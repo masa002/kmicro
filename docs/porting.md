@@ -95,7 +95,7 @@ The files are `runtime/*.c`, `runtime/*.cpp` and `runtime/dtoa/*.cpp`.
 | `-ffunction-sections -fdata-sections` | `--gc-sections` drops what the program does not use |
 | `-fexceptions -funwind-tables` | a Kotlin exception unwinds through runtime functions (`ThrowException`, the array functions). Without unwind tables they get `[cantunwind]` entries, the unwinder stops there, and every exception is reported as uncaught, exit 98. `runtime/eh.c` stops the build without `-fexceptions` |
 | `-std=c++17 -fno-rtti` | the `.cpp` files only |
-| `-g` (optional) | debug information, which takes no flash: with `kbuild.py --kotlinc -g`, `tools/symbolize.py` then names the Kotlin functions that LTO inlined into C functions, with file and line ([how-it-works.md](how-it-works.md#reading-a-stack-trace)). The exceptions test below, its Kotlin built with `--kotlinc -g`, is 55,260 bytes of text with or without `-g` on the C side |
+| `-g` (optional) | debug information, which takes no flash: with `kbuild.py --kotlinc -g`, `tools/symbolize.py` then names the Kotlin functions that LTO inlined into C functions, with file and line ([how-it-works.md](how-it-works.md#reading-a-stack-trace)). The exceptions test below, its Kotlin built with `--kotlinc -g`, is 56,444 bytes of text with or without `-g` on the C side |
 | `-I runtime` | `kmicro.h` |
 | `-D KM_HEAP_BYTES=32768`, ... | the sizes ([how-it-works.md](how-it-works.md#sizes)) |
 
@@ -146,8 +146,9 @@ _sidata = LOADADDR(.data);
   runs them from `__init_array_start` to `__init_array_end`.
 - The start code copies `.data` from `_sidata` to `_sdata` .. `_edata` and clears `_sbss` .. `_ebss`.
 - The Kotlin heap is a static array in `.bss` (`KM_HEAP_BYTES`), so there is no heap section. The stack is the RAM
-  above `.bss`, up to `_estack`. qbuild prints that size (`stack N` in its size line), and
-  [stm32l431.ld](../examples/selftest/stm32l431/stm32l431.ld) stops the link when less than 8 KB is left.
+  above `.bss`, up to `_estack`. qbuild prints that size (`stack N` in its size line; on `qemu-l475`, without the
+  stack guard and the unused bytes around it), and [stm32l431.ld](../examples/selftest/stm32l431/stm32l431.ld) stops
+  the link when less than 8 KB is left.
 
 ## The link
 
@@ -212,9 +213,9 @@ build\board\k.o
 exception checks failed mask = 0  OK   (gcs=6)
 now an uncaught one (expected to stop with a report):
 Uncaught Kotlin exception: PanelError: panel error -5
-    at 0x08009aa0
-    at 0x08004f92
-    at 0x080040b2
+    at 0x08009df8
+    at 0x08005254
+    at 0x0800421e
 kmicro panic: uncaught Kotlin exception
 exit 98
 ```
