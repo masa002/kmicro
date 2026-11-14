@@ -200,14 +200,28 @@ def cinterop(def_file, out_base, include_dirs=(), deps=(), force=False):
 
 
 def def_headers(def_file, include_dirs=()):
-    """The files a .def depends on: the headers its `headers =` line names, and every .h directly in its folder and
-    in include_dirs (a header may include another)."""
+    """The files a .def depends on, as clang lists them (-M): the headers its `headers` lines name, the C text after
+    `---`, and every file these include, in any folder and at any depth. clang searches the .def's folder,
+    include_dirs and the folders of the .def's `compilerOpts`, as cinterop does. The lines `headers.linux`,
+    `headers.arm32` and `headers.linux_arm32_hfp` count too (cinterop reads them for the target), and the same forms
+    of `compilerOpts`. A header that is not found is left out: cinterop reports it."""
     def_file = Path(def_file)
-    text = re.sub(r'\\\n', ' ', def_file.read_text(encoding='utf-8', errors='replace').split('\n---', 1)[0])
-    m = re.search(r'^headers\s*=(.*)$', text, re.M)
-    dirs = [def_file.parent, *map(Path, include_dirs)]
-    named = [next((d / h for d in dirs if (d / h).exists()), None) for h in (m.group(1).split() if m else [])]
-    return list(dict.fromkeys([*(h for h in named if h), *(h for d in dirs for h in sorted(d.glob('*.h')))]))
+    head, _, tail = def_file.read_text(encoding='utf-8', errors='replace').partition('\n---')
+    head = re.sub(r'\\\n', ' ', head)
+
+    def values(name):
+        return [v for m in re.finditer(rf'^{name}(?:\.(?:linux_arm32_hfp|linux|arm32))?\s*=(.*)$', head, re.M)
+                for v in m.group(1).split()]
+    src = ''.join(f'#include <{h}>\n' for h in values('headers')) + tail.partition('\n')[2]
+    r = subprocess.run([str(a) for a in [paths.clang(), *paths.TARGET_M4F, '-isystem', paths.newlib_include(),
+                                         *(x for d in [def_file.parent, *include_dirs] for x in ('-I', d)),
+                                         *values('compilerOpts'), '-x', 'c', '-M', '-MG', '-MV', '-MT', 'x', '-']],
+                       input=src, capture_output=True, text=True, encoding='utf-8', errors='replace')
+    listed = re.findall(r'"([^"]+)"|(\S+)', r.stdout.partition(':')[2].replace('\\\n', ' '))
+    if r.returncode != 0 and not listed:
+        print(f'kmicro: warning: clang cannot list the headers of {def_file}, so a change in them will not run '
+              f'cinterop again: {(r.stderr.strip().splitlines() or ["?"])[0]}', file=sys.stderr)
+    return [p for p in dict.fromkeys(Path(a or b) for a, b in listed) if p.is_file()]
 
 
 def camel(cname):
