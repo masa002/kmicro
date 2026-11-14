@@ -2,6 +2,8 @@
 // difftest: heap 49152 -- main keeps every collection of the test alive until it returns, and the free memory
 // ends up in small pieces: 40 KB runs out
 // difftest: large -- most of the collections API in one program: about 350 KB of flash
+// difftest: frame -- one long main: its frame has a slot for every object of the test, about 7 KB, taken once at
+// the top of a 40 KB stack
 
 data class P(val name: String, val age: Int)
 

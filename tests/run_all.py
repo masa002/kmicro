@@ -278,7 +278,6 @@ TESTS = [
                        same=('{dir}/gen/Regs.kt', 'examples/irq/Regs.kt'))]),
     Test('irq_an386', IRQ, ['examples/irq/main.c', 'support/hw.c'], target='an386'),
 ]
-STACK_GUARD = 4096                      # targets/qemu-l475/l475.ld
 M4F_MACHINE = ('cortex-m0', 'cortex-m0plus', 'cortex-m1', 'cortex-m3', 'cortex-m4', 'cortex-m4f')   # run on one
 PATH_OPTIONS = ('c_api', 'defs', 'libs', 'deps', 'include_dirs')
 QBUILD_SIZE = re.compile(r'^qbuild: .*  text (\d+)  data (\d+)  bss (\d+).*\n', re.M)
@@ -439,11 +438,9 @@ def program_output(t, d, rc, out):
         raise Failed(f'does not fit the STM32L431 (256 KB flash, 64 KB RAM): {note} (text {text}, data {data}, '
                      f'bss {bss}); shrink it, or mark the test large with the reason')
     if t.target == 'l475' and not t.big_frame:
-        name, size = frames.of_image(d / f'{t.name}.elf')[0]
-        if size > STACK_GUARD:
-            raise Failed(f'{name} has a stack frame of {size} bytes, larger than the {STACK_GUARD}-byte stack guard '
-                         f'of qemu-l475, which it could step over without a fault; shrink it, or give the test '
-                         f'big_frame with the reason')
+        over = frames.over_guard(d / f'{t.name}.elf')
+        if over:
+            raise Failed(f'{over}; shrink it, or give the test big_frame with the reason')
     return got, note + (f'  (large: {t.large})' if t.large else '')
 
 

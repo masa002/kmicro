@@ -2,6 +2,7 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -51,6 +52,13 @@ class Frames(unittest.TestCase):
         f = frames.frames(THUMB1)
         self.assertEqual(f['run_main'], 20 + (0x100000000 - 0xffff2504))
         self.assertEqual(f['leaf'], 8 + 8)                # `add r0, sp, #4` is not a frame
+
+    def test_over_guard_reports_a_frame_larger_than_the_stack_guard(self):
+        with mock.patch.object(frames, 'of_image', return_value=[('big', frames.STACK_GUARD + 4), ('small', 40)]):
+            self.assertEqual(frames.over_guard('app.elf'), 'big has a stack frame of 4100 bytes, larger than the '
+                             '4096-byte stack guard of qemu-l475, which it could step over without a fault')
+        with mock.patch.object(frames, 'of_image', return_value=[('main', frames.STACK_GUARD), ('small', 40)]):
+            self.assertIsNone(frames.over_guard('app.elf'))
 
 
 if __name__ == '__main__':
