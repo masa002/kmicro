@@ -4,6 +4,8 @@
 #             included) and tests/run_all.py on QEMU, as is and under GC stress
 #   difftest  tools/difftest.py, as is and under GC stress (long), and missing_natives --check on the IR of its
 #             programs: on pushes to main, by hand and weekly
+#   next-kotlin  the tool tests and tests/run_all.py with the newest Kotlin release instead of the tested one: by
+#             hand and weekly. It may fail without failing the run
 name: CI
 
 on:
@@ -149,3 +151,76 @@ jobs:
           path: build/diff/*.txt
           if-no-files-found: ignore
           retention-days: 14
+
+  # kmicro reads the IR of one Kotlin/Native version, and the next one can change what its tools match. This job
+  # shows that early: a test fails, or the log of run_all -v holds a warning of the build tools. Its failure does
+  # not fail the run (continue-on-error); it leaves a warning on the run's summary page.
+  next-kotlin:
+    name: Newest Kotlin release (may fail)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Kotlin/Native version (the newest release of JetBrains/kotlin, pre-releases included)
+        id: versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$(gh api 'repos/JetBrains/kotlin/releases?per_page=1' --jq '.[0].tag_name')
+          [[ "$tag" =~ ^v[0-9]+(\.[0-9]+)+(-[A-Za-z0-9.]+)?$ ]] || { echo "unexpected tag: $tag"; exit 1; }
+          echo "Kotlin ${tag#v}"
+          echo "kotlin-native=${tag#v}" >> "$GITHUB_OUTPUT"
+      - name: Cache ~/.konan (the LLVM and sysroot that Kotlin/Native downloads)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ steps.versions.outputs.kotlin-native }}-qemu
+      - name: Install xPack GCC and xPack QEMU (toolchain/versions.txt) and that Kotlin/Native (SHA-256 checked)
+        env:
+          KOTLIN: ${{ steps.versions.outputs.kotlin-native }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/toolchains ~/downloads
+          for tool in arm-gcc qemu; do
+            read -r sha url < <(awk -v t="$tool" \
+              '$1 == t && $3 == "linux-x64" { sha = $4; getline; print sha, $1; exit }' toolchain/versions.txt)
+            file=~/downloads/"$tool.tar.gz"
+            echo "$tool: $url"
+            curl -fsSL --retry 3 -o "$file" "$url"
+            echo "$sha  $file" | sha256sum -c -
+            tar -xzf "$file" -C ~/toolchains
+          done
+          # the release's own archive and the .sha256 file next to it (versions.txt has the tested version only)
+          name=kotlin-native-prebuilt-linux-x86_64-$KOTLIN
+          url=https://github.com/JetBrains/kotlin/releases/download/v$KOTLIN/$name.tar.gz
+          file=~/downloads/kotlin-native.tar.gz
+          echo "kotlin-native: $url"
+          curl -fsSL --retry 3 -o "$file" "$url"
+          sha=$(curl -fsSL --retry 3 "$url.sha256" | awk '{ print $1; exit }')
+          echo "$sha  $file" | sha256sum -c -
+          tar -xzf "$file" -C ~/toolchains
+          echo "KMICRO_KOTLIN_NATIVE=$HOME/toolchains/$name" >> "$GITHUB_ENV"
+          if [ -n "${JAVA_HOME_21_X64:-}" ]; then echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"; fi
+      - name: First compile (downloads the LLVM of Kotlin/Native when ~/.konan is not cached)
+        run: python tests/run_all.py add
+      - name: python toolchain/paths.py
+        run: python toolchain/paths.py
+      - name: python -m unittest discover -s tests/unit (with the toolchains)
+        id: unit
+        run: python -m unittest discover -s tests/unit
+      - name: python tests/run_all.py -v (with the build messages)
+        if: success() || steps.unit.outcome == 'failure'
+        run: python tests/run_all.py -v
+      - name: Leave a warning on the run's summary page
+        if: failure()
+        env:
+          KOTLIN: ${{ steps.versions.outputs.kotlin-native }}
+        run: echo "::warning title=Kotlin $KOTLIN::kmicro does not pass its tests with this release (job next-kotlin)"
