@@ -44,6 +44,9 @@ uint32_t hw_ipsr(void)
     return r;
 }
 
+/* BASEPRI exists on ARMv7-M and ARMv8-M Mainline (Cortex-M3 and up, M33 and up). On ARMv6-M and ARMv8-M Baseline
+ * (Cortex-M0, M0+, M1, M23) these three functions are not defined: a program that calls them does not link there. */
+#if __ARM_ARCH_ISA_THUMB == 2
 uint32_t hw_basepri(void)
 {
     uint32_t r;
@@ -53,6 +56,7 @@ uint32_t hw_basepri(void)
 
 void hw_basepri_set(uint32_t v) { __asm volatile("msr basepri, %0" :: "r"(v) : "memory"); }
 void hw_basepri_max(uint32_t v) { __asm volatile("msr basepri_max, %0" :: "r"(v) : "memory"); }
+#endif
 
 /* QEMU does not model the DWT: there the writes are ignored and hw_cycles() stays 0. */
 void hw_cycles_enable(void)
