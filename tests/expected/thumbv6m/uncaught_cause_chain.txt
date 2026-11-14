@@ -1,0 +1,13 @@
+Uncaught Kotlin exception: kotlin.IllegalStateException: boot failed at sensor 3
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+Caused by: SensorMissing: sensor 3 not answering
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    ... and 3 more common stack frames skipped
+kmicro panic: uncaught Kotlin exception

@@ -1,0 +1,7 @@
+HOOK RAN for kotlin.IllegalStateException: for the hook
+Uncaught Kotlin exception: kotlin.IllegalStateException: for the hook
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+kmicro panic: uncaught Kotlin exception

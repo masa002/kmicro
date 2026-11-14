@@ -1,0 +1,6 @@
+Uncaught Kotlin exception: LocalError: local
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+kmicro panic: uncaught Kotlin exception
