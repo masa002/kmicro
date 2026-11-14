@@ -1,6 +1,6 @@
 """Build a QEMU test image: Kotlin LTO object(s) + the kmicro runtime + C code, for an emulated Cortex-M.
 
-usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--cpu CORE] [--target l475|an386] [--run]
+usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--cpu CORE] [--target NAME] [--run]
                               [--timeout SECONDS]
 
     FILE       C (.c), C++ (.cpp) and assembly (.s, .S) files, compiled with the runtime's flags, and objects (.o, .a)
@@ -10,9 +10,13 @@ usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--
                are always on the include path)
     --cpu      the core to compile for (toolchain/paths.py CORES; default cortex-m4f, or KMICRO_CPU). The objects
                from kbuild must be built for the same core
-    --target   l475 (default): QEMU b-l475e-iot01a, an STM32L475 (targets/qemu-l475), the layout programs run on.
+    --target   l475: QEMU b-l475e-iot01a, an STM32L475 (targets/qemu-l475), the layout programs run on; its
+               Cortex-M4F also runs the code of the cores below it (cortex-m0 to cortex-m4). The default for those
                an386: QEMU mps2-an386 (targets/qemu-an386: 4 MB of code, 16 MB of RAM, newlib stdio over
                semihosting), for tests that need more memory than a microcontroller has
+               an385, an500: the start code and the layout of l475 on QEMU mps2-an385 (a Cortex-M3; the default for
+               cortex-m3) and mps2-an500 (a Cortex-M7 with a double-precision FPU; the default for cortex-m7 and
+               cortex-m7-sp)
     --run      run the image on QEMU and exit with the program's exit code (124 when it runs out of time)
     --timeout  seconds a --run may take (default 120)
 
@@ -38,7 +42,12 @@ import paths  # noqa: E402
 TARGETS = {   # start code and linker script, QEMU machine, the newlib system-call library
     'l475': (ROOT / 'targets/qemu-l475', 'l475.ld', 'b-l475e-iot01a', ['-lnosys']),
     'an386': (ROOT / 'targets/qemu-an386', 'an386.ld', 'mps2-an386', ['-lrdimon_nano', '--wrap=_exit']),
+    'an385': (ROOT / 'targets/qemu-l475', 'mps2.ld', 'mps2-an385', ['-lnosys']),
+    'an500': (ROOT / 'targets/qemu-l475', 'mps2.ld', 'mps2-an500', ['-lnosys']),
 }
+# The machine a core's programs run on when --target is not given: its own where QEMU has one with this start code,
+# else the STM32L475, whose Cortex-M4F runs the code of every core below it.
+DEFAULT_TARGET = {'cortex-m3': 'an385', 'cortex-m7': 'an500', 'cortex-m7-sp': 'an500'}
 
 
 def cflags():
@@ -193,7 +202,7 @@ def parse_args():
     ap.add_argument('-D', dest='defs', action='append', default=[], help=hide)
     ap.add_argument('-I', dest='incs', action='append', default=[], help=hide)
     ap.add_argument('--cpu', choices=sorted(paths.CORES), help=hide)
-    ap.add_argument('--target', choices=sorted(TARGETS), default='l475', help=hide)
+    ap.add_argument('--target', choices=sorted(TARGETS), help=hide)
     ap.add_argument('--run', action='store_true', help=hide)
     ap.add_argument('--timeout', type=float, default=120, help=hide)
     return ap.parse_intermixed_args()
@@ -208,8 +217,8 @@ def main():
             fail(f'qbuild: no such file: {f}')
         if f.suffix not in (*C_SOURCES, '.o', '.a'):
             fail(f'qbuild: {f}: expected .c, .cpp, .s, .S, .o or .a')
-    paths.select_cpu(args.cpu)
-    tdir, script, machine, syslibs = TARGETS[args.target]
+    cpu = paths.select_cpu(args.cpu)
+    tdir, script, machine, syslibs = TARGETS[args.target or DEFAULT_TARGET.get(cpu, 'l475')]
     defs = [f'-D{d}' for d in args.defs]
     incs = [f'-I{i}' for i in args.incs]
     out = args.out
