@@ -213,7 +213,7 @@ Allocations hide in these places:
     constants instead.
 19. **`const val MASK = 1u shl 3` is not a constant expression.** Write the literal: `const val MASK = 0x8u`.
 20. **Mind the big features**: `Regex`, case mapping and `Char.category` cost tens to hundreds of KB of flash (the
-    table under [Memory](#memory)).
+    table under [Memory](#memory)). kbuild warns when a program uses `Regex`, and names the functions that do.
 
 ## Hardware
 

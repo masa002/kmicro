@@ -105,8 +105,8 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | kotlin.math | partly | newlib libm: results within 2 ulp of stock |
 | unsigned types: arithmetic, parsing, printing | works | |
 | **Regex** | | |
-| matches/find/findAll/groups/named groups/replace/split, options | works | the first pattern keeps 11.5 KB of the heap and three small ones need a 20 KB heap; a program that uses Regex is about 366 KB of flash (235 KB with `--size`) ([costs](writing-kotlin.md#memory)) |
-| lookaround, backreferences, lazy/possessive, Unicode classes | works | `\p{L}` alone runs on the 16 KB heap (13.4 KB kept); about 30 patterns created in one function run out of memory even at 64 KB (`d_known_regex_heap`) |
+| matches/find/findAll/groups/named groups/replace/split, options | partly | does not fit 256 KB of flash without `--size`: a program that uses Regex is about 366 KB of flash (235 KB with `--size`), and kbuild warns when a program uses it; the first pattern keeps 11.5 KB of the heap and three small ones need a 20 KB heap ([costs](writing-kotlin.md#memory)) |
+| lookaround, backreferences, lazy/possessive, Unicode classes | partly | does not fit 256 KB of flash without `--size`, as every use of Regex; `\p{L}` alone runs on the 16 KB heap (13.4 KB kept); about 30 patterns created in one function run out of memory even at 64 KB (`d_known_regex_heap`) |
 | deep backtracking over long input | does not work | needs ~64 KB of stack; stops with 'kmicro fault: stack overflow' (exit 99) |
 | RegexOption.CANON_EQ | not supported | throws IllegalArgumentException: 'RegexOption.CANON_EQ is not supported on kmicro' |
 | **Time and random** | | |
