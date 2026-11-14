@@ -28,8 +28,9 @@ extern const void *const vectors[16];
 /* The FPU goes on before any compiled C code runs. With LTO, main and the Kotlin code it calls can be inlined into
  * the C start function, whose prologue then saves FP registers (vpush): with CP10/CP11 still off that is a fault.
  * A core without an FPU skips that. The assembly keeps to the forms every Cortex-M has: ARMv6-M has no movw/movt and
- * no orr with a constant, and its plain branch reaches 2 KB only. So the jump to start_c goes through a register,
- * which leaves lr as the reset left it: a stack trace ends there. */
+ * no orr with a constant, and its plain branch reaches 2 KB only. So the jump to start_c goes through a register.
+ * lr is set to 0xFFFFFFFF first, the address of no function, where a stack trace and the search for an exception
+ * handler end: ARMv7-M and ARMv8-M reset it to that value, but a Cortex-M0 gives its reset value as unknown. */
 __attribute__((naked)) void Reset_Handler(void)
 {
 #if defined(__ARM_FP)
@@ -41,7 +42,9 @@ __attribute__((naked)) void Reset_Handler(void)
                    "dsb\n"
                    "isb\n");
 #endif
-    __asm volatile("ldr r0, =start_c\n"
+    __asm volatile("ldr r0, =0xFFFFFFFF\n"                      /* no return address: a stack walk ends here */
+                   "mov lr, r0\n"
+                   "ldr r0, =start_c\n"
                    "bx r0\n"
                    ".ltorg\n");
 }

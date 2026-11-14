@@ -28,7 +28,9 @@ __attribute__((naked)) void Reset_Handler(void)
                    "dsb\n"
                    "isb\n");
 #endif
-    __asm volatile("ldr r0, =start_c\n"
+    __asm volatile("ldr r0, =0xFFFFFFFF\n"                      /* no return address: a stack walk ends here */
+                   "mov lr, r0\n"
+                   "ldr r0, =start_c\n"
                    "bx r0\n"
                    ".ltorg\n");
 }
