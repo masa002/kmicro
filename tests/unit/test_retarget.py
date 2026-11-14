@@ -305,6 +305,43 @@ class RetargetTest(unittest.TestCase):
         self.assertNotIn('copyOf', table)
         self.assertIn('copyOf', body(text, 'kfun:demo#copy(){}'))         # user code keeps its copy
 
+    def warnings(self, module, src):
+        (OUT / src).write_text(module, encoding='utf-8')
+        r, _ = self.retarget(src=src)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return [line for line in r.stderr.splitlines() if line.startswith('retarget: warning: ')]
+
+    def test_rewrites_that_match_do_not_warn(self):
+        self.assertEqual(self.warnings(MODULE, 'in.ll'), [])
+        self.assertEqual(self.warnings(DEBUG_MODULE, 'debug.ll'), [])
+
+    def test_module_without_the_stdlib_code_does_not_warn(self):
+        user_code = re.sub(r'^define [^\n]*@"kfun:kotlin\.[^\n]*\{$.*?^\}$\n', '', MODULE, flags=re.M | re.S)
+        self.assertNotIn('NativeRandom', user_code)
+        self.assertIn('kfun:demo#now', user_code)
+        self.assertEqual(self.warnings(user_code, 'user.ll'), [])
+
+    def test_rewrite_that_matches_nothing_warns(self):
+        # the code each rewrite looks for, written as another compiler version might write it
+        hex_parser = 'kfun:kotlin.native.internal.HexStringParser.Companion'
+        for name, old, new, symbol, effect in (
+                ('clock', '%seed = call i64 @Kotlin_system_getSteadyTimeNanos()', '%seed = call i64 @other_clock()',
+                 'kfun:kotlin.random.NativeRandom.<init>#internal', 'seed from the clock'),
+                ('init', 'Companion.<init>#internal"(ptr %0)', 'Companion.<init>#internal"(ptr %0, ptr %1)',
+                 hex_parser + '.<init>#internal', 'Regex engine'),
+                ('double', '{}kotlin.Double"(ptr %0, ptr %1)', '{}kotlin.Double"(ptr %0, ptr %1, ptr %2)',
+                 hex_parser + '#parseDouble(kotlin.String){}kotlin.Double', 'Regex engine'),
+                ('float', 'Companion#parseFloat(kotlin.String)', 'Companion#parseFloat(kotlin.CharSequence)',
+                 hex_parser + '#parseFloat(kotlin.CharSequence){}kotlin.Float', 'Regex engine'),
+                ('tables', 'collections#copyOf__at__', 'collections#copyOfRange__at__',
+                 'kfun:kotlin.text.$init_global$_CharCategories.kt#internal', 'Unicode tables')):
+            self.assertIn(old, MODULE, name)
+            lines = self.warnings(MODULE.replace(old, new), f'changed_{name}.ll')
+            self.assertEqual(len(lines), 1, (name, lines))
+            self.assertIn(f'although the module defines {symbol}: ', lines[0])
+            self.assertIn(effect, lines[0])
+            self.assertIn(f'Kotlin/Native {paths.KOTLIN_NATIVE_VERSION}', lines[0])
+
 
 if __name__ == '__main__':
     unittest.main()

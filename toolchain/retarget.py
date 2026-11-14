@@ -20,6 +20,8 @@ usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot
 - String.toDouble()/toFloat(): the hexadecimal parser calls runtime/hexfloat.c instead of compiling regular
   expressions, so number parsing does not link the Regex engine
 - the stdlib's Unicode tables stay in flash instead of being copied to the heap on first use
+- one of these three rewrites that matches nothing in a module that defines the code it rewrites prints a warning
+  (stderr): the sign of the IR of another compiler version
 Debug information (kotlinc-native -g) passes through intact: every rewrite keeps or drops whole !dbg attachments.
 """
 import re
@@ -67,12 +69,28 @@ def ir_name(name):
     return raw.encode('latin-1', 'replace').decode('utf-8', 'replace')
 
 
-def replace_body(text, name, params, body):
+def unmatched(text, symbol, effect):
+    """A rewrite of the standard library changed nothing. That is right for a module without the code it rewrites.
+    When the module defines a function whose symbol matches the regular expression `symbol`, the code is there in a
+    form the rewrite does not know, as another compiler version may write it: a warning with what the program then
+    does."""
+    m = re.search(r'^define [^\n]*@("[^"\n]*(?:' + symbol + r')[^"\n]*")', text, re.M)
+    if m:
+        print(f'retarget: warning: a rewrite of the standard library matched nothing, although the module defines '
+              f'{ir_name(m.group(1))}: {effect}. retarget.py is written for the IR of Kotlin/Native '
+              f'{paths.KOTLIN_NATIVE_VERSION}; another version may write this code in another way.', file=sys.stderr)
+
+
+def replace_body(text, name, params, body, symbol, effect):
     """`text` with the body of the function `name`(`params`) replaced; its define line stays, without a !dbg
-    attachment (the new body has no debug locations). Unchanged when there is no such function."""
+    attachment (the new body has no debug locations). Unchanged when there is no such function, with the warning of
+    unmatched() when a function like it (`symbol`) is defined."""
     pat = re.compile(r'^(define [^\n]*@"' + re.escape(name) + '"' + re.escape(params) + r'[^\n]*?)(?: !dbg ![0-9]+)? \{$'
                      r'.*?^\}$', re.M | re.S)
-    return pat.sub(lambda m: m.group(1) + ' {\n' + body + '}', text, count=1)
+    text, n = pat.subn(lambda m: m.group(1) + ' {\n' + body + '}', text, count=1)
+    if not n:
+        unmatched(text, symbol, effect)
+    return text
 
 
 args = sys.argv[1:]
@@ -151,22 +169,35 @@ if '--drop-ctors' in args:
 # kotlin.random: constructing any Random, Random(42) too, creates Random.Default (NativeRandom), which seeds itself
 # from the monotonic clock. Its seed comes from the board hook kmicro_random_seed instead (runtime/time.c), so random
 # numbers work on a board without a clock.
-text = re.sub(r'^define [^\n]*@"kfun:kotlin\.random[.#][^\n]*\{$.*?^\}$',
-              lambda m: m.group(0).replace('@Kotlin_system_getSteadyTimeNanos(', '@kmicro_random_seed('),
-              text, flags=re.M | re.S)
+CLOCK = '@Kotlin_system_getSteadyTimeNanos('
+seeds = []                              # the clock calls replaced, per function of kotlin.random
+
+
+def seed_from_hook(m):
+    seeds.append(m.group(0).count(CLOCK))
+    return m.group(0).replace(CLOCK, '@kmicro_random_seed(')
+
+
+text = re.sub(r'^define [^\n]*@"kfun:kotlin\.random[.#][^\n]*\{$.*?^\}$', seed_from_hook, text, flags=re.M | re.S)
 if '@kmicro_random_seed(' in text:
     text += '\ndeclare i64 @kmicro_random_seed()\n'
+if not sum(seeds):
+    unmatched(text, r'kotlin\.random\.NativeRandom', 'Random.Default may still take its seed from the clock')
 # String.toDouble()/toFloat(): FloatingPointParser hands hexadecimal text to HexStringParser. Its companion compiles a
 # Regex when it is created, which happens before the hex test, so decimal text pays too (about 19 KB of heap kept),
 # and its parse() uses more regular expressions. parseDouble/parseFloat become calls to runtime/hexfloat.c, the same
 # algorithm without them, and the companion's initialiser does nothing: a program that does not use Regex itself
 # links no Regex engine.
 HEX = 'kfun:kotlin.native.internal.HexStringParser.Companion'
-text = replace_body(text, HEX + '.<init>#internal', '(ptr %0)', '  ret void\n')
+REGEX_LINKED = 'String.toDouble() and toFloat() may still link the Regex engine'
+text = replace_body(text, HEX + '.<init>#internal', '(ptr %0)', '  ret void\n',
+                    r'HexStringParser[^"]*Companion[^"]*<init>', REGEX_LINKED)
 text = replace_body(text, HEX + '#parseDouble(kotlin.String){}kotlin.Double', '(ptr %0, ptr %1)',
-                    '  %r = call double @kmicro_hex_to_double(ptr %1)\n  ret double %r\n')
+                    '  %r = call double @kmicro_hex_to_double(ptr %1)\n  ret double %r\n',
+                    r'HexStringParser[^"]*parseDouble', REGEX_LINKED)
 text = replace_body(text, HEX + '#parseFloat(kotlin.String){}kotlin.Float', '(ptr %0, ptr %1)',
-                    '  %r = call float @kmicro_hex_to_float(ptr %1)\n  ret float %r\n')
+                    '  %r = call float @kmicro_hex_to_float(ptr %1)\n  ret float %r\n',
+                    r'HexStringParser[^"]*parseFloat', REGEX_LINKED)
 for fn, ty in (('kmicro_hex_to_double', 'double'), ('kmicro_hex_to_float', 'float')):
     if f'@{fn}(' in text:
         text += f'\ndeclare {ty} @{fn}(ptr)\n'
@@ -174,10 +205,20 @@ for fn, ty in (('kmicro_hex_to_double', 'double'), ('kmicro_hex_to_float', 'floa
 # its tables from their constants into the heap (intArrayOf semantics), from 2.4 KB for an ASCII uppercase() to
 # 11.7 KB for Char.category, kept for good. These tables are private to the stdlib and never written, so the constant
 # itself is used: a permanent object, which the collector never frees.
+COPY = re.compile(r'call ptr @"kfun:kotlin\.collections#copyOf__at__[^"]*"\((ptr @[0-9]+), ptr %[0-9]+\)')
+tables = []                             # the copies replaced, per table file
+
+
+def keep_constant(m):
+    body, n = COPY.subn(r'getelementptr inbounds i8, \1, i32 0', m.group(0))
+    tables.append(n)
+    return body
+
+
 text = re.sub(r'^define internal void @"kfun:kotlin\.text\.\$init_global\$_\w+\.kt#internal"\(\)[^\n]*\{$.*?^\}$',
-              lambda m: re.sub(r'call ptr @"kfun:kotlin\.collections#copyOf__at__[^"]*"\((ptr @[0-9]+), ptr %[0-9]+\)',
-                               r'getelementptr inbounds i8, \1, i32 0', m.group(0)),
-              text, flags=re.M | re.S)
+              keep_constant, text, flags=re.M | re.S)
+if not sum(tables):
+    unmatched(text, r'kotlin\.text\.[^"]*init_global\$_', 'the Unicode tables may be copied to the heap on first use')
 open(dst, 'w', encoding='utf-8', newline='\n').write(text)
 
 if stubs:
