@@ -549,7 +549,7 @@ extern "C" KFloat
 Kotlin_native_FloatingPointParser_parseFloatImpl(KConstRef s, KInt e)
 {
   char utf8[KM_DTOA_BUF];                       /* kmicro: no std::string, no C++ exceptions */
-  if (!km_dtoa_utf8(s, utf8, sizeof utf8))
+  if (!km_dtoa_utf8(s, utf8, sizeof utf8, &e))
     ThrowNumberFormatException();
   const char *str = utf8;
   auto flt = createFloat(str, e);

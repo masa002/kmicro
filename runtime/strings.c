@@ -661,11 +661,17 @@ void Kotlin_io_Console_printToStdErr(const ObjHeader *message) { put_string(mess
 void Kotlin_io_Console_println0ToStdErr(void) { kmicro_puts("\n"); }
 void Kotlin_io_Console_printlnToStdErr(const ObjHeader *message) { put_string(message); kmicro_puts("\n"); }
 
-/* For the floating-point parser: the whole string as UTF-8, or false when it does not fit or holds a lone
- * surrogate (the stock runtime throws NumberFormatException for invalid text there too). */
-bool km_dtoa_utf8(const ObjHeader *s, char *buf, uint32_t cap)
+/* For the floating-point parser: the string as UTF-8, or false when it holds a lone surrogate (the stock runtime
+ * throws NumberFormatException for invalid text there too). The stdlib hands over the digits of the number, the first
+ * not 0, and its decimal exponent *e (FloatingPointParser.kt). Digits that do not fit are left out and counted into
+ * *e, which changes no result: the parser does not read that far (km_dtoa_shim.h) and would only count them too. */
+bool km_dtoa_utf8(const ObjHeader *s, char *buf, uint32_t cap, int32_t *e)
 {
     uint32_t n = len(s);
+    if (n > cap - 1u) {
+        *e += (int32_t)(n - (cap - 1u));
+        n = cap - 1u;
+    }
     uint32_t need = utf8_of(s, 0, n, NULL, false);
     if (need + 1 > cap)
         return false;

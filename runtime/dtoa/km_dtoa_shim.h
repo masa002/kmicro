@@ -20,14 +20,18 @@ typedef const ObjHeader *KConstRef;
 extern "C" {
 void ThrowNumberFormatException(void) __attribute__((noreturn));
 void ThrowOutOfMemoryError(void) __attribute__((noreturn));
-/* UTF-8 of a Kotlin string into buf (false: does not fit or is not valid text) */
-bool km_dtoa_utf8(KConstRef s, char *buf, uint32_t cap);
+/* UTF-8 of a Kotlin string into buf (false: not valid text). Text that does not fit is cut and *e, its decimal
+ * exponent, raised by the number of digits left out. */
+bool km_dtoa_utf8(KConstRef s, char *buf, uint32_t cap, KInt *e);
 void *km_dtoa_calloc(uint32_t n, uint32_t size);
 void km_dtoa_free(void *p);
 }
 
 namespace kotlin {}                         /* the sources say "using namespace kotlin" */
-#define KM_DTOA_BUF 400                     /* "1e-400"-style input and long digit strings */
+/* The buffer for the digits of the text. createDouble reads at most 310 of them and createFloat 136: by then the
+ * number has more bits than they keep (MAX_ACCURACY_WIDTH), and they only count the digits that follow into the
+ * exponent. So km_dtoa_utf8 can leave out the digits that do not fit. */
+#define KM_DTOA_BUF 400
 
 static inline KDouble bitsToDouble(KLong bits) { KDouble d; memcpy(&d, &bits, 8); return d; }
 static inline KLong doubleToBits(KDouble v) { KLong l; memcpy(&l, &v, 8); return l; }
