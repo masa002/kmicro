@@ -129,8 +129,13 @@ __attribute__((naked)) static void fault(void)
                    ".ltorg\n");
 }
 
+/* SysTick is the program's: its SysTick_Handler, in C or in Kotlin, replaces this one. */
+static void no_tick(void) {}
+void SysTick_Handler(void) __attribute__((weak, alias("no_tick")));
+
 __attribute__((section(".isr_vector"), used))
-const void *const vectors[16] = { &_estack, Reset_Handler, fault, fault, fault, fault, fault };
+const void *const vectors[16] = { &_estack, Reset_Handler, fault, fault, fault, fault, fault,
+                                   0, 0, 0, 0, fault, fault, 0, fault, SysTick_Handler };
 
 /* Not through stdout: newlib's streams write through the runtime's _write, which calls this function. */
 void kmicro_puts(const char *s) { semi(0x04, (void *)s); }     /* SYS_WRITE0 */
