@@ -114,6 +114,20 @@ class IsrCheck(unittest.TestCase):
         self.assertIn('BOX    kfun:irq#boxes(){}: kfun:irq#boxes(){} -> kfun:kotlin#<Int-box>(kotlin.Int){}kotlin.Any',
                       lines)
 
+    def test_indirect_calls_are_counted(self):
+        # a call through a pointer, also as a tail call (bx r0) or a load into pc; none of them is a return
+        for insn in ('blx\tr3', 'blx\tip', 'bx\tr0', 'bxne\tr3', 'mov\tpc, r2', 'ldr.w\tpc, [r4, #8]'):
+            text = disassembly(FUNCS).replace('<fault>:\n', f'<fault>:\n 8000180:\t{insn}\n')
+            lines, bad, _ = isr_check.analyse(text, vector_table(table(0x08000200)))
+            self.assertEqual(bad, 0, lines)
+            self.assertIn('note   fault: 1 indirect call site(s) not followed: not proven clean', lines, insn)
+
+    def test_returns_are_no_indirect_calls(self):
+        returns = ('bx\tlr', 'bxeq\tlr', 'mov\tpc, lr', 'ldr.w\tpc, [sp], #4', 'ldmia.w\tsp!, {r4, r5, pc}')
+        text = disassembly(FUNCS).replace('<fault>:\n', '<fault>:\n' + ''.join(f' 8000180:\t{i}\n' for i in returns))
+        lines, _, _ = isr_check.analyse(text, vector_table(table(0x08000200)))
+        self.assertEqual(lines, ['2 interrupt handler(s) checked: no path to an allocation'])
+
     def test_nothing_to_check_is_an_error(self):
         with self.assertRaises(ValueError):
             isr_check.analyse('', '')

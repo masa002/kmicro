@@ -19,7 +19,8 @@ functions) or in a boxing function. The heap is not reentrant, so a handler that
 also stops at run time with "allocation inside an interrupt handler"). Paths through the throw helpers of the
 runtime and the standard library (ThrowException, kfun:kotlin.native.internal#Throw...) are not followed: those only
 run on a bug (an index out of bounds, a null), and the run-time guard covers them.
-Indirect calls (function pointers, virtual calls) cannot be followed here and are listed per handler.
+Indirect calls (function pointers, virtual calls) cannot be followed here and are counted per handler: a handler
+that has one is not proven clean. --callback names the functions such a call reaches.
 
 Exit status: 0 when no handler reaches an allocation, 1 when one does (or --boxing finds a box), 2 when the image
 cannot be read or has no handler.
@@ -37,6 +38,9 @@ import paths  # noqa: E402
 ALLOC = {'AllocInstance', 'AllocArrayInstance', 'kmicro_alloc_object', 'kmicro_alloc_array', 'alloc_block'}
 BOX = re.compile(r'<U?(Int|Byte|Short|Long)-box>')
 HANDLER_NAME = re.compile(r'\w+_(IRQ)?Handler|kfun:[^#]*#\w*Handler\(\)\{\}')
+# A transfer through a register or a loaded address: a call (blx r3), a tail call (bx r3, mov pc, r3) or a load into
+# pc. A function's own return is not one: bx lr, mov pc, lr, pop {.., pc}, ldr pc, [sp], #4.
+INDIRECT = re.compile(r'\t(?:blx\w*\s|bx\w*\s+(?!lr\b)|mov\w*\s+pc, (?!lr\b)|ldr\S*\s+pc, \[(?!sp\b))')
 
 
 def lazy(name):
@@ -76,7 +80,7 @@ def parse_disassembly(text):
             m = None
         if m and m.group(2) != cur:
             calls[cur].add(m.group(2))
-        elif re.search(r'\tblx\s+r\d+', line):
+        elif INDIRECT.search(line):
             indirect[cur] += 1
     return calls, indirect, start
 
@@ -157,7 +161,7 @@ def analyse(disasm, vectors, callbacks=(), boxing=False):
             lines.append(f'{kind:6s} {root}: {p}')
         lines += [f'LAZY   {root}: {p}' for p in lazies]
         if ind:
-            lines.append(f'note   {root}: {ind} indirect call site(s) not followed')
+            lines.append(f'note   {root}: {ind} indirect call site(s) not followed: not proven clean')
         bad += len(hits)
     lines.append(f'{len(roots)} interrupt handler(s) checked: '
                  + ('no path to an allocation' if not bad else f'{bad} path(s) to an allocation'))
