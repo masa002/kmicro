@@ -68,6 +68,16 @@ The start code runs these steps, in this order:
    }
    ```
 
+   The entry reaches the C start function with a jump (`b`, or `bx` through a register), not with a call (`bl`),
+   and the start function never returns. After the jump lr still has its reset value (0xFFFFFFFF on a Cortex-M4),
+   which is the address of no function: the stack trace of an exception and the search for its handler end there.
+   After `bl`, lr points into `Reset_Handler`, and the unwind entry of a naked function says "nothing on the stack,
+   return through lr": unwinding that frame gives the same frame again, and libgcc's search for a handler would never
+   end. The runtime stops the walk at such a frame (`__gnu_Unwind_Find_exidx` in [runtime/eh.c](../runtime/eh.c)),
+   so an exception that nothing catches is reported even then, with one more address in its trace, the one in
+   `Reset_Handler`. A reset entry in an assembly file without unwind directives needs no such stop: ld.lld gives
+   its code a `cantunwind` entry, where every walk ends.
+
 2. **Copy `.data` and clear `.bss`.** `.bss` holds the Kotlin heap and the runtime's tables.
 3. **Optionally**, point VTOR at the vector table, turn on the fault handlers and set up the MPU guards (below).
 4. **Run the constructors in `.init_array`.** The compiler registers each Kotlin module's initializer there. Under
@@ -140,8 +150,8 @@ _sidata = LOADADDR(.data);
 .bss (NOLOAD) : { _sbss = .; *(.bss .bss.* COMMON) . = ALIGN(4); _ebss = .; } > RAM
 ```
 
-- `.ARM.extab` and `.ARM.exidx` are the unwind tables. libgcc's unwinder finds them through `__exidx_start` and
-  `__exidx_end`.
+- `.ARM.extab` and `.ARM.exidx` are the unwind tables. libgcc's unwinder and `runtime/eh.c` find them through
+  `__exidx_start` and `__exidx_end`.
 - `.init_array` holds the module initializers. `KEEP` stops `--gc-sections` from dropping them, and the start code
   runs them from `__init_array_start` to `__init_array_end`.
 - The start code copies `.data` from `_sidata` to `_sdata` .. `_edata` and clears `_sbss` .. `_ebss`.

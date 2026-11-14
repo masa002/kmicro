@@ -195,6 +195,7 @@ TESTS = [
     uncaught('uncaught_message_throws', 'TEST_MESSAGE_THROWS'),
     uncaught('uncaught_local_class', 'TEST_LOCAL_CLASS'),
     uncaught('uncaught_anonymous_object', 'TEST_ANONYMOUS_OBJECT'),
+    uncaught('uncaught_bl_entry', 'TEST_BL_ENTRY'),
     uncaught('unhandled_without_hook', 'TEST_PROCESS_WITHOUT_HOOK'),
     uncaught('unhandled_with_hook', 'TEST_PROCESS_WITH_HOOK', exit=0),
     Test('eh_needs_fexceptions', command=eh_without_exceptions, exit=1),

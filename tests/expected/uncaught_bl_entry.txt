@@ -1,0 +1,5 @@
+Uncaught Kotlin exception: kotlin.IllegalStateException: boot failed at sensor 3
+{...}
+Caused by: SensorMissing: sensor 3 not answering
+{...}
+kmicro panic: uncaught Kotlin exception
