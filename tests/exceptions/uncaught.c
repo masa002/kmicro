@@ -12,6 +12,8 @@ void k_process_without_hook(void);
 void k_process_with_hook(void);
 void k_circular_cause(void);
 void k_message_throws(void);
+void k_local_class(void);
+void k_anonymous_object(void);
 
 int main(void)
 {
@@ -36,6 +38,10 @@ int main(void)
     k_circular_cause();
 #elif defined(TEST_MESSAGE_THROWS)
     k_message_throws();
+#elif defined(TEST_LOCAL_CLASS)
+    k_local_class();
+#elif defined(TEST_ANONYMOUS_OBJECT)
+    k_anonymous_object();
 #endif
     kmicro_puts("main returned\n");
     return 0;

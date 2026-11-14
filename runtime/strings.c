@@ -633,11 +633,12 @@ __attribute__((weak)) void kmicro_write(const char *buf, size_t n)
     }
 }
 
-static void put_string(const ObjHeader *s)
+/* The characters of s from index `from` on. */
+void km_print_from(const ObjHeader *s, uint32_t from)
 {
     char buf[64];
     uint32_t n = len(s);
-    for (uint32_t i = 0; i < n;) {                   /* chunked: no allocation */
+    for (uint32_t i = from; i < n;) {                /* chunked: no allocation */
         uint32_t o = 0;
         while (i < n) {
             uint8_t tmp[4];
@@ -652,6 +653,7 @@ static void put_string(const ObjHeader *s)
         kmicro_write(buf, o);
     }
 }
+static void put_string(const ObjHeader *s) { km_print_from(s, 0); }
 void Kotlin_io_Console_print(const ObjHeader *message) { put_string(message); }
 void Kotlin_io_Console_println0(void) { kmicro_puts("\n"); }
 void Kotlin_io_Console_println(const ObjHeader *message) { put_string(message); kmicro_puts("\n"); }
