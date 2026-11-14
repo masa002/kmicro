@@ -31,7 +31,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import paths  # noqa: E402
 
 EXPECT_DL = 'e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64'
-TLS_RE = re.compile(r'\bthread_local(?:\([a-z]+\))? ')
+# thread_local as the keyword of a global's definition: after the name, before the first quote of the line. A string
+# literal of -Xbinary=latin1Strings=true is stored as its text and may hold the word.
+TLS_RE = re.compile(r'^(@(?:"[^"\n]*"|[\w.$-]+) = [^"\n]*?)\bthread_local(?:\([a-z]+\))? ', re.M)
 
 
 def target_attributes(cache):
@@ -131,7 +133,7 @@ if '--size' in args:  # optimize for size: LLVM's minsize/optsize on every Kotli
                      f'kfun:package#function(kotlin.Int){{}}kotlin.Int)')
         print(f'size: minsize everywhere except {n_hot} hot functions', file=sys.stderr)
 if '--no-tls' in args:
-    text = TLS_RE.sub('', text)
+    text = TLS_RE.sub(r'\1', text)
 if '--single-core' in args:
     # Every access to a file's globals first checks its init state with an acquire load (a DMB on the M4, and LLVM
     # may not hoist it out of a loop). kmicro runs Kotlin on one core in one thread, and interrupt handlers never

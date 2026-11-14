@@ -96,7 +96,7 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | encodeToByteArray, strict decoding | works | |
 | decodeToString of invalid or truncated UTF-8 | works | |
 | println of a string containing U+0000 | partly | the default `kmicro_write` drops the U+0000 itself and prints the rest; a board's `kmicro_write` gets it |
-| Latin-1 string mode (-Xbinary=latin1Strings) | partly | `kbuild.py --kotlinc -Xbinary=latin1Strings=true` enables it; not covered by the tests |
+| Latin-1 string mode (-Xbinary=latin1Strings) | partly | `kbuild.py --kotlinc -Xbinary=latin1Strings=true` enables it; one test, `strings_latin1`, runs the string checks of run_all in this mode, difftest does not use it |
 | String.format | not applicable | not in the Kotlin/Native stdlib |
 | **Numbers** | | |
 | integer parsing, toString(radix), arithmetic, bit operations | works | byte-identical |
