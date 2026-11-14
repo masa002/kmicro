@@ -1,9 +1,11 @@
 """tools/symbolize.py: names for trace addresses from a synthetic nm listing (no tools needed), then, with the xPack
 GCC, on an image built here from symbolize_probe.c: the call before a return address, the inlined levels, a log file,
-UTF-8 text, and the exit codes.
+UTF-8 text, the exit codes, and the image in a folder that the host's ANSI code page cannot name (tools/frames.py
+too).
 
 python -m unittest discover -s tests/unit
 """
+import shutil
 import subprocess
 import sys
 import unittest
@@ -13,14 +15,11 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'toolchain'))
 sys.path.insert(0, str(ROOT / 'tools'))
+import binutils  # noqa: E402
 import paths  # noqa: E402
+import symbolize  # noqa: E402
 
 HAVE_GCC = paths._find(paths.arm_gcc.env, paths.arm_gcc.patterns, paths.arm_gcc.what) is not None
-if HAVE_GCC:
-    import symbolize  # noqa: E402
-else:                   # symbolize finds nm, readelf and addr2line when imported; the lookups below need none of them
-    with mock.patch.object(paths, 'gcc_bin', lambda name: Path(f'arm-none-eabi-{name}')):
-        import symbolize  # noqa: E402
 
 NM = '\n'.join([        # nm -n -S: address, size, type, name
     '08000000 00000010 T Reset_Handler',
@@ -35,8 +34,7 @@ NM = '\n'.join([        # nm -n -S: address, size, type, name
 
 class Lookup(unittest.TestCase):
     def setUp(self):
-        with mock.patch.object(symbolize.subprocess, 'run',
-                               return_value=subprocess.CompletedProcess([], 0, NM, '')):
+        with mock.patch.object(symbolize.binutils, 'run', return_value=subprocess.CompletedProcess([], 0, NM, '')):
             self.addrs, self.names = symbolize.load('image.elf')
 
     def name(self, a, exact=False):
@@ -117,6 +115,21 @@ class Image(unittest.TestCase):
     def test_fault_line_names_the_faulting_function(self):
         rc, out, _ = self.run_tool(self.elf, stdin=f'kmicro fault: UsageFault at 0x{self.after_top["_start"]:08x}\n')
         self.assertIn('_start+0x0', out)
+
+    def test_folder_outside_the_ansi_code_page(self):
+        # binutils open files through the ANSI code page on Windows; no code page but UTF-8 has these three letters
+        there = self.dir / '\u00e9\u8a9e\u0e01'
+        there.mkdir(exist_ok=True)
+        shutil.copy(self.elf, there / 'probe.elf')
+        rc, out, err = self.run_tool(there / 'probe.elf', hex(self.ret))
+        self.assertEqual(rc, 0, err)
+        self.assertEqual([line.split()[0] for line in out.splitlines()], [hex(self.ret), 'level3', 'level2', 'top'])
+        r = subprocess.run([sys.executable, str(ROOT / 'tools/frames.py'), str(there / 'probe.elf'), '--top', '1'],
+                           capture_output=True, encoding='utf-8', errors='replace')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout, r'largest stack frames of probe\.elf [^\n]*\n +\d+  \w+\n')
+        binutils.output('objcopy', there / 'probe.elf', '-O', 'binary', after=['probe.bin'])   # an output file too
+        self.assertTrue((there / 'probe.bin').is_file())
 
     def test_exit_codes(self):
         self.assertEqual(self.run_tool(self.dir / 'missing.elf', '0x1')[0], 1)

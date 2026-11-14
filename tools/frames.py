@@ -13,12 +13,11 @@ was inlined into, often the start code's run_main. kbuild warns about such array
 """
 import argparse
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'toolchain'))
-import paths  # noqa: E402
+import binutils  # noqa: E402
 
 PROLOGUE = 24                                  # instructions looked at per function
 
@@ -66,8 +65,7 @@ def frames(disasm):
 
 def of_image(elf):
     """[(function, bytes)] for a linked image, the largest frame first."""
-    r = subprocess.run([str(paths.gcc_bin('objdump')), '-d', '--no-show-raw-insn', str(elf)], capture_output=True,
-                       text=True, errors='replace')
+    r = binutils.run('objdump', elf, '-d', '--no-show-raw-insn')
     if r.returncode != 0:
         sys.exit(f'frames.py: objdump failed: {r.stderr.strip()[:500]}')
     return sorted(frames(r.stdout).items(), key=lambda kv: -kv[1])

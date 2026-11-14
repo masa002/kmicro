@@ -17,6 +17,7 @@ HERE = Path(__file__).resolve().parent
 EXAMPLE = HERE.parent
 ROOT = EXAMPLE.parent.parent
 sys.path.insert(0, str(ROOT / 'toolchain'))
+import binutils  # noqa: E402
 import paths  # noqa: E402
 
 OUT = ROOT / 'build/stm32l431'
@@ -59,9 +60,9 @@ def main():
     elf = OUT / 'selftest.elf'
     run([paths.ld_lld(), '-T', HERE / 'stm32l431.ld', '--gc-sections', '--lto-O2', '-Map', OUT / 'selftest.map',
          '-o', elf, *objs, f'-L{paths.newlib_lib()}', '-lc_nano', '-lm', '-lnosys', paths.libgcc()])
-    run([paths.gcc_bin('objcopy'), '-O', 'ihex', elf, OUT / 'selftest.hex'])
-    run([paths.gcc_bin('objcopy'), '-O', 'binary', elf, OUT / 'selftest.bin'])
-    text, data, bss = run([paths.gcc_bin('size'), elf]).stdout.strip().splitlines()[-1].split()[:3]
+    binutils.output('objcopy', elf, '-O', 'ihex', after=['selftest.hex'])
+    binutils.output('objcopy', elf, '-O', 'binary', after=['selftest.bin'])
+    text, data, bss = binutils.output('size', elf).strip().splitlines()[-1].split()[:3]
     print(f'selftest.elf: flash {int(text) + int(data)} B of 256 KB, RAM {int(data) + int(bss)} B of 64 KB '
           f'(the rest is stack)')
     print(OUT / 'selftest.hex')
