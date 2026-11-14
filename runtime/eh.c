@@ -502,6 +502,44 @@ void Kotlin_processUnhandledException(ObjHeader *e)
 __attribute__((noreturn)) void Kotlin_terminateWithUnhandledException(ObjHeader *e) { terminate(e, false); }
 __attribute__((noreturn)) void _ZSt9terminatev(void) { kmicro_panic("std::terminate"); }
 
+/* ---- a frame that unwinds to itself ----
+ *
+ * A naked function compiled with unwind tables has an unwind entry that says "nothing on the stack, return through
+ * lr" (KM_EXIDX_FINISH). Once the function has made a call with bl, lr points into the function itself, and
+ * unwinding its frame gives the same frame again. A reset entry that reaches the C start function with bl is such a
+ * frame at the end of every stack (docs/porting.md), and libgcc's search for a handler would look at it forever: an
+ * exception that nothing catches would hang instead of being reported.
+ *
+ * libgcc asks __gnu_Unwind_Find_exidx, when a program has it, for the unwind index before it looks a return address
+ * up. The same address twice in a row is a recursive call or that frame, and the frame's entry tells which: through
+ * that entry nothing changes but pc, so the walk cannot go on. NULL ends the walk: the search fails and
+ * ThrowException reports the exception. Weak, in case the C library has this function. */
+#define KM_EXIDX_FINISH 0x80b0b0b0u                  /* the short form with three `finish` opcodes */
+typedef struct { uint32_t fn, entry; } km_exidx_t;   /* fn: a 31-bit offset from this word to the function */
+extern const km_exidx_t __exidx_start[], __exidx_end[];
+static uint32_t s_looked_up;
+
+__attribute__((weak)) const void *__gnu_Unwind_Find_exidx(uint32_t return_address, int *count)
+{
+    uint32_t n = (uint32_t)(__exidx_end - __exidx_start);
+    if (return_address == s_looked_up) {
+        uint32_t lo = 0, hi = n;                     /* the last entry at or below the address: its function's */
+        while (hi - lo > 1) {
+            uint32_t mid = (lo + hi) / 2;
+            const uint32_t *fn = &__exidx_start[mid].fn;
+            if ((uint32_t)(uintptr_t)fn + (uint32_t)((int32_t)(*fn << 1) >> 1) <= return_address)
+                lo = mid;
+            else
+                hi = mid;
+        }
+        if (__exidx_start[lo].entry == KM_EXIDX_FINISH)
+            return NULL;
+    }
+    s_looked_up = return_address;
+    *count = (int)n;
+    return __exidx_start;
+}
+
 /* ---- stack traces: return addresses through the same unwind tables ---- */
 
 /* The trace leaves out the frames that only build the exception, as the stock runtime does: Kotlin_getCurrentStackTrace

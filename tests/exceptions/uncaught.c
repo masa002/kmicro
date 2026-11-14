@@ -15,6 +15,20 @@ void k_message_throws(void);
 void k_local_class(void);
 void k_anonymous_object(void);
 
+#if defined(TEST_BL_ENTRY)
+/* A naked function that calls with bl, as a reset entry that reaches the C start function with bl: from then on lr
+ * points into the function, whose unwind entry says "return through lr", so unwinding its frame gives the same frame
+ * again. The search for a handler must end there. k_cause_chain throws out of a recursive call, the other way the
+ * unwinder looks one return address up twice in a row. */
+__attribute__((used)) void below_bl(void) { k_cause_chain(); }
+
+__attribute__((naked, noinline)) static void bl_entry(void)
+{
+    __asm volatile("bl below_bl\n"
+                   "b .\n");
+}
+#endif
+
 int main(void)
 {
     kmicro_init();
@@ -42,6 +56,8 @@ int main(void)
     k_local_class();
 #elif defined(TEST_ANONYMOUS_OBJECT)
     k_anonymous_object();
+#elif defined(TEST_BL_ENTRY)
+    bl_entry();
 #endif
     kmicro_puts("main returned\n");
     return 0;
