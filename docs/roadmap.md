@@ -24,7 +24,9 @@ has deprecated, so a later compiler may not offer it.
 Another compiler version becomes supported when the runtime contract ([runtime/kmicro.h](../runtime/kmicro.h), the
 notes in [research/](research)) and [toolchain/retarget.py](../toolchain/retarget.py) have been checked against its
 IR, and `tests/run_all.py`, `tools/difftest.py` (also with `--stress`) and the unit tests pass with it. Until then,
-the version in [BUILDING.md](../BUILDING.md) is the only supported one.
+the version in [BUILDING.md](../BUILDING.md) is the only supported one. Once a week a CI job (`next-kotlin`) builds
+and runs the unit tests and run_all with the newest Kotlin release, pre-releases included, and may fail: it shows
+what the next compiler changes before anyone depends on it.
 
 ## Targets
 

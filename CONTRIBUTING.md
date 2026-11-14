@@ -74,7 +74,8 @@ A program that shows a feature that does not work is named `d_known_<topic>.kt`;
 `build/t/<name>/run.log` and copy that to `tests/expected/<name>.txt`, with `{N}` where a number may vary.
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the unit tests, `run_all.py` and `run_all.py --stress`
-on every pull request, and difftest with and without `--stress` on main and once a week.
+on every pull request, and difftest with and without `--stress` on main and once a week. A weekly job runs the unit
+tests and `run_all.py` with the newest Kotlin release; it may fail, and that fails nothing else.
 
 ## Documentation
 
