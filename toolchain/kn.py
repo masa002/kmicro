@@ -474,6 +474,8 @@ def check_stack_arrays(ll_text, limit=512, error=False):
 
 
 MAIN = re.compile(r'^define [^@\n]*@"(kfun:([\w.]*)#main\((kotlin\.Array<kotlin\.String>)?\)\{\})"\(', re.M)
+SUSPEND_MAIN = re.compile(r'^define [^@\n]*@"kfun:([\w.]*)#main#suspend\((?:kotlin\.Array<kotlin\.String>;)?'
+                          r'kotlin\.coroutines\.Continuation<kotlin\.Unit>\)', re.M)
 
 
 def kotlin_mains(ll_text):
@@ -486,8 +488,15 @@ def add_kotlin_main(ll_text, required=False, name='kmicro_kotlin_main'):
     """`void <name>(void)` that runs the Kotlin `fun main()` (with an empty args array for `main(args)`), for
     targets/common/kotlin_main.c. Kotlin/Native compiles with -nomain, so nothing else calls main. Returns the IR lines
     ([] when there is no main and it is not `required`); a missing main (when required) or mains in several packages
-    are errors."""
+    are errors. A `suspend fun main()` cannot be the entry point (stock Kotlin/Native refuses it): a warning, and an
+    error when it is the only main and one is `required`."""
     mains = kotlin_mains(ll_text)
+    for pkg in dict.fromkeys(m.group(1) for m in SUSPEND_MAIN.finditer(ll_text)):
+        msg = (f'`suspend fun main()` in package {pkg or "<root>"}: entry point can not be a suspend function. Start '
+               'the coroutine from a plain `fun main()` with startCoroutine')
+        if required and not mains:
+            sys.exit(f'kmicro: --main: {msg}')
+        print(f'kmicro: warning: {msg}', file=sys.stderr)
     pkgs = sorted({p or '<root>' for p, _, _ in mains})
     if len(pkgs) > 1 or len(mains) > 1:
         msg = f'fun main() is in several places ({", ".join(pkgs)}): keep one'
