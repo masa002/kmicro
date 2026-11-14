@@ -12,6 +12,7 @@ Registers are `object RCC { const val CR: UInt = 0x40021000u ... }`: reading RCC
 lines and slow to compile). examples/irq shows the whole flow.
 """
 import re
+import sys
 from pathlib import Path
 
 SIZES = {'uint32_t': 4, 'uint16_t': 2, 'uint8_t': 1, 'int32_t': 4, 'int16_t': 2, 'int8_t': 1}
@@ -21,33 +22,32 @@ def strip_comments(s):
     return re.sub(r'/\*.*?\*/|//[^\n]*', '', s, flags=re.S)
 
 
-def parse(text, defines, types, instances, irqs):
-    for m in re.finditer(r'typedef\s+struct\s*\{(.*?)\}\s*(\w+)\s*;', text, re.S):
-        body, name = m.group(1), m.group(2)
-        fields, off, ok = [], 0, True
-        for decl in body.split(';'):
-            decl = re.sub(r'\b(__IO|__I|__O|__IM|__OM|__IOM|volatile|const)\b', ' ', decl).strip()
-            if not decl:
-                continue
-            d = re.match(r'(\w+)\s+(\w+)\s*(?:\[\s*([^\]]+)\s*\])?$', decl)
-            if not d:                                   # unions / bit fields: not used for registers here
-                ok = False
-                break
-            t, f, n = d.group(1), d.group(2), d.group(3)
-            size = SIZES.get(t) or (types[t][1] if t in types else None)
-            if size is None:
-                ok = False
-                break
-            align = min(size, 4)
+def layout(body, defines, types):
+    """The body of a struct -> ([(field, offset, size, count)], the struct's size). Raises ValueError for what is no
+    plain register layout: a union, a bit field, a pointer, an unknown type, an array size that is no constant."""
+    fields, off = [], 0
+    for decl in body.split(';'):
+        decl = re.sub(r'\b(__IO|__I|__O|__IM|__OM|__IOM|volatile|const)\b', ' ', decl).strip()
+        if not decl:
+            continue
+        d = re.match(r'(\w+)\s+(.+)$', decl, re.S)
+        size = d and (SIZES.get(d.group(1)) or (types[d.group(1)][1] if d.group(1) in types else None))
+        if not size:
+            raise ValueError(decl)
+        align = min(size, 4)
+        for item in d.group(2).split(','):              # `uint32_t CR1, CR2;` declares two registers
+            f = re.fullmatch(r'\s*(\w+)\s*(?:\[([^\]]+)\])?\s*', item)
+            if not f:
+                raise ValueError(decl)
             off = (off + align - 1) // align * align
-            count = int(evaluate(n, defines)) if n else 1
-            fields.append((f, off, size, count))
+            count = evaluate(f.group(2), defines) if f.group(2) else 1
+            fields.append((f.group(1), off, size, count))
             off += size * count
-        if ok:
-            types[name] = (fields, (off + 3) // 4 * 4)
-    for m in re.finditer(r'^\s*(\w+_IRQn)\s*=\s*(-?\d+)', text, re.M):
-        irqs[m.group(1)] = int(m.group(2))
-    for line in text.splitlines():
+    return fields, (off + 3) // 4 * 4
+
+
+def parse(text, defines, types, instances, irqs):
+    for line in text.splitlines():                      # the macros first: a struct may size an array with one
         d = re.match(r'\s*#define\s+(\w+)\s+(.+?)\s*$', line)
         if not d:
             continue
@@ -57,9 +57,18 @@ def parse(text, defines, types, instances, irqs):
             instances[name] = (inst.group(1), inst.group(2))
         elif '(' not in name:
             defines[name] = val
+    for m in re.finditer(r'^\s*(\w+_IRQn)\s*=\s*(-?\d+)', text, re.M):
+        irqs[m.group(1)] = int(m.group(2))
+    for m in re.finditer(r'typedef\s+struct\s*\w*\s*\{(.*?)\}\s*(\w+)\s*;', text, re.S):
+        try:
+            types[m.group(2)] = layout(m.group(1), defines, types)
+        except ValueError:                              # its instances are left out
+            pass
 
 
 def evaluate(expr, defines, depth=0):
+    """The value of a C integer constant expression, in 32 bits. Raises ValueError for anything else: an unknown
+    name, a floating-point number, an operator other than + - * / % << >> | & ^ ~."""
     if depth > 40:
         raise ValueError(expr)
     e = re.sub(r'\b(0x[0-9A-Fa-f]+|\d+)[uUlL]+\b', r'\1', expr)
@@ -71,9 +80,16 @@ def evaluate(expr, defines, depth=0):
             return '(' + str(evaluate(defines[n], defines, depth + 1)) + ')'
         raise ValueError(n)
     e = re.sub(r'\b[A-Za-z_]\w*\b', sub, e)
-    if not re.fullmatch(r'[\s0-9xA-Fa-f()+\-*<>|&~^]+', e):
+    e = re.sub(r'\b0+(?=[0-7]+\b)', '0o', e)            # C's octal: 017
+    if not re.fullmatch(r'[\s0-9xXoA-Fa-f()+\-*/%<>|&~^]+', e):
         raise ValueError(expr)
-    return eval(e) & 0xFFFFFFFF
+    try:
+        v = eval(e.replace('/', '//'))                  # // and %: as in C while no operand is negative
+    except (SyntaxError, ArithmeticError, TypeError):
+        raise ValueError(expr) from None
+    if type(v) is not int:                              # 8e6 is a floating-point number
+        raise ValueError(expr)
+    return v & 0xFFFFFFFF
 
 
 def used_names(sources, out):
@@ -139,7 +155,7 @@ def main():
             continue
         try:
             v = evaluate(val, defines)
-        except (ValueError, SyntaxError, ZeroDivisionError):
+        except ValueError:
             continue
         if name.endswith('_Pos'):
             out.append(f'internal const val {name}: Int = {v}')
@@ -152,14 +168,22 @@ def main():
             out.append(f'internal const val {name}: Int = {v}')
     # board pin map (`#define BTN_PORT GPIOA`, `#define BTN_PIN 0u`): NAME_PORT = the port's base address,
     # NAME_PIN = the pin number. The same names as in C; inside the package they win over cinterop's c.NAME_PIN.
-    board = strip_comments(a.pins.read_text(encoding='utf-8')) if a.pins else ''
+    board = strip_comments(a.pins.read_text(encoding='utf-8', errors='replace')) if a.pins else ''
     out.append('')
-    for name, port in re.findall(r'#define\s+(\w+)_PORT\s+(GPIO[A-H])\b', board):
+    for name, port in re.findall(r'#define\s+(\w+)_PORT\s+(GPIO[A-Z])\b', board):
         if used is not None and f'{name}_PORT' not in used and f'{name}_PIN' not in used:
             continue
-        pin = re.search(rf'#define\s+{name}_PIN\s+(\d+)u?\b', board)
-        out.append(f'internal const val {name}_PORT: UInt = 0x{evaluate(instances[port][1], defines):08X}u   // {port}')
-        out.append(f'internal const val {name}_PIN: Int = {pin.group(1)}')
+        pin = re.search(rf'#define\s+{name}_PIN\s+(.+)', board)
+        try:
+            base = evaluate(instances[port][1] if port in instances else '', defines)
+        except ValueError:
+            sys.exit(f'gen_regs: {a.pins}: {name}_PORT is {port}, which the headers do not define')
+        try:
+            number = evaluate(pin.group(1) if pin else '', defines)
+        except ValueError:
+            sys.exit(f'gen_regs: {a.pins}: {name}_PIN is not a pin number')
+        out.append(f'internal const val {name}_PORT: UInt = 0x{base:08X}u   // {port}')
+        out.append(f'internal const val {name}_PIN: Int = {number}')
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text('\n'.join(out) + '\n', encoding='utf-8', newline='\n')
     print(f'{a.out.name}: {sum(1 for i in instances if instances[i][0] in types)} peripherals, {nreg} registers, '
