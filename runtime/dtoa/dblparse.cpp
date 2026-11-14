@@ -649,7 +649,7 @@ OutOfMemory:
 KDouble Kotlin_native_FloatingPointParser_parseDoubleImpl (KConstRef s, KInt e)
 {
   char utf8[KM_DTOA_BUF];                       /* kmicro: no std::string, no C++ exceptions */
-  if (!km_dtoa_utf8(s, utf8, sizeof utf8))
+  if (!km_dtoa_utf8(s, utf8, sizeof utf8, &e))
     ThrowNumberFormatException();
   const char *str = utf8;
   auto dbl = createDouble (str, e);

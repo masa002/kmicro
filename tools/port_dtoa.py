@@ -30,7 +30,7 @@ PARSE_OLD = """  std::string utf8;
   }
   const char *str = utf8.c_str();"""
 PARSE_NEW = """  char utf8[KM_DTOA_BUF];                       /* kmicro: no std::string, no C++ exceptions */
-  if (!km_dtoa_utf8(s, utf8, sizeof utf8))
+  if (!km_dtoa_utf8(s, utf8, sizeof utf8, &e))
     ThrowNumberFormatException();
   const char *str = utf8;"""
 
