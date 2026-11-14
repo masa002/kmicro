@@ -20,9 +20,12 @@ A program can declare, each on a comment line of its own:
     // difftest: large -- reason          allowed to exceed the STM32L431 (256 KB of flash, 64 KB of RAM): linked
                                           with qbuild --large
     // difftest: ulp N -- reason          numbers in the output may differ by N units in the last place
+    // difftest: frame -- reason          allowed to have a stack frame larger than the 4 KB stack guard
 
-Each line of the report shows SAME, DIFF, OVER (same output, but the image does not fit the STM32L431) or ERROR (the
-program could not be built or run), with the image size and the heap's peak and live bytes at the end of the run.
+Each line of the report shows SAME, DIFF, OVER (same output, but the image does not fit the STM32L431), FRAME (same
+output, but a function of the image has a stack frame larger than the stack guard, which it could step over without a
+fault: tools/frames.py) or ERROR (the program could not be built or run), with the image size and the heap's peak and
+live bytes at the end of the run.
 """
 import argparse
 import difflib
@@ -39,6 +42,7 @@ sys.path.insert(0, str(ROOT / 'toolchain'))
 import kn  # noqa: E402
 import paths  # noqa: E402
 sys.path.insert(0, str(ROOT / 'tools'))
+import frames  # noqa: E402
 import qbuild  # noqa: E402
 
 OUT = ROOT / 'build/diff'
@@ -47,6 +51,7 @@ FLASH, RAM = 256 * 1024, 64 * 1024              # the STM32L431
 STATS = re.compile(rb'kmicro-difftest: heap (\d+) peak (\d+) live (\d+)\n\Z')   # driver.c's last line
 NUMBER = re.compile(r'-?(?:\d+(?:\.\d+)?(?:E-?\d+)?|Infinity)|NaN')
 FLOAT_MAX = 3.4028234663852886e38               # Float.MAX_VALUE: a bigger number is a Double
+VALUE, FLAG = {'heap', 'ulp'}, {'large', 'frame'}   # the directives with a number and those without
 
 
 class Failure(Exception):
@@ -63,12 +68,12 @@ def host_target():
 
 
 def directives(src):
-    """The `// difftest: ...` lines of a program: {'heap': 32768, 'large': True, 'ulp': 2}."""
+    """The `// difftest: ...` lines of a program: {'heap': 32768, 'large': True, 'ulp': 2, 'frame': True}."""
     d = {}
     for line in src.read_text(encoding='utf-8').splitlines():
         m = re.match(r'\s*//\s*difftest:\s*(\w+)\s*(\d*)', line)
         if m:
-            if m.group(1) not in ('heap', 'large', 'ulp') or (m.group(1) == 'large') != (m.group(2) == ''):
+            if m.group(1) not in VALUE | FLAG or (m.group(1) in FLAG) != (m.group(2) == ''):
                 raise Failure(f'bad directive: {line.strip()}')
             d[m.group(1)] = int(m.group(2)) if m.group(2) else True
     return d
@@ -115,6 +120,7 @@ def kmicro(name, src, opts, stress, size):
     notes = [l for l in r.stdout.splitlines() if l.startswith('qbuild: warning')]
     m = re.search(r' text (\d+)\s+data (\d+)\s+bss (\d+)', r.stdout)
     text, data, bss = map(int, m.groups())
+    frame = None if opts.get('frame') else frames.over_guard(elf)
     timeout = 3000 if stress else 300                # stress collects before every allocation: legitimately slow
     try:
         # in the image's folder, with its bare name: on Windows QEMU opens files through the ANSI code page
@@ -128,7 +134,7 @@ def kmicro(name, src, opts, stress, size):
     stats = STATS.search(out)
     if stats:
         out = out[:stats.start()]
-    return out, q.returncode, notes, (text + data, data + bss), stats and tuple(map(int, stats.groups()))
+    return out, q.returncode, notes, (text + data, data + bss), frame, stats and tuple(map(int, stats.groups()))
 
 
 def significant_digits(token):
@@ -187,7 +193,7 @@ def main():
         try:
             opts = directives(src)
             golden = host(name, src)
-            got, rc, notes, (flash, ram), stats = kmicro(name, src, opts, args.stress, args.size)
+            got, rc, notes, (flash, ram), frame, stats = kmicro(name, src, opts, args.stress, args.size)
         except (Exception, SystemExit) as e:          # noqa: BLE001 - kn.py stops with SystemExit; report, go on
             first, *rest = str(e).strip().splitlines() or ['']
             print(f'ERROR {name}: {first}')
@@ -197,7 +203,7 @@ def main():
             continue
         same = rc == 0 and (got == golden or 'ulp' in opts and close(golden, got, opts['ulp']))
         fits = flash <= FLASH and ram <= RAM
-        status = 'DIFF' if not same else 'SAME' if fits or opts.get('large') else 'OVER'
+        status = 'DIFF' if not same else 'OVER' if not (fits or opts.get('large')) else 'FRAME' if frame else 'SAME'
         heap = f'  heap {stats[0]}: peak {stats[1]} live {stats[2]}' if stats else ''
         exact = '' if got == golden or not same else f'  (within {opts["ulp"]} ulp)'
         lines = golden.count(b'\n')
@@ -208,6 +214,8 @@ def main():
         if status == 'OVER':
             print('      the image does not fit the STM32L431 (256 KB flash, 64 KB RAM): shrink it, or say '
                   '`// difftest: large -- reason` in the program')
+        if frame:
+            print(f'      {frame}: shrink it, or say `// difftest: frame -- reason` in the program')
         if status != 'SAME':
             bad += 1
         if not same:

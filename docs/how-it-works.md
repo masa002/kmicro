@@ -427,9 +427,11 @@ call.
   at the default 16 KB heap; a program that needs more says `// difftest: heap BYTES -- reason`, and
   `// difftest: large -- reason` allows an image above the STM32L431's 256 KB of flash and 64 KB of RAM (the report
   marks one without it `OVER`); `// difftest: ulp N -- reason` lets numbers differ by N units in the last place
-  (`d_math`: kotlin.math is newlib's libm on kmicro). `--stress` collects at every allocation; the heap peak in the
-  report is then the most the program had live at once, while without it the peak is often the heap size. The
-  `d_known_*.kt` programs show what does not work and run only when named.
+  (`d_math`: kotlin.math is newlib's libm on kmicro). As run_all does, it fails an image with a stack frame larger
+  than the 4 KB stack guard (`FRAME` in the report), unless the program says `// difftest: frame -- reason`.
+  `--stress` collects at every allocation; the heap peak in the report is then the most the program had live at
+  once, while without it the peak is often the heap size. The `d_known_*.kt` programs show what does not work and
+  run only when named.
 - `python -m unittest discover -s tests/unit` tests the tools.
 - CI ([.github/workflows/ci.yml](../.github/workflows/ci.yml)) runs the unit tests and run_all, also with `--stress`,
   on every pull request, on Linux and (without `--stress`) on Windows, and difftest on main and once a week. Once a week it also runs the unit tests and run_all

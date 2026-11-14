@@ -2,6 +2,8 @@
 // (String.toDouble: d_to_double.kt; Regex: d_regex.kt)
 // difftest: heap 32768 -- the default 16 KB runs out: the free memory ends up in small pieces
 // difftest: large -- most of the String and StringBuilder API in one program: about 305 KB of flash
+// difftest: frame -- one long main: its frame has a slot for every object of the test, a little over 4 KB, taken
+// once at the top of a 56 KB stack
 fun err(label: String, block: () -> Any?) {
     val r = runCatching(block)
     val e = r.exceptionOrNull()

@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'toolchain'))
 import binutils  # noqa: E402
 
 PROLOGUE = 24                                  # instructions looked at per function
+STACK_GUARD = 4096                             # bytes below the stack of the QEMU targets (targets/qemu-l475/*.ld)
 
 
 def reg_count(regs):
@@ -80,6 +81,15 @@ def of_image(elf):
     if r.returncode != 0:
         sys.exit(f'frames.py: objdump failed: {r.stderr.strip()[:500]}')
     return sorted(frames(r.stdout).items(), key=lambda kv: -kv[1])
+
+
+def over_guard(elf):
+    """What run_all and difftest report for an image with a frame larger than the stack guard; None without one."""
+    name, size = of_image(elf)[0]
+    if size > STACK_GUARD:
+        return (f'{name} has a stack frame of {size} bytes, larger than the {STACK_GUARD}-byte stack guard of '
+                f'qemu-l475, which it could step over without a fault')
+    return None
 
 
 def main():
