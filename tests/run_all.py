@@ -18,6 +18,8 @@ on QEMU's STM32L475 (or mps2-an386, for a test that says so) and checks:
 - that qbuild stubbed no runtime native (a board link would fail on it);
 - that the image fits the STM32L431 kmicro aims at: flash (text + data) at most 256 KB, RAM (data + bss: the heap,
   the runtime's tables, the globals) at most 64 KB, unless the test is marked large with the reason;
+- that no function of the image has a stack frame larger than the 4 KB stack guard of the qemu-l475 target, which
+  such a frame could step over without a fault (tools/frames.py), unless the test says why it has one;
 - the checks the test adds: a tool run on the image or on the output (isr_check, symbolize, frames, gen_regs,
   missing_natives), its exit code and its output against tests/expected/<name>.<check>.txt (not with --stress,
   which builds another runtime than users get).
@@ -45,6 +47,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'toolchain'))
 sys.path.insert(0, str(ROOT / 'tools'))
+import frames  # noqa: E402
 import kn  # noqa: E402
 import paths  # noqa: E402
 
@@ -85,6 +88,7 @@ class Test:
     defs: list = field(default_factory=list)    # more -D values for qbuild: the runtime and every C file
     target: str = 'l475'                # qbuild --target
     large: str = None                   # why the image may exceed the STM32L431
+    big_frame: str = None               # why a function of the image may have a frame larger than the stack guard
     checks: list = field(default_factory=list)
     fails: str = None                   # the step that must fail: 'kotlin' (kn.build) or 'link' (qbuild)
     command: object = None              # instead of a build: a function (build folder) -> the command line to run
@@ -220,7 +224,9 @@ TESTS = [
     # faults the start code reports, and frames on the stack
     fault('stack_overflow', 'TEST_STACK_OVERFLOW'),
     fault('null_field', 'TEST_NULL_FIELD'),
-    fault('stack_array', 'TEST_BIG_ARRAY', exit=0,
+    fault('stack_guard', 'TEST_GUARD_SCAN', exit=0,
+          checks=[Check('scan', ['tests/faults/guard_scan.py', '{elf}'])]),
+    fault('stack_array', 'TEST_BIG_ARRAY', exit=0, big_frame='a 56 KB array on the stack, which frames.py must report',
           checks=[Check('frames', ['tools/frames.py', '{elf}', '--top', '1', '--limit', '8192'], exit=1)]),
     Test('stack_array_error', Kotlin('faults', FAULTS.srcs, dict(stack_array_error=True)), fails='kotlin', exit=1),
     # the examples
@@ -239,6 +245,7 @@ TESTS = [
                                     'examples/irq', '--out', '{dir}/gen/Regs.kt', '--package', 'irq'],
                        same=('{dir}/gen/Regs.kt', 'examples/irq/Regs.kt'))]),
 ]
+STACK_GUARD = 4096                      # targets/qemu-l475/l475.ld
 PATH_OPTIONS = ('c_api', 'defs', 'libs', 'deps', 'include_dirs')
 QBUILD_SIZE = re.compile(r'^qbuild: .*  text (\d+)  data (\d+)  bss (\d+).*\n', re.M)
 QBUILD_STUBS = re.compile(r'^qbuild: warning: \d+ runtime symbols stubbed .*$', re.M)
@@ -393,6 +400,12 @@ def program_output(t, d, rc, out):
     if (text + data > FLASH or data + bss > RAM) and not t.large:
         raise Failed(f'does not fit the STM32L431 (256 KB flash, 64 KB RAM): {note} (text {text}, data {data}, '
                      f'bss {bss}); shrink it, or mark the test large with the reason')
+    if t.target == 'l475' and not t.big_frame:
+        name, size = frames.of_image(d / f'{t.name}.elf')[0]
+        if size > STACK_GUARD:
+            raise Failed(f'{name} has a stack frame of {size} bytes, larger than the {STACK_GUARD}-byte stack guard '
+                         f'of qemu-l475, which it could step over without a fault; shrink it, or give the test '
+                         f'big_frame with the reason')
     return got, note + (f'  (large: {t.large})' if t.large else '')
 
 

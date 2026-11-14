@@ -92,8 +92,11 @@ compared with the same program without it.
 5. **Use loops, or `tailrec`, instead of deep recursion.** There is no `StackOverflowError`. On `qemu-l475` an MPU
    guard below the stack stops the program with `kmicro fault: stack overflow` (exit 99) before the stack reaches
    `.bss`; a board without such a guard ([porting.md](porting.md#optional-a-fault-report-and-mpu-guards)) lets the
-   stack run into the heap. A frame larger than the 256-byte guard can jump it. qbuild's size line shows the RAM above
-   `.bss` (`stack 79820` above); on `qemu-l475` the guard and its alignment take up to 511 bytes of it (460 here).
+   stack run into the heap. The guard is 4 KB, larger than any frame of the runtime's C code (1024 bytes at most)
+   and of the standard library (2984 bytes, in `Regex`), so a call cannot step over it; only a function of your own
+   with a larger frame could (rule 4, `tools/frames.py`). qbuild's size line shows the RAM above the guard
+   (`stack 79820` above); on `qemu-l475` the guard, the 256 unused bytes below it and its alignment take 4352 to
+   8447 bytes, which the size line counts neither as `bss` nor as stack.
    Reading through null is not an exception either: a property read before its initializer ran (a constructor
    that calls an overridden function) or a null C pointer stops the program on `qemu-l475` with
    `kmicro fault: null pointer access`, exit 99, not with a `NullPointerException`.

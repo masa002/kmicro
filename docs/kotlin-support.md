@@ -43,7 +43,7 @@ This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fi
 | annotations, @OptIn/@RequiresOptIn, @Deprecated | works | |
 | unsigned types, bitwise ops, overflow, numeric conversions | works | |
 | tailrec | works | 100000 deep |
-| deep recursion | partly | no StackOverflowError: on the qemu-l475 target an MPU guard below the stack stops the program with 'kmicro fault: stack overflow' (exit 99); a board needs the same guard, and a frame larger than 256 B can jump it |
+| deep recursion | partly | no StackOverflowError: on the qemu-l475 target an MPU guard below the stack stops the program with 'kmicro fault: stack overflow' (exit 99); a board needs the same guard, 4 KB there: larger than any frame of the runtime (1024 B) and of the standard library (2984 B, `Regex`), so only a larger frame of the program could step over it |
 | large constant-size local arrays | partly | placed on the stack (up to 64 KB per function); kbuild warns above 512 B (`--stack-array-limit`, `--stack-array-error`); `tools/frames.py` shows the largest frames |
 | reading a non-null property before it is initialised (null read) | partly | the host segfaults; on qemu-l475 kmicro stops with 'kmicro fault: null pointer access' (exit 99), not a catchable exception |
 | public function with a backtick name containing spaces | does not work | the C export of -p static fails, and kbuild names the cause; private/internal works |

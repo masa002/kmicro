@@ -241,11 +241,15 @@ purpose. For a board, replace `start.c` and `l475.ld` with its own and write the
   address.
 - **The MPU guards.** VTOR points at the vector table in flash. Region 0 covers the first 64 KB of the address space
   with no access and execute-never: on the Cortex-M4 address 0 is an alias of flash, so a read through a null object
-  or a null C pointer would otherwise return the vector table. Region 1 is a 256-byte, 256-aligned no-access guard
+  or a null C pointer would otherwise return the vector table. Region 1 is a 4 KB, 4 KB-aligned no-access guard
   between `.bss` and the stack (`_sguard` .. `_eguard` in `l475.ld`): an overflowing stack faults there before it
-  writes the heap. PRIVDEFENA keeps the default memory map everywhere else, and SHCSR turns on the MemManage,
+  writes the heap. Make the guard larger than the largest frame of the image (`python tools/frames.py app.elf`):
+  a function with a larger frame can move the stack pointer past a smaller guard without writing into it, and the
+  calls below it then write the heap with no fault. The runtime's C code has frames of up to 1024 bytes (the
+  unwinder) and the standard library of up to 2984 bytes (the character-class tables of `Regex`); a program without
+  `Regex` can do with a 2 KB guard if frames.py shows nothing larger. PRIVDEFENA keeps the default memory map everywhere else, and SHCSR turns on the MemManage,
   BusFault and UsageFault handlers.
-- **Limits.** The stack-overflow report has no PC. A frame larger than the 256-byte guard can jump it:
-  `python tools/frames.py app.elf` lists the largest frames.
+- **Limits.** The stack-overflow report has no PC. A frame larger than the guard can step over it:
+  `python tools/frames.py app.elf` lists the largest frames, and `--limit 4096` makes it fail for a larger one.
 
 The STM32L431 example prints a shorter fault report (exception number, PC, LR, CFSR) and has no MPU guards.

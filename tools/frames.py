@@ -64,6 +64,15 @@ def frames(disasm):
     return out
 
 
+def of_image(elf):
+    """[(function, bytes)] for a linked image, the largest frame first."""
+    r = subprocess.run([str(paths.gcc_bin('objdump')), '-d', '--no-show-raw-insn', str(elf)], capture_output=True,
+                       text=True, errors='replace')
+    if r.returncode != 0:
+        sys.exit(f'frames.py: objdump failed: {r.stderr.strip()[:500]}')
+    return sorted(frames(r.stdout).items(), key=lambda kv: -kv[1])
+
+
 def main():
     p = argparse.ArgumentParser(prog='frames.py', description=__doc__.split('\n\n')[0])
     p.add_argument('elf', type=Path, help='the linked image (qbuild output or your board build)')
@@ -72,11 +81,7 @@ def main():
     a = p.parse_args()
     if not a.elf.exists():
         p.error(f'{a.elf}: not found')
-    r = subprocess.run([str(paths.gcc_bin('objdump')), '-d', '--no-show-raw-insn', str(a.elf)], capture_output=True,
-                       text=True, errors='replace')
-    if r.returncode != 0:
-        sys.exit(f'frames.py: objdump failed: {r.stderr.strip()[:500]}')
-    f = sorted(frames(r.stdout).items(), key=lambda kv: -kv[1])
+    f = of_image(a.elf)
     print(f'largest stack frames of {a.elf.name} (bytes a call takes, LTO-merged):')
     for name, size in f[:a.top]:
         print(f'{size:8d}  {name}')
