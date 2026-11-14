@@ -3,6 +3,7 @@
 
 void k_deep(void);
 void k_null_field(void);
+int32_t k_depth(int32_t n);
 int32_t k_big_array(void);
 int32_t k_parse(int32_t text);
 
@@ -68,6 +69,14 @@ int main(void)
     kmicro_put_int(changed);
     kmicro_puts("\n");
     return changed != 0 || r != 3141;
+#elif defined(TEST_DEPTH)
+    /* 52144 bytes of stack on a Cortex-M4F. With the default heap the 64 KB of the STM32L431 leave 40960 bytes for
+     * the stack, and the 96 KB that qbuild --large gives leave 73728. */
+    int32_t r = k_depth(240);
+    kmicro_puts("240 calls deep: ");
+    kmicro_put_int(r);
+    kmicro_puts("\n");
+    return 0;
 #elif defined(TEST_BIG_ARRAY)
     kmicro_puts("sum of a 14000-element stack array: ");
     kmicro_put_int(k_big_array());

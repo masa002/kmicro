@@ -1,0 +1,2 @@
+kmicro fault: stack overflow (MemManage){*}
+    sp 0x{X}{*}  cfsr 0x{X}  hfsr 0x00000000  mmfar 0x{X}  bfar 0x00000000

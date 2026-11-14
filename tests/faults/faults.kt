@@ -28,6 +28,14 @@ fun deep() {
     for (depth in intArrayOf(100, 300, 100_000)) println("depth $depth: sum ${sum(build(depth))}")
 }
 
+// Calls n deep, each with a 160-byte array on the stack.
+@CName("k_depth")
+fun depth(n: Int): Int {
+    val a = IntArray(40)
+    a[n % 40] = n
+    return if (n == 0) a.sum() else depth(n - 1) + a[n % 40] - n + 1
+}
+
 // String.toDouble(): its frames are among the largest of the runtime (main.c walks the stack down to the guard
 // with it).
 @CName("k_parse")

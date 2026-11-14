@@ -2,6 +2,7 @@
 // overloads, collisions in string when, comparators, identity keys, captured loop variables.
 // difftest: heap 49152 -- one long main keeps the objects of its checks alive, and the free memory ends up in
 // small pieces: 40 KB runs out
+// difftest: large -- that heap leaves 8 KB of the STM32L431's RAM for the stack, and the program takes 10 KB
 
 interface Producer<out T> { fun get(): T }
 class IntProducer(private val v: Int) : Producer<Int> { override fun get(): Int = v }

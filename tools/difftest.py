@@ -17,7 +17,8 @@ computer (mingw_x64, linux_x64, linux_arm64, macos_x64 or macos_arm64).
 A program can declare, each on a comment line of its own:
 
     // difftest: heap BYTES -- reason     a bigger kmicro heap
-    // difftest: large -- reason          allowed to exceed the STM32L431 (256 KB of flash, 64 KB of RAM)
+    // difftest: large -- reason          allowed to exceed the STM32L431 (256 KB of flash, 64 KB of RAM): linked
+                                          with qbuild --large
     // difftest: ulp N -- reason          numbers in the output may differ by N units in the last place
 
 Each line of the report shows SAME, DIFF, OVER (same output, but the image does not fit the STM32L431) or ERROR (the
@@ -106,7 +107,7 @@ def kmicro(name, src, opts, stress, size):
         raise Failure('m4.ll still checks file initialisation with atomic loads: not built with --single-core')
     elf = d / (name + ('-stress' if stress else '') + '.elf')
     defs = [*(['-D', f'KM_HEAP_BYTES={opts["heap"]}'] if 'heap' in opts else []),
-            *(['-D', 'KM_GC_STRESS=1'] if stress else [])]
+            *(['-D', 'KM_GC_STRESS=1'] if stress else []), *(['--large'] if opts.get('large') else [])]
     r = subprocess.run([sys.executable, ROOT / 'tools/qbuild.py', elf, DIFF / 'driver.c', *objs, *defs],
                        capture_output=True, encoding='utf-8', errors='replace')
     if r.returncode != 0:

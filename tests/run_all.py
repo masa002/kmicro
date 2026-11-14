@@ -21,7 +21,9 @@ on QEMU's STM32L475 (or mps2-an386, for a test that says so) and checks:
   under --stress, such as heap statistics, addresses and times;
 - that qbuild stubbed no runtime native (a board link would fail on it);
 - that the image fits the STM32L431 kmicro aims at: flash (text + data) at most 256 KB, RAM (data + bss: the heap,
-  the runtime's tables, the globals) at most 64 KB, unless the test is marked large with the reason;
+  the runtime's tables, the globals) at most 64 KB, unless the test is marked large with the reason. qbuild links
+  the image into that memory, so the stack is what those 64 KB leave, and a program that needs more stops with a
+  stack overflow; a test marked large is linked with qbuild --large;
 - that no function of the image has a stack frame larger than the 4 KB stack guard of the qemu-l475 target, which
   such a frame could step over without a fault (tools/frames.py), unless the test says why it has one;
 - the checks the test adds: a tool run on the image or on the output (isr_check, symbolize, frames, gen_regs,
@@ -91,7 +93,7 @@ class Test:
     case: dict = field(default_factory=dict)    # macros for the driver only, e.g. {'TEST_ALLOC': 1}
     defs: list = field(default_factory=list)    # more -D values for qbuild: the runtime and every C file
     target: str = 'l475'                # qbuild --target
-    large: str = None                   # why the image may exceed the STM32L431
+    large: str = None                   # why the image may exceed the STM32L431: linked with qbuild --large
     big_frame: str = None               # why a function of the image may have a frame larger than the stack guard
     checks: list = field(default_factory=list)
     fails: str = None                   # the step that must fail: 'kotlin' (kn.build) or 'link' (qbuild)
@@ -232,10 +234,13 @@ TESTS = [
     Test('native_arena_fuzz', None, ['tests/memory/arena_fuzz.c']),
     # faults the start code reports, and frames on the stack
     fault('stack_overflow', 'TEST_STACK_OVERFLOW'),
+    fault('stack_budget', 'TEST_DEPTH'),
+    fault('stack_budget_large', 'TEST_DEPTH', exit=0, large='52 KB of stack, and the STM32L431 has 40 KB left'),
     fault('null_field', 'TEST_NULL_FIELD'),
     fault('stack_guard', 'TEST_GUARD_SCAN', exit=0,
           checks=[Check('scan', ['tests/faults/guard_scan.py', '{elf}'])]),
     fault('stack_array', 'TEST_BIG_ARRAY', exit=0, big_frame='a 56 KB array on the stack, which frames.py must report',
+          large='the array is 56 KB of stack, and the STM32L431 has 40 KB left',
           checks=[Check('frames', ['tools/frames.py', '{elf}', '--top', '1', '--limit', '8192'], exit=1)]),
     Test('stack_array_error', Kotlin('faults', FAULTS.srcs, dict(stack_array_error=True)), fails='kotlin', exit=1),
     # the examples
@@ -363,6 +368,7 @@ def qbuild(t, d, objs, args):
     timeout = 120 * (10 if args.stress else 1)
     cmd = [sys.executable, ROOT / 'tools/qbuild.py', d / f'{t.name}.elf', *c_files(t, d), *objs,
            *(x for v in defs for x in ('-D', v)), *([] if t.target == 'l475' else ['--target', t.target]),
+           *(['--large'] if t.large else []),
            *([] if t.fails else ['--run', '--timeout', str(timeout)])]
     r = subprocess.run([str(a) for a in cmd], capture_output=True, timeout=timeout + 1800)
     return r.returncode, normalized((r.stdout + r.stderr).decode('utf-8', 'replace'))
