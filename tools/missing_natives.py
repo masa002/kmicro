@@ -16,7 +16,8 @@ IR. Each stdlib native is one of:
 the runtime calls the compiler emits itself, such as LookupInterfaceTableRecord. A declared function that runtime/
 defines must have the same LLVM signature (types, and zeroext/signext on narrow integers): link-time optimisation
 treats a call through a mismatched signature as undefined behaviour. A declared function that neither runtime/ nor
-newlib/libgcc defines is listed like a missing native.
+newlib/libgcc defines is listed like a missing native. A file that declares no function is an error: a compiled
+Kotlin program always declares runtime functions, so such a file is empty, cut or not LLVM IR.
 
     -v       list the implemented and Objective-C natives too
     --check  exit 1 when a native is missing or a signature differs
@@ -136,6 +137,20 @@ def library_symbols():
     return names
 
 
+def declared_functions(irs):
+    """{name: (signature, file)} of the functions the IR files declare, without LLVM's intrinsics and the C++ ABI.
+    A file that declares none stops the run."""
+    declared = {}
+    for ir in irs:
+        funcs = {n: s for n, s in ir_functions(ir.read_text(errors='replace'), 'declare').items()
+                 if not n.startswith(('llvm.', '__', '_Z'))}
+        if not funcs:
+            sys.exit(f'missing_natives: {ir} declares no function: it is not the IR of a compiled Kotlin program')
+        for name, sig in funcs.items():
+            declared.setdefault(name, (sig, ir))
+    return declared
+
+
 def fmt(sig):
     ret_ext, ret, params = sig
     return f'{(ret_ext + " ") if ret_ext else ""}{ret} ({", ".join((e + " " if e else "") + t for e, t in params)})'
@@ -152,6 +167,7 @@ def main():
         irs += [Path(h) for h in hits]
     if [a for a in args if a.startswith('-') and a not in ('-v', '--check', '--ir')] or (irs and '--ir' not in args):
         sys.exit(__doc__)
+    declared = declared_functions(irs)
     natives = stdlib_natives()
     with tempfile.TemporaryDirectory() as tmp:
         defined = runtime_functions(tmp)
@@ -180,11 +196,6 @@ def main():
     bad = len(groups['missing'])
     if irs:
         libs = library_symbols()
-        declared = {}
-        for ir in irs:
-            for name, sig in ir_functions(ir.read_text(errors='replace'), 'declare').items():
-                declared.setdefault(name, (sig, ir))
-        declared = {n: v for n, v in declared.items() if not n.startswith(('llvm.', '__', '_Z'))}   # C++ ABI
         mismatch = [(n, s, ir) for n, (s, ir) in sorted(declared.items()) if n in defined and defined[n][0] != s]
         absent = [n for n in sorted(declared) if n not in defined and n not in libs and n not in natives and
                   not OBJC_NAME.search(n)]

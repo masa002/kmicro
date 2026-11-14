@@ -254,6 +254,15 @@ class RetargetTest(unittest.TestCase):
             self.assertIn(message, r.stderr)
             self.assertNotIn('Traceback', r.stderr)
 
+    def test_input_that_is_not_ir(self):
+        (OUT / 'notes.ll').write_text('this is not LLVM IR\n', encoding='utf-8')
+        (OUT / 'empty.ll').write_text('', encoding='utf-8')
+        (OUT / 'bitcode.ll').write_bytes(b'BC\xc0\xde\x35\x14\x00\x00')
+        for src in ('notes.ll', 'empty.ll', 'bitcode.ll'):
+            r, _ = self.retarget('--no-tls', src=src)
+            self.assertEqual(r.returncode, 1, src)
+            self.assertEqual(r.stderr, f'retarget: {OUT / src} is not textual LLVM IR (no target datalayout)\n')
+
     def test_random_seed_from_hook(self):
         _, text = self.retarget()
         self.assertIn('call i64 @kmicro_random_seed()', body(text, 'kfun:kotlin.random.NativeRandom.<init>#internal'))
