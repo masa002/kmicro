@@ -1,7 +1,7 @@
 """Build a QEMU test image: Kotlin LTO object(s) + the kmicro runtime + C code, for an emulated Cortex-M.
 
 usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--cpu CORE] [--target NAME] [--large]
-                              [--run] [--timeout SECONDS]
+                              [--run] [--icount] [--timeout SECONDS]
 
     FILE       C (.c), C++ (.cpp) and assembly (.s, .S) files, compiled with the runtime's flags, and objects (.o, .a)
                linked as they are: the k.o (and bridges.o) that tools/kbuild.py prints. Several C files are fine, e.g.
@@ -21,6 +21,9 @@ usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--
                64 KB of RAM: one that does not fit fails to link, and the stack ends where it would end on that chip.
                With --large the program gets the memory of the STM32L475: 1 MB of flash and 96 KB of RAM
     --run      run the image on QEMU and exit with the program's exit code (124 when it runs out of time)
+    --icount   with --run: QEMU's clock is the number of instructions the program has run, one nanosecond each
+               (-icount shift=0,sleep=off), not the host's clock. A timer interrupt then lands on the same
+               instruction in every run and on every host, and a wait for one (WFI) takes no time
     --timeout  seconds a --run may take (default 120)
 
 The runtime is compiled once per set of -D values (build/qbuild/) and recompiled when one of its files changes.
@@ -210,6 +213,7 @@ def parse_args():
     ap.add_argument('--target', choices=sorted(TARGETS), help=hide)
     ap.add_argument('--large', action='store_true', help=hide)
     ap.add_argument('--run', action='store_true', help=hide)
+    ap.add_argument('--icount', action='store_true', help=hide)
     ap.add_argument('--timeout', type=float, default=120, help=hide)
     return ap.parse_intermixed_args()
 
@@ -271,7 +275,8 @@ def main():
     if args.run:
         # in the image's folder, as size_line runs binutils
         qemu = [paths.qemu_system_arm().resolve(), '-machine', machine, '-nographic', '-semihosting-config',
-                'enable=on,target=native', '-kernel', out.name, '-serial', 'none', '-monitor', 'none']
+                'enable=on,target=native', '-kernel', out.name, '-serial', 'none', '-monitor', 'none',
+                *(['-icount', 'shift=0,sleep=off'] if args.icount else [])]
         try:
             r = subprocess.run([str(a) for a in qemu], capture_output=True, timeout=args.timeout, cwd=out.parent)
         except subprocess.TimeoutExpired as e:

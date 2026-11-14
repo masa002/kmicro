@@ -35,7 +35,7 @@ them from the command line, and [tools/qbuild.py](../tools/qbuild.py) links the 
 
 ```
 python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--target l475|an386] [--large] [--run]
-                       [--timeout S]
+                       [--icount] [--timeout S]
 ```
 
 The files are any number of C, C++ and assembly files and the objects kbuild printed (`k.o`, and `bridges.o` when
@@ -43,8 +43,10 @@ the Kotlin code calls C). `-D` applies to every C file and to the runtime, which
 values, and `-I` to every C file; `runtime/` and `support/` are always on the include path. `--target an386` links
 for QEMU's `mps2-an386` (4 MB of code, 16 MB of RAM) instead of the STM32L475, for a program that needs more memory
 than a microcontroller has. `--run` runs the image and exits with its exit code, 124 after `--timeout` seconds (120
-by default). qbuild prints a size line, `qbuild: app.elf  text N  data N  bss N  stack N`, where the stack is the
-RAM above `.bss`, without the stack guard on a target that has one (`qemu-l475`); `bss` leaves the guard out too.
+by default). With `--icount` the emulator's clock is the number of instructions the program has run, one nanosecond
+each, instead of the host's clock: a timer interrupt then lands on the same instruction in every run. qbuild prints
+a size line, `qbuild: app.elf  text N  data N  bss N  stack N`, where the stack is the RAM above `.bss`, without the
+stack guard on a target that has one (`qemu-l475`); `bss` leaves the guard out too.
 
 The STM32L475 has 1 MB of flash and 96 KB of RAM, but qbuild links a program into the memory of the STM32L431,
 256 KB of flash and 64 KB of RAM: a program that does not fit fails to link, and one that needs more stack than
@@ -416,7 +418,9 @@ call.
 - [tests/run_all.py](../tests/run_all.py) builds every test program and the examples, runs them on QEMU
   (`b-l475e-iot01a`, an emulated STM32L475; one test on `mps2-an386`) and compares each program's whole output with
   its file in `tests/expected/`. It also fails a program that does not fit the STM32L431 unless the test is marked
-  large, and runs the tools (isr_check, symbolize, frames, gen_regs, missing_natives) on some of them.
+  large, and runs the tools (isr_check, symbolize, frames, gen_regs, missing_natives) on some of them. The programs
+  run with `qbuild --icount`, so an interrupt test takes its ticks at the same instructions in every run; the `irq`
+  example runs on the host's clock, as a user runs it.
 - [tools/difftest.py](../tools/difftest.py) runs the programs in `tests/diff/` on the stock Kotlin/Native runtime
   of the host and on kmicro in QEMU, and requires byte-identical output: strings including emoji, collections,
   exceptions, initialisers, number formatting and parsing, sequences. The kmicro side is built as kbuild builds it,

@@ -111,8 +111,9 @@ int main(void)
 #endif
     systick(0);
     kmicro_stats(&a);
-    kmicro_puts(s_ticks > 100 ? "swapped in many handler calls" : "too few handler calls");
-    kmicro_puts(", collections ");
+    kmicro_puts("swapped in ");
+    kmicro_put_int(s_ticks);
+    kmicro_puts(" handler calls, collections ");
     kmicro_put_int((int32_t)a.gc_count);
     kmicro_puts(", bad reads ");
     kmicro_put_int(bad);
