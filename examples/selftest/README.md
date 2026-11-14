@@ -10,7 +10,7 @@ python tools/kbuild.py build/selftest examples/selftest/selftest.kt --c-api exam
 python tools/qbuild.py build/selftest/selftest.elf examples/selftest/main.c build/selftest/k.o --run
 ```
 
-After the lines of the build, ending with `qbuild: selftest.elf  text 131828  data 88  bss 18856  stack 79728`, the
+After the lines of the build, ending with `qbuild: selftest.elf  text 132956  data 88  bss 18800  stack 73728`, the
 program prints this, and qbuild ends with `qemu: exit 0`:
 
 ```
@@ -60,7 +60,7 @@ and the timing. `stm32l431.ld` is its linker script.
 python examples/selftest/stm32l431/build.py
 ```
 
-It prints what the image takes, `selftest.elf: flash 133420 B of 256 KB, RAM 18316 B of 64 KB (the rest is stack)`,
+It prints what the image takes, `selftest.elf: flash 134660 B of 256 KB, RAM 18628 B of 64 KB (the rest is stack)`,
 and the path of the .hex file. Write `build/stm32l431/selftest.hex` to the board, open a terminal on USART1 (TX on
 PA9) at 115200 8N1 and reset the board. Each check line then ends with its time in microseconds. The heap statistics
 are the same as on the emulator: the collector does the same work on both. [docs/porting.md](../../docs/porting.md)

@@ -3,6 +3,18 @@
 kmicro has no release schedule. This page says what kmicro supports, where its known gaps are, and where the open
 work is tracked. It names no dates.
 
+## Releases and versions
+
+Releases are tagged `vMAJOR.MINOR.PATCH` and listed in [CHANGELOG.md](../CHANGELOG.md) with what they contain and
+their known issues. A release is cut when a set of fixes or a feature is ready and every suite passes on `main`.
+
+- While the major version is 0, a minor release (0.2.0) may change the board contract in
+  [runtime/kmicro.h](../runtime/kmicro.h), the command line of a tool, or the supported Kotlin/Native version. The
+  changelog says what a board or a build script has to change.
+- A patch release (0.1.1) fixes problems and changes none of those.
+- Version 1.0 is the point from which the board contract and the command lines stay compatible within a major
+  version.
+
 ## Compiler versions
 
 kmicro reads the IR of one compiler, Kotlin/Native 2.4.21, and is tested only with it; `python toolchain/paths.py`

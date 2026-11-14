@@ -241,15 +241,15 @@ python tools/symbolize.py build/exc/exc.elf exc.log
 symbolize.py prints the log with the names added:
 
 ```
-qbuild: exc.elf  text 53312  data 80  bss 10672  stack 88012
+qbuild: exc.elf  text 54332  data 80  bss 10532  stack 81920
 exception checks failed mask = 0  OK   (gcs=6)
 now an uncaught one (expected to stop with a report):
 Uncaught Kotlin exception: PanelError: panel error -5
-    at 0x08009aa0  PanelError#<init>(kotlin.Int){}+0x1e4
-    at 0x08002822  run_main+0x75e
+    at 0x08009dfc  PanelError#<init>(kotlin.Int){}+0x1e4
+    at 0x08002978  run_main+0x8b4
         run_main (main.c:21)
     at 0x08001942  start_c+0xaa
-        start_c (start.c:68)
+        start_c (start.c:71)
 kmicro panic: uncaught Kotlin exception
 qemu: exit 98
 ```
@@ -271,26 +271,26 @@ python tools/symbolize.py build/exc/exc.elf exc.log
 symbolize.py prints the log with the names added:
 
 ```
-qbuild: exc.elf  text 55260  data 80  bss 10672  stack 88012
+qbuild: exc.elf  text 56444  data 80  bss 10532  stack 81920
 exception checks failed mask = 0  OK   (gcs=6)
 now an uncaught one (expected to stop with a report):
 Uncaught Kotlin exception: PanelError: panel error -5
-    at 0x0800a0c8  PanelError#<init>(kotlin.Int){}+0x1c0
-    at 0x08002854  run_main+0x790
+    at 0x0800a4cc  PanelError#<init>(kotlin.Int){}+0x1c0
+    at 0x08002a48  run_main+0x984
         #check(kotlin.Int){} (exceptions.kt:6) [inlined]
         #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exceptions.kt:7) [inlined]
         #uncaught(kotlin.Int){}kotlin.Int (exceptions.kt:40) [inlined]
         main (main.c:21) [inlined]
-        run_main (start.c:58)
+        run_main (start.c:61)
     at 0x08001942  start_c+0xaa
-        start_c (start.c:68)
+        start_c (start.c:71)
 kmicro panic: uncaught Kotlin exception
 qemu: exit 98
 ```
 
 Under each frame, the functions inlined at that call are listed innermost first, each with its file and line,
 then the function that holds them (`arm-none-eabi-addr2line -i`). kotlinc-native warns
-`unsupported combination of flags: -opt and -g` and builds the program, here 1,948 bytes larger. The C files need
+`unsupported combination of flags: -opt and -g` and builds the program, here 2,112 bytes larger. The C files need
 `-g` too, which qbuild gives them and which takes no flash: without it, the Kotlin functions that LTO inlined into a
 C function (here into `run_main`) are not listed. On a board, compile the C files with `-g`
 ([porting.md](porting.md#compiling-the-runtime)), save what the UART printed and pass that file the same way; the
@@ -300,16 +300,16 @@ symbolize.py also reads the log on stdin (`python tools/symbolize.py build/exc/e
 addresses given as arguments:
 
 ```
-python tools/symbolize.py build/exc/exc.elf 0x08002854
+python tools/symbolize.py build/exc/exc.elf 0x08002a48
 ```
 
 ```
-0x08002854  run_main+0x790
+0x08002a48  run_main+0x984
         #check(kotlin.Int){} (exceptions.kt:6) [inlined]
         #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exceptions.kt:7) [inlined]
         #uncaught(kotlin.Int){}kotlin.Int (exceptions.kt:40) [inlined]
         main (main.c:21) [inlined]
-        run_main (start.c:58)
+        run_main (start.c:61)
 ```
 
 It reads the log as UTF-8: in Windows PowerShell, save the log with `| Out-File -Encoding utf8 exc.log` rather than
@@ -341,19 +341,19 @@ python tools/symbolize.py build/trace/trace.elf trace.log
 symbolize.py prints the log with the names added:
 
 ```
-qbuild: trace.elf  text 52156  data 80  bss 18864  stack 79820
+qbuild: trace.elf  text 52692  data 80  bss 18724  stack 73728
 Uncaught Kotlin exception: kotlin.IllegalStateException: boot failed at sensor 3
-    at 0x080098ac  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x90
-    at 0x0800984c  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
-    at 0x0800984c  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
+    at 0x08009a2c  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x90
+    at 0x080099cc  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
+    at 0x080099cc  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
     at 0x08002128  run_main+0x64
         run_main (trace.kt:10)
     at 0x08001942  start_c+0xaa
-        start_c (start.c:68)
+        start_c (start.c:71)
 Caused by: SensorMissing: sensor 3 not answering
-    at 0x08009806  SensorMissing#<init>(kotlin.Int){}+0x1ea
-    at 0x080098a2  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x86
-    at 0x0800984c  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
+    at 0x08009986  SensorMissing#<init>(kotlin.Int){}+0x1ea
+    at 0x08009a22  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x86
+    at 0x080099cc  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
     ... and 3 more common stack frames skipped
 kmicro panic: uncaught Kotlin exception
 qemu: exit 98
@@ -390,9 +390,9 @@ python tools/symbolize.py build/fault/fault.elf fault.log
 symbolize.py prints the log with the names added:
 
 ```
-qbuild: fault.elf  text 47780  data 80  bss 18864  stack 79820
-kmicro fault: null pointer access (MemManage) at 0x08009032  Sub#describe(){}kotlin.String+0xfe
-    sp 0x20017ec8  lr 0x20000820  cfsr 0x00000082  hfsr 0x00000000  mmfar 0x0000000c  bfar 0x00000000
+qbuild: fault.elf  text 48316  data 80  bss 18724  stack 73728
+kmicro fault: null pointer access (MemManage) at 0x080091b2  Sub#describe(){}kotlin.String+0xfe
+    sp 0x20017ec8  lr 0x20000960  cfsr 0x00000082  hfsr 0x00000000  mmfar 0x0000000c  bfar 0x00000000
 qemu: exit 99
 ```
 

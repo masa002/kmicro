@@ -31,7 +31,7 @@ Three suites, all on the host and QEMU; no hardware is needed.
 
   ```
   $ python tests/run_all.py selftest
-  PASS  selftest                     flash 128.8 KB  RAM 18.5 KB, isr_check, isr_check_boxing
+  PASS  selftest                     flash 129.9 KB  RAM 18.4 KB, isr_check, isr_check_boxing
   1 passed, 0 failed
   ```
 
@@ -45,7 +45,7 @@ Three suites, all on the host and QEMU; no hardware is needed.
   $ python tools/difftest.py d_strings
   kotlinc-native: compiling 1 file...
   single-core: 126 init-state loads made plain
-  SAME  d_strings  (1644 bytes, 30 lines, qemu exit 0)  flash 163.1 KB  RAM 18.5 KB  heap 16384: peak 16360 live 376
+  SAME  d_strings  (1644 bytes, 30 lines, qemu exit 0)  flash 164.3 KB  RAM 18.5 KB  heap 16384: peak 16360 live 376
   1 same, 0 different
   ```
 
