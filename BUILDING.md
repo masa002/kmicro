@@ -57,14 +57,14 @@ else the newest, with a warning.
 
 ## Hosts
 
-- **Windows 10/11 x64:** tested. kmicro starts Kotlin/Native with Java directly, with the options of its
-  `run_konan.bat`, and hands `kotlinc-native` its arguments in a file; no `.bat` launcher and no `cmd.exe` is
-  involved. Paths with spaces, `&`, `%` and Japanese folder names work. Java reads its command line in the ANSI
-  code page, so kmicro passes a path with a character outside it (an accented letter on Japanese Windows) relative
-  to the current folder or by its 8.3 short name. A cinterop `.def` file or `-I` folder that has neither is refused:
-  run kbuild from inside that folder, or move it. The xPack tools (QEMU, `size`, `nm`, `objdump`) open files through
-  the ANSI code page too: kmicro runs them in the file's folder with its bare name, so a folder name outside the
-  code page works, but such a file name does not.
+- **Windows 10/11 x64:** tested, also in CI (windows-latest). kmicro starts Kotlin/Native with Java directly, with the
+  options of its `run_konan.bat`, and hands `kotlinc-native` its arguments in a file; no `.bat` launcher and no
+  `cmd.exe` is involved. Paths with spaces, `&`, `%` and Japanese folder names work. Java reads its command line in
+  the ANSI code page, so kmicro passes a path with a character outside it (an accented letter on Japanese Windows)
+  relative to the current folder or by its 8.3 short name. A cinterop `.def` file or `-I` folder that has neither is
+  refused: run kbuild from inside that folder, or move it. The xPack tools (QEMU, `size`, `nm`, `objdump`) open files
+  through the ANSI code page too: kmicro runs them in the file's folder with its bare name, so a folder name outside
+  the code page works, but such a file name does not.
 - **Linux x64:** tested in CI (ubuntu-latest), with the toolchains of versions.txt. `paths.py` runs the shell
   launchers of Kotlin/Native.
 - **macOS:** untested. `paths.py` runs the shell launchers and looks for the dev build of the LLVM.
