@@ -148,7 +148,7 @@ class IsrCheck(unittest.TestCase):
                 return 'Idx Name          Size\n  0 .vectors      00000040\n  1 .text         00000400\n'
             if args == ('-s', '-j', '.vectors'):
                 return vector_table(table(0x08000280)).replace('.isr_vector', '.vectors')
-            return disassembly(FUNCS) if args[0] == '-d' else self.fail(args)
+            return disassembly(FUNCS + [(0x08000400, 'HardFault_Handler', [])]) if args[0] == '-d' else self.fail(args)
 
         def run(*argv):
             out = io.StringIO()
