@@ -18,9 +18,11 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-DEF_RE = re.compile(r'^define\s+(?:[^@]*?)@("?[^"(\s]+"?)\(')
-DECL_RE = re.compile(r'^declare\s+(?:[^@]*?)@("?[^"(\s]+"?)\(')
-GLOBAL_RE = re.compile(r'^@("?[^"=\s]+"?)\s*=\s*(.*)$')
+# A Kotlin name is quoted and holds its parameter list: @"kfun:app#area(kotlin.Int){}kotlin.Int"
+NAME = r'@(?:"([^"]+)"|([^"(=\s]+))'
+DEF_RE = re.compile(r'^define\s+(?:[^@]*?)' + NAME + r'\(')
+DECL_RE = re.compile(r'^declare\s+(?:[^@]*?)' + NAME + r'\(')
+GLOBAL_RE = re.compile(r'^' + NAME + r'\s*=\s*(.*)$')
 ATTR_RE = re.compile(r'^attributes #(\d+) = \{(.*)\}')
 LANDINGPAD_RE = re.compile(r'^(?:%\S+ = )?landingpad\b')
 
@@ -46,7 +48,7 @@ def main():
         for line in f:
             if line.startswith('define '):
                 m = DEF_RE.match(line)
-                cur = m.group(1) if m else '?'
+                cur = m.group(1) or m.group(2) if m else '?'
                 defs.append(cur)
                 if 'personality' in line:
                     eh['personality'] += 1
@@ -56,7 +58,7 @@ def main():
                 continue
             if cur is not None:
                 s = line.strip()
-                if s and not s.endswith(':') and not s.startswith(';'):
+                if s and not s.endswith(':') and not s.startswith((';', '#dbg_')):     # a debug record is no code
                     sizes[cur] += 1
                 if ' invoke ' in s or s.startswith('invoke ') or '= invoke ' in s:
                     eh['invoke'] += 1
@@ -67,11 +69,11 @@ def main():
                 continue
             if line.startswith('declare '):
                 m = DECL_RE.match(line)
-                decls.append(m.group(1) if m else line.strip())
+                decls.append(m.group(1) or m.group(2) if m else line.strip())
                 continue
             m = GLOBAL_RE.match(line)
             if m:
-                name, rest = m.groups()
+                name, rest = m.group(1) or m.group(2), m.group(3)
                 if 'thread_local' in rest:
                     tls.append(name)
                 if rest.startswith('external ') or ' external ' in rest.split('=')[0]:
@@ -87,7 +89,7 @@ def main():
                   if '"target-cpu"' in a)
     feats = Counter(re.search(r'"target-features"="([^"]*)"', a).group(1)[:80] for a in attrs.values()
                     if '"target-features"' in a)
-    intrinsics = [d for d in decls if d.startswith('llvm.') or d.startswith('"llvm.')]
+    intrinsics = [d for d in decls if d.startswith('llvm.')]
     runtime = sorted(d for d in decls if d not in intrinsics)
     print(f'file: {path}')
     print(f'defined functions: {len(defs)}   instructions: {sum(sizes.values())}')
