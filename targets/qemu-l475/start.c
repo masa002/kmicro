@@ -54,7 +54,7 @@ __attribute__((naked)) void Reset_Handler(void)
 
 /* Two MPU guards with no access turn silent memory corruption into a fault report. PRIVDEFENA keeps the default
  * memory map everywhere else.
- * Guard 0, address 0: on the M4 that is an alias of flash, so reading a null object or a null C pointer would
+ * Guard 0, address 0: on an STM32 that is an alias of flash, so reading a null object or a null C pointer would
  * return the vector table instead of faulting. VTOR points at the flash copy, so exceptions never fetch through it.
  * Guard 1: the 4 KB between .bss and the stack (l475.ld). An overflowing stack faults there before it writes
  * .bss, which holds the Kotlin heap and the runtime's globals. A function whose frame is larger than the guard could

@@ -311,8 +311,17 @@ purpose. For a board, replace `start.c` and `l475.ld` with its own and write the
   [how-it-works.md](how-it-works.md#reading-a-stack-trace) shows a report and how `tools/symbolize.py` names its
   address.
 - **The MPU guards.** VTOR points at the vector table in flash. Region 0 covers the first 64 KB of the address space
-  with no access and execute-never: on the Cortex-M4 address 0 is an alias of flash, so a read through a null object
-  or a null C pointer would otherwise return the vector table. Region 1 is a 4 KB, 4 KB-aligned no-access guard
+  with no access and execute-never: on an STM32 address 0 is an alias of flash, so a read through a null object
+  or a null C pointer would otherwise return the vector table. This null guard needs those 64 KB to hold nothing
+  that the program reads or runs. On an STM32 that is so once VTOR points at 0x08000000. On a chip whose flash
+  really begins at address 0 (many parts of other makers) the vector table and the start code lie inside the
+  region: the board then faults at the instruction after the MPU is switched on, at every boot and before `main`,
+  and the report names a null pointer. For such a chip use the layout of
+  [mps2.ld](../targets/qemu-l475/mps2.ld), which the QEMU machines with code at 0 use: the first 64 KB hold only
+  the two words the core reads at reset (`.boot`: the stack pointer and `Reset_Handler`), and the vector table
+  that VTOR points at and all code follow at 0x10000. To leave less flash empty, make both smaller together,
+  `NULL_GUARD_LOG2` in the start code and the address of `.isr_vector` in the script; a null access is then caught
+  only up to that offset. Region 1 is a 4 KB, 4 KB-aligned no-access guard
   between `.bss` and the stack (`_sguard` .. `_eguard` in `l475.ld`): an overflowing stack faults there before it
   writes the heap. Make the guard larger than the largest frame of the image (`python tools/frames.py app.elf`):
   a function with a larger frame can move the stack pointer past a smaller guard without writing into it, and the
