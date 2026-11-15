@@ -50,6 +50,18 @@ class VersionChoice(unittest.TestCase):
         self.install('xpack-qemu-arm-9.9.0-1', 'xpack-qemu-arm-10.1.0-1')
         self.assertEqual(self.pick(), 'xpack-qemu-arm-10.1.0-1')
 
+    def test_archive_beside_the_unpacked_folder(self):
+        self.install('xpack-qemu-arm-9.2.4-1')
+        for archive in ('xpack-qemu-arm-9.2.4-1-win32-x64.zip', 'xpack-qemu-arm-9.2.4-1-linux-x64.tar.gz',
+                        'xpack-qemu-arm-10.1.0-1-darwin-arm64.tar.gz'):
+            (self.home / 'toolchains' / archive).write_bytes(b'')
+        self.assertEqual(self.pick(), 'xpack-qemu-arm-9.2.4-1')
+
+    def test_archive_alone_is_no_install(self):
+        (self.home / 'toolchains').mkdir()
+        (self.home / 'toolchains/xpack-qemu-arm-9.2.4-1-win32-x64.zip').write_bytes(b'')
+        self.assertIsNone(paths._find(paths.qemu.env, paths.qemu.patterns, paths.qemu.what, paths.qemu.tool))
+
     def test_version_key(self):
         names = ['llvm-21-x86_64-windows-essentials-99', 'llvm-21-x86_64-windows-essentials-150',
                  'llvm-19-x86_64-windows-essentials-200']

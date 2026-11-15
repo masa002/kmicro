@@ -158,7 +158,8 @@ def _find(env, patterns, what, tool=None):
             sys.exit(f'kmicro: {env}={v} does not exist ({what})')
         return p
     for root, pat in _places(patterns):
-        hits = sorted(root.glob(pat), key=version_key)
+        # folders only: the archive a tool came in may lie beside its folder (xpack-qemu-arm-9.2.4-1-win32-x64.zip)
+        hits = sorted((h for h in root.glob(pat) if h.is_dir()), key=version_key)
         if hits:
             tested = [h for h in hits if tool and _tested(tool, h)]
             return (tested or hits)[-1]
