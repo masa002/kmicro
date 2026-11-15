@@ -142,6 +142,32 @@ typedef struct
                           '    const val DIER: UInt = 0x4000000Eu',
                           '    const val CNT: UInt = 0x40000010u'])
 
+    def test_a_struct_of_small_registers_inside_a_struct(self):
+        r, lines = self.gen('--all', *self.more("""typedef struct { __IO uint8_t CTRL, STAT, DATA; } CH_TypeDef;
+typedef struct { __IO uint16_t CR, SR, DR; } W_TypeDef;
+typedef struct {
+  CH_TypeDef CH[2];           /* 0x00: 3 bytes each, no padding */
+  __IO uint8_t  MODE;         /* 0x06 */
+  __IO uint8_t  IRQEN;        /* 0x07 */
+  __IO uint32_t BAUD;         /* 0x08 */
+  W_TypeDef W;                /* 0x0C: 6 bytes, aligned to 2 */
+  __IO uint16_t TAIL;         /* 0x12 */
+} UARTX_TypeDef;
+typedef struct { UARTX_TypeDef U; __IO uint8_t LAST; } PAIR_TypeDef;      /* U: 0x14 bytes, aligned to 4 */
+#define UARTX     ((UARTX_TypeDef *) PERIPH_BASE)
+#define PAIR      ((PAIR_TypeDef *) PERIPH_BASE)
+"""))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(lines[lines.index('internal object UARTX {'):][1:8],
+                         ['    const val BASE: UInt = 0x40000000u',
+                          '    const val CH: UInt = 0x40000000u   // [2] x 3 B',
+                          '    const val MODE: UInt = 0x40000006u',
+                          '    const val IRQEN: UInt = 0x40000007u',
+                          '    const val BAUD: UInt = 0x40000008u',
+                          '    const val W: UInt = 0x4000000Cu',
+                          '    const val TAIL: UInt = 0x40000012u'])
+        self.assertIn('    const val LAST: UInt = 0x40000014u', lines)
+
     def test_c_integer_constants(self):
         r, lines = self.gen('--all', *self.more('#define MODE_MASK  017\n#define HALF_RANGE (0x100 / 2)\n'
                                                 '#define LOW_BITS   (0x107 % 8)\n#define HSE_VALUE  8e6\n'

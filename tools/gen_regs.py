@@ -27,18 +27,23 @@ def strip_comments(s):
 
 
 def layout(body, defines, types):
-    """The body of a struct -> ([(field, offset, size, count)], the struct's size). Raises ValueError for what is no
-    plain register layout: a union, a bit field, a pointer, an unknown type, an array size that is no constant."""
-    fields, off = [], 0
+    """The body of a struct -> ([(field, offset, size, count)], the struct's size, its alignment), laid out as the C
+    compiler does: a member at a multiple of its alignment, the struct as aligned as its most aligned member and its
+    size a multiple of that. Raises ValueError for what is no plain register layout: a union, a bit field, a pointer,
+    an unknown type, an array size that is no constant."""
+    fields, off, most = [], 0, 1
     for decl in body.split(';'):
         decl = re.sub(r'\b(__IO|__I|__O|__IM|__OM|__IOM|volatile|const)\b', ' ', decl).strip()
         if not decl:
             continue
         d = re.match(r'(\w+)\s+(.+)$', decl, re.S)
-        size = d and (SIZES.get(d.group(1)) or (types[d.group(1)][1] if d.group(1) in types else None))
-        if not size:
+        if d and d.group(1) in SIZES:
+            size = align = SIZES[d.group(1)]
+        elif d and d.group(1) in types:                 # a struct of registers: 3 bytes stay 3 bytes
+            size, align = types[d.group(1)][1:]
+        else:
             raise ValueError(decl)
-        align = min(size, 4)
+        most = max(most, align)
         for item in d.group(2).split(','):              # `uint32_t CR1, CR2;` declares two registers
             f = re.fullmatch(r'\s*(\w+)\s*(?:\[([^\]]+)\])?\s*', item)
             if not f:
@@ -47,7 +52,7 @@ def layout(body, defines, types):
             count = evaluate(f.group(2), defines) if f.group(2) else 1
             fields.append((f.group(1), off, size, count))
             off += size * count
-    return fields, (off + 3) // 4 * 4
+    return fields, (off + most - 1) // most * most, most
 
 
 def parse(text, header, defines, types, instances, irqs, where):
