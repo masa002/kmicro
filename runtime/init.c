@@ -56,7 +56,9 @@ KM_NOTHROW ObjHeader **LookupTLS(void **key, int index)
                 kmicro_panic("TLS index out of range");
             return &kmicro_tls_slots[s_tls[i].offset + index];
         }
-    kmicro_panic("unknown TLS key");
+    /* No record: the module initialisers that add them run in kmicro_init(). Other Kotlin code works without it
+     * (globals initialise at their first use), so this is where a C main that forgot the call is found out. */
+    kmicro_panic(s_initialized ? "unknown TLS key" : "kmicro_init() was not called before the first Kotlin call");
 }
 
 /* ---- safepoints: one thread, nothing to stop for. Empty, so full LTO removes the calls. ---- */
