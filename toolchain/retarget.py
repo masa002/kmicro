@@ -130,7 +130,7 @@ if '--size' in args:  # optimize for size: LLVM's minsize/optsize on every Kotli
     # "nooutline" with them: minsize turns on the machine outliner at the LTO link, and on a Thumb-2 core the unwind
     # entry LLVM writes for an outlined sequence that holds a call pops 4 bytes of its 8-byte frame. An exception
     # thrown below that call is then unwound with a wrong stack pointer and no catch is found. The attribute is in
-    # the object, so a board link needs no option. (About 1 % of the text; nothing is outlined on a Thumb-1 core.)
+    # the object, so a board link needs no option. (1 to 3 % of the text; nothing is outlined on a Thumb-1 core.)
     # --hot REGEX: functions whose name matches keep full speed optimisation (their attribute group is cloned
     # without minsize/optsize), e.g. code that runs in a real-time interrupt.
     hot = None

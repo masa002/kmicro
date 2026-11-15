@@ -24,17 +24,17 @@ compared with the same program without it.
 
 | Feature | Flash (`--size`) | Heap kept | Heap peak | Stack |
 |---|---|---|---|---|
-| one `Regex`: `Regex("[a-z]+[0-9]").containsMatchIn("abc1")` | 315.8 KB (191.7 KB) | 11,768 B | 13,360 B | 4,684 B |
-| three small `Regex` patterns | 317.0 KB (192.1 KB) | 12,080 B | 16,344 B: out of memory on the default 16 KB heap, runs at 20 KB | 4,748 B |
-| `"3.14".toDouble()` | 48.7 KB (42.5 KB), and 1 KB of RAM for the native-memory arena | 48 B | 136 B | 1,348 B |
-| `"Grüße".uppercase()`, `"ÉCOLE".lowercase()`; ASCII text takes the same flash | 44.0 KB (33.9 KB) | 0 B | 56 B: the result strings | 444 B |
+| one `Regex`: `Regex("[a-z]+[0-9]").containsMatchIn("abc1")` | 315.8 KB (198.5 KB) | 11,768 B | 13,360 B | 4,684 B |
+| three small `Regex` patterns | 317.0 KB (198.9 KB) | 12,080 B | 16,344 B: out of memory on the default 16 KB heap, runs at 20 KB | 4,748 B |
+| `"3.14".toDouble()` | 48.6 KB (42.6 KB), and 1 KB of RAM for the native-memory arena | 48 B | 136 B | 1,348 B |
+| `"Grüße".uppercase()`, `"ÉCOLE".lowercase()`; ASCII text takes the same flash | 44.0 KB (34.3 KB) | 0 B | 56 B: the result strings | 444 B |
 | `Char.isLetter()` on `'é'` and `'ж'` | 3.6 KB (3.4 KB) | 0 B | 0 B | 148 B |
-| `Char.category` | 31.0 KB (23.5 KB) | 984 B: the 30 `CharCategory` entries | 984 B | 844 B |
+| `Char.category` | 31.0 KB (23.9 KB) | 984 B: the 30 `CharCategory` entries | 984 B | 844 B |
 | `val buf = ByteArray(4096)` in a function | 0.4 KB (0.1 KB) | 0 B | 0 B | 4,148 B |
 | one `throw`, caught in the same function | 0.5 KB (0.3 KB) | 0 B | 112 B: the exception and its stack trace | 1,056 B |
 
 - **Flash** is the growth of the image, without and with `kbuild.py --size`. Parts are shared: the features do not
-  add up. A program that uses one `Regex` is 366 KB of flash (235 KB with `--size`), against the STM32L431's 256 KB.
+  add up. A program that uses one `Regex` is 366 KB of flash (242 KB with `--size`), against the STM32L431's 256 KB.
 - **Heap kept** is still live after the call and a full collection: tables the standard library keeps for good.
 - **Heap peak** is the most live data during the call, measured with `-D KM_GC_STRESS=1` (a collection before every
   allocation). A heap needs more than that, because free memory comes in pieces: three `Regex` patterns peak at
