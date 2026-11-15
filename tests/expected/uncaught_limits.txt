@@ -1,0 +1,8 @@
+Uncaught Kotlin exception: kotlin.RuntimeException: boot failed
+    at 0x{X}
+    Suppressed: kotlin.IllegalArgumentException: first suppressed
+        at 0x{X}
+    Caused by: kotlin.ArithmeticException: its cause
+        at 0x{X}
+    Suppressed: ...
+kmicro panic: uncaught Kotlin exception

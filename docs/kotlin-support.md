@@ -58,9 +58,9 @@ from the Cortex-M0 to the Cortex-M85, and what was checked on each.
 | standard exception messages (div by zero, index, cast, NumberFormat, lateinit, require/check) | works | byte-identical |
 | cause chains, addSuppressed, `use`, Result/runCatching | works | |
 | exceptions from init blocks, lazy, toString, sequences, file initializers | works | |
-| stack trace of a single exception (getStackTrace, stackTraceToString) | partly | addresses, at most 12 frames; `tools/symbolize.py` names them (with file:line under `-g`); LTO folds inlined functions into their callers |
+| stack trace of a single exception (getStackTrace, stackTraceToString) | partly | addresses, at most 12 frames (`KM_TRACE_MAX`); `tools/symbolize.py` names them (with file:line under `-g`); LTO folds inlined functions into their callers |
 | printStackTrace()/stackTraceToString() with cause or suppressed | works | |
-| uncaught exception report | works | what `printStackTrace()` prints: `toString()` of each exception, its frames (addresses, as above), its suppressed exceptions and every cause (`d_uncaught_report`); at most 16 exceptions. A class's own `toString()` is Kotlin code that may allocate: on a full heap the report then ends in the out-of-memory report, and inside an interrupt handler it is not called (the line is the class and the message) |
+| uncaught exception report | works | what `printStackTrace()` prints: `toString()` of each exception, its frames (addresses, as above), its suppressed exceptions and every cause (`d_uncaught_report`); at most 16 exceptions (`KM_REPORT_MAX`). A class's own `toString()` is Kotlin code that may allocate: on a full heap the report then ends in the out-of-memory report, and inside an interrupt handler it is not called (the line is the class and the message) |
 | setUnhandledExceptionHook | works | not for an exception that escapes an interrupt handler; the C hook `kmicro_on_uncaught` runs in every case |
 | processUnhandledException | works | |
 | terminateWithUnhandledException | works | |

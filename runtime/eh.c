@@ -449,7 +449,9 @@ KM_REPORT static void put_frames(const ObjHeader *trace, const ObjHeader *top, i
  * exceptions it suppressed with their own causes. Written in C, it links none of the stdlib's printing code (about
  * 30 KB) and needs no heap unless a class has its own toString(), so it also works inside an interrupt handler and,
  * for the standard exceptions, on a full heap. */
-#define KM_REPORT_MAX 16                             /* exceptions one report prints */
+#ifndef KM_REPORT_MAX
+#define KM_REPORT_MAX 16                             /* exceptions one report prints (-D KM_REPORT_MAX=...) */
+#endif
 
 typedef struct {
     const ObjHeader *seen[KM_REPORT_MAX];            /* printed so far: one that comes up again is only named */
@@ -638,7 +640,9 @@ __attribute__((noinline)) ObjHeader *Kotlin_getCurrentStackTrace(ObjHeader **res
 __attribute__((weak)) void km_throwable_init(void)
     __asm__("kfun:kotlin.Throwable#<init>(kotlin.String?;kotlin.Throwable?){}");
 
-#define KM_TRACE_MAX 12
+#ifndef KM_TRACE_MAX
+#define KM_TRACE_MAX 12                              /* frames a stack trace keeps (-D KM_TRACE_MAX=...) */
+#endif
 typedef struct { uint32_t pc[KM_TRACE_MAX], last_pc, last_sp; int n, seen; } km_trace_t;
 
 /* Whether the frame at pc, in the unwind region that starts at `region`, is that of the function fn. The region

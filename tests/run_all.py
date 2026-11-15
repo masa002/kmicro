@@ -221,6 +221,7 @@ TESTS = [
     uncaught('uncaught_local_class', 'TEST_LOCAL_CLASS'),
     uncaught('uncaught_anonymous_object', 'TEST_ANONYMOUS_OBJECT'),
     uncaught('uncaught_suppressed', 'TEST_SUPPRESSED'),
+    uncaught('uncaught_limits', 'TEST_SUPPRESSED', defs=['KM_TRACE_MAX=1', 'KM_REPORT_MAX=3']),
     uncaught('uncaught_bl_entry', 'TEST_BL_ENTRY'),
     uncaught('unhandled_without_hook', 'TEST_PROCESS_WITHOUT_HOOK'),
     uncaught('unhandled_with_hook', 'TEST_PROCESS_WITH_HOOK', exit=0),
