@@ -230,6 +230,12 @@ Cortex-M4F, these parts of a board build change:
   of Start-up). There is no LDREX/STREX either: the compiler calls `__atomic_*` functions for the atomics of up to
   4 bytes, which `runtime/atomic32.c` defines, with interrupts masked. clang then warns about a
   `large atomic operation` in `runtime/mm.c`; `-Wno-atomic-alignment`, which qbuild passes, silences it.
+- **No unaligned access on ARMv6-M and ARMv8-M Baseline.** An LDR or STR of a word or a halfword at an address
+  that is not a multiple of its size faults there. The tests run with that fault turned on
+  ([roadmap.md](roadmap.md#targets)) and found no such access in the runtime or in the code the compiler makes
+  for Kotlin. C code of your own that reads a word through a cast pointer into a byte buffer has one: use
+  `memcpy`, a packed struct, or `mem_rd32` and the like of [support/hw.h](../support/hw.h), which read single
+  bytes on these cores.
 - **No BASEPRI on ARMv6-M and ARMv8-M Baseline** (Cortex-M0, M0+, M1, M23). [support/hw.c](../support/hw.c) does
   not define `hw_basepri`, `hw_basepri_set` and `hw_basepri_max` for them, and the link of a program that calls one
   fails with `undefined symbol: hw_basepri`. `hw_irq_save` and `hw_irq_restore` (PRIMASK) are there on every core.
