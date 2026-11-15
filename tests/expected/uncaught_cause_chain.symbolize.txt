@@ -3,7 +3,8 @@ Uncaught Kotlin exception: kotlin.IllegalStateException: boot failed at sensor 3
     at 0x{X}  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x{X}
     at 0x{X}  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x{X}
     at 0x{X}  run_main+0x{X}
-        run_main (uncaught.c:{N})
+{...}
+        run_main ({*}.c:{N})
     at 0x{X}  start_c+0x{X}
         start_c (start.c:{N})
 Caused by: SensorMissing: sensor 3 not answering
