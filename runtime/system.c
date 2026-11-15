@@ -43,8 +43,48 @@ void Kotlin_native_internal_GC_schedule(ObjHeader *thiz)
     if (!km_in_interrupt())
         kmicro_gc();
 }
-/* kmicro keeps no GC statistics: the builder stays empty and GC.lastGCInfo is null. */
-void Kotlin_Internal_GC_GCInfoBuilder_Fill(ObjHeader *builder, int32_t id) { (void)builder; (void)id; }
+/* GC.lastGCInfo: the standard library's builder calls this, and it calls the builder's setters (GCInfo.kt) with what
+ * mm.c recorded about the last collection. A GCInfo needs the start and end times, so collections are timed from the
+ * first call on, with the board's kmicro_time_ns; one that ran before, or on a board without that clock, sets
+ * nothing, and GC.lastGCInfo is null. The collection is one pause, and it is over when collect() returns: there is
+ * no second pause and no cleanup after it. The setters allocate, which may collect: the record is copied first. */
+void Kotlin_Internal_GC_GCInfoBuilder_setEpoch(ObjHeader *builder, int64_t value);
+void Kotlin_Internal_GC_GCInfoBuilder_setStartTime(ObjHeader *builder, int64_t value);
+void Kotlin_Internal_GC_GCInfoBuilder_setEndTime(ObjHeader *builder, int64_t value);
+void Kotlin_Internal_GC_GCInfoBuilder_setFirstPauseRequestTime(ObjHeader *builder, int64_t value);
+void Kotlin_Internal_GC_GCInfoBuilder_setFirstPauseStartTime(ObjHeader *builder, int64_t value);
+void Kotlin_Internal_GC_GCInfoBuilder_setFirstPauseEndTime(ObjHeader *builder, int64_t value);
+void Kotlin_Internal_GC_GCInfoBuilder_setRootSet(ObjHeader *builder, int64_t thread_local, int64_t stack,
+                                                 int64_t global, int64_t stable);
+void Kotlin_Internal_GC_GCInfoBuilder_setMarkStats(ObjHeader *builder, int64_t marked);
+void Kotlin_Internal_GC_GCInfoBuilder_setSweepStats(ObjHeader *builder, const char *name, int64_t kept,
+                                                    int64_t swept);
+void Kotlin_Internal_GC_GCInfoBuilder_setMemoryUsageBefore(ObjHeader *builder, const char *name, int64_t bytes);
+void Kotlin_Internal_GC_GCInfoBuilder_setMemoryUsageAfter(ObjHeader *builder, const char *name, int64_t bytes);
+
+/* Weak in this file: the compiler then cannot take the hook for a function other than km_no_clock, which it is on a
+ * board without a clock (time.c). */
+int64_t kmicro_time_ns(void) __attribute__((weak));
+
+void Kotlin_Internal_GC_GCInfoBuilder_Fill(ObjHeader *builder, int32_t id)
+{
+    if (kmicro_time_ns != km_no_clock)
+        km_gc_clock = kmicro_time_ns;
+    const km_gc_info_t g = km_gc_info;
+    if (id != 0 || !g.timed)                         /* 0 is the last collection, the only one the stdlib asks for */
+        return;
+    Kotlin_Internal_GC_GCInfoBuilder_setEpoch(builder, g.epoch);
+    Kotlin_Internal_GC_GCInfoBuilder_setStartTime(builder, g.start_ns);
+    Kotlin_Internal_GC_GCInfoBuilder_setEndTime(builder, g.end_ns);
+    Kotlin_Internal_GC_GCInfoBuilder_setFirstPauseRequestTime(builder, g.start_ns);
+    Kotlin_Internal_GC_GCInfoBuilder_setFirstPauseStartTime(builder, g.start_ns);
+    Kotlin_Internal_GC_GCInfoBuilder_setFirstPauseEndTime(builder, g.end_ns);
+    Kotlin_Internal_GC_GCInfoBuilder_setRootSet(builder, g.tls_roots, g.stack_roots, g.global_roots, g.stable_roots);
+    Kotlin_Internal_GC_GCInfoBuilder_setMarkStats(builder, g.kept);
+    Kotlin_Internal_GC_GCInfoBuilder_setSweepStats(builder, "heap", g.kept, g.swept);
+    Kotlin_Internal_GC_GCInfoBuilder_setMemoryUsageBefore(builder, "heap", g.bytes_before);
+    Kotlin_Internal_GC_GCInfoBuilder_setMemoryUsageAfter(builder, "heap", g.bytes_after);
+}
 /* There is no main-thread run loop to process finalizers on (as on every non-Apple target). */
 KM_NOTHROW bool Kotlin_native_runtime_GC_MainThreadFinalizerProcessor_isAvailable(ObjHeader *thiz)
 {

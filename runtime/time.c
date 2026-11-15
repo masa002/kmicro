@@ -15,10 +15,13 @@
  * (a hardware RNG, ADC noise, a free-running timer). */
 #include "kmicro.h"
 
-__attribute__((weak)) int64_t kmicro_time_ns(void)
+/* The default of kmicro_time_ns is an alias, so that the runtime can tell whether the board has a clock without
+ * calling it (GC.lastGCInfo, system.c). */
+int64_t km_no_clock(void)
 {
     kmicro_panic("measureTime and TimeSource.Monotonic need the board clock: int64_t kmicro_time_ns(void)");
 }
+int64_t kmicro_time_ns(void) __attribute__((weak, alias("km_no_clock")));
 
 __attribute__((weak)) int64_t kmicro_wall_time_ns(void)
 {

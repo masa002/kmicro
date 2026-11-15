@@ -32,7 +32,7 @@ The other hooks are optional. The runtime has a weak default for each, so a boar
 
 | Hook | Used by | Without it |
 |---|---|---|
-| `int64_t kmicro_time_ns(void)` | `measureTime`, `TimeSource.Monotonic`: a monotonic clock, any origin | the program stops with `kmicro panic: measureTime and TimeSource.Monotonic need the board clock: int64_t kmicro_time_ns(void)` |
+| `int64_t kmicro_time_ns(void)` | `measureTime`, `TimeSource.Monotonic`, the times in `GC.lastGCInfo`: a monotonic clock, any origin | `GC.lastGCInfo` is null; for the others the program stops with `kmicro panic: measureTime and TimeSource.Monotonic need the board clock: int64_t kmicro_time_ns(void)` |
 | `int64_t kmicro_wall_time_ns(void)` | `Clock.System`: nanoseconds since 1970-01-01 UTC | the program stops with a panic that names the hook |
 | `uint64_t kmicro_random_seed(void)` | the seed of `Random.Default` | 0: `Random.Default` repeats its sequence after every reset (`Random(seed)` needs no hook) |
 | `void kmicro_random_bytes(void *buf, size_t n)` | `Uuid.random()`: a true entropy source, such as a hardware random number generator | the program stops with a panic that names the hook |

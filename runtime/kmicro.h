@@ -86,7 +86,8 @@ void kmicro_on_uncaught(ObjHeader *exception);       /* an uncaught exception, a
                                                         (default: nothing), e.g. to keep it for post-mortem */
 /* kotlin.time and kotlin.random (defaults in runtime/time.c: the two clocks stop the program with a panic that
  * names the hook, the seed is a constant) */
-int64_t kmicro_time_ns(void);                        /* monotonic, any origin: measureTime, TimeSource.Monotonic */
+int64_t kmicro_time_ns(void);                        /* monotonic, any origin: measureTime, TimeSource.Monotonic,
+                                                        and each collection once GC.lastGCInfo was read */
 int64_t kmicro_wall_time_ns(void);                   /* since 1970-01-01 UTC: Clock.System */
 uint64_t kmicro_random_seed(void);                   /* the seed of Random.Default */
 /* console input, output with a length, and entropy (defaults in runtime/system.c and runtime/strings.c) */
@@ -120,6 +121,19 @@ typedef struct {
 void kmicro_stats(kmicro_stats_t *out);
 
 /* runtime internals shared between files */
+/* The last collection, for GC.lastGCInfo (mm.c records it, system.c hands it to the standard library). The times
+ * are taken only while km_gc_clock is set, which the first read of GC.lastGCInfo does on a board with a clock. */
+typedef struct {
+    int64_t start_ns, end_ns;                        /* km_gc_clock() before marking and after the sweep */
+    uint32_t epoch;                                  /* the collection's number, from 1 */
+    uint32_t kept, swept;                            /* objects the sweep left and freed */
+    uint32_t bytes_before, bytes_after;              /* the heap in use */
+    uint32_t stack_roots, global_roots, tls_roots, stable_roots;   /* references that were not null */
+    bool timed;
+} km_gc_info_t;
+extern km_gc_info_t km_gc_info;
+extern int64_t (*km_gc_clock)(void);
+int64_t km_no_clock(void);                           /* time.c: what kmicro_time_ns is on a board without a clock */
 extern ObjHeader *kmicro_tls_slots[];
 extern int kmicro_tls_slot_count;
 ObjHeader *kmicro_alloc_object(const TypeInfo *type, ObjHeader **result);

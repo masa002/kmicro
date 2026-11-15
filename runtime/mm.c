@@ -602,14 +602,15 @@ KM_NOTHROW void Kotlin_processArrayInMark(void *state, ObjHeader *object)
 }
 KM_NOTHROW void Kotlin_processEmptyObjectInMark(void *state, ObjHeader *object) { (void)state; (void)object; }
 
-static void root(ObjHeader *o)
+static unsigned root(ObjHeader *o)                   /* 1 when the slot held a reference, for the statistics */
 {
     if ((uintptr_t)o <= 1u)                          /* null, or kInitializingSingleton */
-        return;
+        return 0;
     if (km_tag(o) == KM_TAG_HEAP)
         push_child(o);
     else
         scan(o);                                     /* stack / permanent object: trace its fields */
+    return 1;
 }
 
 static void drain(void)
@@ -637,26 +638,36 @@ static void drain(void)
     }
 }
 
+km_gc_info_t km_gc_info;                             /* the collection that ran last (kmicro.h) */
+int64_t (*km_gc_clock)(void);
+
+static void eh_root(ObjHeader *o) { root(o); }
+
 static void mark_roots(void)
 {
+    unsigned stack = 0, global = 0, tls = 0, stable = 0;
     for (FrameOverlay *f = s_frame; f != NULL; f = f->previous) {
         ObjHeader **slot = (ObjHeader **)(f + 1) + f->parameters;
         int n = f->count - KM_FRAME_OVERLAY_SLOTS - f->parameters;
         for (int i = 0; i < n; i++)
-            root(slot[i]);
+            stack += root(slot[i]);
     }
     for (int i = 0; i < s_nglobals; i++)
-        root(*s_globals[i]);
+        global += root(*s_globals[i]);
     for (int i = 0; i < kmicro_tls_slot_count; i++)
-        root(kmicro_tls_slots[i]);
+        tls += root(kmicro_tls_slots[i]);
     for (int i = 0; i < KM_C_ROOTS; i++)
         if (s_croots[i] != NULL)
-            root(*s_croots[i]);
+            stable += root(*s_croots[i]);
     for (int i = 0; i < KM_STABLE_REFS; i++)
         if (s_stable[i].rc > 0)
-            root(s_stable[i].obj);
+            stable += root(s_stable[i].obj);
     extern void kmicro_eh_roots(void (*visit)(ObjHeader *));
-    kmicro_eh_roots(root);                           /* an exception in flight */
+    kmicro_eh_roots(eh_root);                        /* an exception in flight */
+    km_gc_info.stack_roots = stack;
+    km_gc_info.global_roots = global;
+    km_gc_info.tls_roots = tls;
+    km_gc_info.stable_roots = stable;
 }
 
 /* ---------------------------------------------------------------------------------------------------------- */
@@ -669,7 +680,7 @@ static void sweep(void)
         s_bin[i] = NULL;
     s_large = NULL;
     uint32_t *run = NULL, run_size = 0;               /* the free run being built (coalescing) */
-    uint32_t used = 0;
+    uint32_t used = 0, kept = 0, freed = s_st.objects_freed;
     for (uint32_t *b = s_lo; b < s_hi;) {
         uint32_t size;
         bool live = false;
@@ -680,6 +691,7 @@ static void sweep(void)
             if (b[0] & MARK_BIT) {
                 b[0] &= ~MARK_BIT;
                 used += size;
+                kept++;
                 live = true;
             } else {
                 s_st.objects_freed++;
@@ -704,6 +716,10 @@ static void sweep(void)
     }
     if (run != NULL)
         push_free(run, run_size);
+    km_gc_info.bytes_before = s_st.used_bytes;
+    km_gc_info.bytes_after = used;
+    km_gc_info.kept = kept;
+    km_gc_info.swept = s_st.objects_freed - freed;
     s_st.used_bytes = used;
     if (used > s_st.live_peak_bytes)
         s_st.live_peak_bytes = used;
@@ -759,9 +775,15 @@ static void collect(void)
 {
     if (s_lo == NULL)
         heap_init();
+    int64_t (*clock)(void) = km_gc_clock;            /* set once the program has asked for GC.lastGCInfo */
+    if (clock != NULL)
+        km_gc_info.start_ns = clock();
     mark();
     sweep();
-    s_st.gc_count++;
+    km_gc_info.epoch = ++s_st.gc_count;
+    km_gc_info.timed = clock != NULL;
+    if (clock != NULL)
+        km_gc_info.end_ns = clock();
 }
 
 void kmicro_gc(void)

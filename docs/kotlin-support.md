@@ -75,7 +75,8 @@ from the Cortex-M0 to the Cortex-M85, and what was checked on each.
 | **Memory** | | |
 | garbage collection, cyclic garbage, wide graphs | works | precise non-moving mark-sweep |
 | GC.collect / collectCyclic | works | not inside an interrupt handler |
-| GC.schedule, GC.lastGCInfo | partly | GC.schedule collects at once (and does nothing inside an interrupt handler); lastGCInfo is always null |
+| GC.schedule | partly | collects at once (and does nothing inside an interrupt handler) |
+| GC.lastGCInfo | partly | the last collection: its number, its start and end (the one pause), the roots, the objects marked, kept and swept, and the heap in use before and after, under the name `heap` (`d_gc_info`). Collections are timed with the board hook `kmicro_time_ns` from the first read on: the first read is null, and so is every read on a board without the hook. The second pause and `postGcCleanupTimeNs` are null |
 | GC heap tuning (autotune, targetHeapBytes, ...), Debugging.dumpMemory, ImmutableBlob, MemoryUsageInfo.peakResidentSetSizeBytes, the settings of GC.MainThreadFinalizerProcessor | not supported | the program stops with '... is not supported on kmicro'; GC.MainThreadFinalizerProcessor.available is false |
 | WeakReference | works | `get()` is null from the collection that finds the object dead; each one takes 16 B of heap besides itself; an interrupt handler may call `get()` |
 | createCleaner | works | the action runs once, on the one thread there is: at the next allocation after the collection that found the object dead, or before `GC.collect()` returns; a Cleaner holds one of the `KM_STABLE_REFS` (16) slots until then ([the rules](writing-kotlin.md#cleaners-and-weak-references)) |

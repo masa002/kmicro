@@ -1,0 +1,8 @@
+churn 16890
+times in order: true
+heap in use: before true, after true
+roots: stack true, global true
+a later collection: true, after the first: true
+200 more objects: marked true, kept true, bytes true
+dropped again: kept true, bytes true
+read again: not an earlier collection true

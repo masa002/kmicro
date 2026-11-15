@@ -274,10 +274,12 @@ TESTS = [
     memory('globals_limit', 'TEST_GLOBALS', exit=98),
     memory('globals_raised', 'TEST_GLOBALS', defs=['KM_GLOBALS=300']),
     memory('unicode_tables', 'TEST_UNICODE_TABLES'),
-    # the output is the stock runtime's (tools/difftest.py d_weak_reference d_cleaner)
+    # the output is the stock runtime's (tools/difftest.py d_weak_reference d_cleaner d_gc_info)
     Test('weak_reference', Kotlin('weak_reference', ['tests/diff/d_weak_reference.kt'], dict(main=True)),
          ['targets/common/kotlin_main.c']),
     Test('cleaner', Kotlin('cleaner', ['tests/diff/d_cleaner.kt'], dict(main=True)),
+         ['targets/common/kotlin_main.c']),
+    Test('gc_info', Kotlin('gc_info', ['tests/diff/d_gc_info.kt'], dict(main=True)),
          ['targets/common/kotlin_main.c']),
     Test('native_double_free', None, ['tests/memory/double_free.c'], exit=98),
     Test('native_arena_fuzz', None, ['tests/memory/arena_fuzz.c']),

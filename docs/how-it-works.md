@@ -106,7 +106,7 @@ first comment.
 | `numbers.c`, `kmath.c` | Numeric helpers and `kotlin.math` on newlib's libm. |
 | `dtoa/`, `hexfloat.c` | `Double`/`Float` to and from `String` (Apache Harmony code, as in Kotlin/Native); `hexfloat.c` parses hexadecimal text without the Regex engine. |
 | `time.c` | `kotlin.time` and the seed of `Random.Default`, on the board's clock hooks. |
-| `system.c` | `Platform`, `exitProcess`, `readln`, `GC.schedule`, `Uuid.random`, on the board's input and entropy hooks. |
+| `system.c` | `Platform`, `exitProcess`, `readln`, `GC.schedule`, `GC.lastGCInfo`, `Uuid.random`, on the board's input and entropy hooks. |
 | `regex.c` | The natives of `RegexOption.CANON_EQ`, which throw `IllegalArgumentException`. |
 | `unsupported.c` | The standard-library functions that need threads or an OS (`Worker`, heap tuning, ...): each stops the program with `... is not supported on kmicro`. `python tools/missing_natives.py` lists them. |
 | `interop.c` | What cinterop needs: thread-state switches (nothing to do) and a small arena for `memScoped`, `cstr`, `nativeHeap` (`KM_INTEROP_BYTES`). |
