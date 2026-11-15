@@ -232,11 +232,12 @@ Allocations hide in these places:
 ## Speed
 
 12. **Exceptions are for errors.** One throw and catch took about 1.6 ms in the recorded run, which still walked some
-    stack frames more than once. On QEMU a throw that the same small function catches now executes about 10,000
-    instructions: 7,200 to create the exception with its message and stack trace, 2,800 from the throw to the
+    stack frames more than once. On QEMU a throw that the same small function catches now executes about 9,450
+    instructions: 7,150 to create the exception with its message and stack trace, 2,300 from the throw to the
     catch. The catch costs more in a large function: the unwinder reads the function's table of calls from its
-    start to the call that threw, and in the selftest, whose checks are all inlined into one `main`, the same
-    throw takes 7,400 instructions from the throw to the catch. The unwinder reads its tables from flash.
+    start to the call that threw (the compiler writes its records without a fixed size, so the table cannot be
+    searched by halves), and in the selftest, whose checks are all inlined into one `main`, the same throw takes
+    3,400 instructions from the throw to the catch. The unwinder reads its tables from flash.
 13. **Hoist globals and arrays into locals before a loop,** and check the size once before it. LLVM then drops the
     bounds check of every element.
 14. **Mark small per-element helpers `inline`.**

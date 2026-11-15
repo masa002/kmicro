@@ -170,8 +170,8 @@ current runtime:
 
 \* The runtime of that run visited the same frame several times when it walked the stack for a stack trace;
 [#3](https://github.com/masa002/kmicro/issues/3) stopped that. On QEMU a throw that the same small function
-catches now executes about 10,000 instructions: 7,200 to create the exception with its message and stack trace,
-2,800 from the throw to the catch ([more](docs/writing-kotlin.md#speed)).
+catches now executes about 9,450 instructions: 7,150 to create the exception with its message and stack trace,
+2,300 from the throw to the catch ([more](docs/writing-kotlin.md#speed)).
 
 ## Repository layout
 

@@ -128,11 +128,12 @@ void kmicro_eh_roots(void (*visit)(ObjHeader *))
 enum { DW_EH_PE_omit = 0xff, DW_EH_PE_uleb128 = 0x01, DW_EH_PE_udata2 = 0x02, DW_EH_PE_udata4 = 0x03,
        DW_EH_PE_sleb128 = 0x09, DW_EH_PE_sdata2 = 0x0a, DW_EH_PE_sdata4 = 0x0b, DW_EH_PE_pcrel = 0x10 };
 
-static uint32_t uleb(const uint8_t **p)
+static inline uint32_t uleb(const uint8_t **p)
 {
     uint32_t r = 0;
     unsigned shift = 0;
     uint8_t b;
+#pragma clang loop unroll(disable)                   /* inlined into every reader: one copy of the loop each */
     do {
         b = *(*p)++;
         r |= (uint32_t)(b & 0x7f) << shift;
@@ -156,7 +157,8 @@ static int32_t sleb(const uint8_t **p)
     return r;
 }
 
-static uint32_t read_enc(const uint8_t **p, uint8_t enc)
+/* Out of line: the compiler writes call-site records as uleb128, which find_site reads itself. */
+__attribute__((noinline)) static uint32_t read_enc(const uint8_t **p, uint8_t enc)
 {
     const uint8_t *start = *p;
     uint32_t v;
@@ -180,17 +182,28 @@ static uint32_t read_enc(const uint8_t **p, uint8_t enc)
     return v;
 }
 
-typedef struct { uint32_t lp; int32_t filter; bool found; } km_site_t;
+typedef struct { uint32_t lp; int32_t filter; } km_site_t;
 
-/* The call-site entry covering ip: its landing pad (0 = none) and the first action's filter (0 = cleanup). */
+static inline const uint8_t *skip_uleb(const uint8_t *p)
+{
+    while (*p++ & 0x80) {
+    }
+    return p;
+}
+
+/* The call-site record covering ip: its landing pad (0 = none) and the first action's filter (0 = cleanup).
+ * A record is four numbers: where its range starts in the function, its length, the landing pad and the action.
+ * The compiler writes them as uleb128 (for ARM it has no other form), so a record has no fixed size and the table,
+ * though sorted, cannot be searched by halves: it is read from its start. On the way only the start of each record
+ * is decoded, and the other three numbers are stepped over; the record found is then read in full. */
 static km_site_t find_site(_Unwind_Context *ctx)
 {
-    km_site_t s = { 0, 0, false };
+    km_site_t s = { 0, 0 };
     const uint8_t *p = _Unwind_GetLanguageSpecificData(ctx);
     if (p == NULL)
         return s;
     uint32_t fstart = (uint32_t)_Unwind_GetRegionStart(ctx);
-    uint32_t ip = (uint32_t)(_Unwind_GetGR(ctx, 15) & ~1u) - 1u;   /* inside the call instruction */
+    uint32_t ip = (uint32_t)(_Unwind_GetGR(ctx, 15) & ~1u) - 1u - fstart;   /* inside the call instruction */
     uint8_t lp_enc = *p++;
     uint32_t lpstart = lp_enc == DW_EH_PE_omit ? fstart : read_enc(&p, lp_enc);
     uint8_t tt_enc = *p++;
@@ -198,23 +211,39 @@ static km_site_t find_site(_Unwind_Context *ctx)
         (void)uleb(&p);                              /* type table offset: never read */
     uint8_t cs_enc = *p++;
     uint32_t cs_len = uleb(&p);
-    const uint8_t *cs_end = p + cs_len, *actions = cs_end;
-    while (p < cs_end) {
-        uint32_t start = read_enc(&p, cs_enc), len = read_enc(&p, cs_enc), lp = read_enc(&p, cs_enc);
-        uint32_t action = uleb(&p);
-        if (ip < lpstart + start)
-            break;                                   /* sorted table */
-        if (ip < lpstart + start + len) {
-            s.found = true;
-            if (lp != 0) {
-                s.lp = lpstart + lp;
-                if (action != 0) {
-                    const uint8_t *a = actions + action - 1;
-                    s.filter = sleb(&a);
-                }
-            }
-            return s;
+    const uint8_t *cs_end = p + cs_len, *actions = cs_end, *rec = NULL;
+    uint32_t start = 0, len, lp;
+    if (cs_enc == DW_EH_PE_uleb128) {
+        while (p < cs_end) {                         /* the last record that starts at or before ip */
+            uint32_t next = uleb(&p);
+            if (ip < next)
+                break;
+            start = next;
+            rec = p;
+            p = skip_uleb(skip_uleb(skip_uleb(p)));
         }
+        if (rec == NULL)
+            return s;
+        len = uleb(&rec);
+        lp = uleb(&rec);
+    } else {                                         /* another encoding: every record in full */
+        do {
+            if (p >= cs_end)
+                return s;
+            start = read_enc(&p, cs_enc);
+            len = read_enc(&p, cs_enc);
+            lp = read_enc(&p, cs_enc);
+            rec = p;
+            (void)uleb(&p);
+        } while (ip >= start + len);
+    }
+    if (ip < start || ip >= start + len || lp == 0)
+        return s;
+    s.lp = lpstart + lp;
+    uint32_t action = uleb(&rec);
+    if (action != 0) {
+        const uint8_t *act = actions + action - 1;
+        s.filter = sleb(&act);
     }
     return s;
 }
@@ -240,22 +269,24 @@ _Unwind_Reason_Code __gxx_personality_v0(_Unwind_State state, _Unwind_Control_Bl
         if (state & _US_FORCE_UNWIND)                /* _Unwind_Backtrace walking the stack: just step past the frame */
             return continue_unwinding(ucbp, ctx);
         km_site_t s = find_site(ctx);
-        if (s.lp != 0 && s.filter > 0) {
+        if (s.lp != 0 && s.filter > 0) {             /* remembered for phase 2, which then need not look again */
             ucbp->barrier_cache.sp = _Unwind_GetGR(ctx, 13);
+            ucbp->barrier_cache.bitpattern[0] = (uint32_t)_Unwind_GetRegionStart(ctx);
+            ucbp->barrier_cache.bitpattern[1] = s.lp;
+            ucbp->barrier_cache.bitpattern[2] = (uint32_t)s.filter;
             return _URC_HANDLER_FOUND;
         }
         return continue_unwinding(ucbp, ctx);
     }
     case _US_UNWIND_FRAME_STARTING: {                /* phase 2 */
+        /* The frame phase 1 stopped at: the same stack pointer, in the same function (a function that only throws
+         * may have no frame of its own, and then shares its caller's stack pointer). */
+        if (ucbp->barrier_cache.sp == _Unwind_GetGR(ctx, 13)
+            && ucbp->barrier_cache.bitpattern[0] == (uint32_t)_Unwind_GetRegionStart(ctx))
+            return install(ucbp, ctx, ucbp->barrier_cache.bitpattern[1], (int32_t)ucbp->barrier_cache.bitpattern[2]);
         km_site_t s = find_site(ctx);
-        if (s.lp != 0) {
-            if (s.filter > 0) {
-                if (ucbp->barrier_cache.sp == _Unwind_GetGR(ctx, 13))
-                    return install(ucbp, ctx, s.lp, s.filter);
-            } else {                                 /* a cleanup pad: __cxa_end_cleanup resumes with ucbp, */
-                return install(ucbp, ctx, s.lp, 0);  /* the top record while the pad runs */
-            }
-        }
+        if (s.lp != 0 && s.filter <= 0)              /* a cleanup pad: __cxa_end_cleanup resumes with ucbp, */
+            return install(ucbp, ctx, s.lp, 0);      /* the top record while the pad runs */
         return continue_unwinding(ucbp, ctx);
     }
     case _US_UNWIND_FRAME_RESUME:                    /* this frame's cleanup ran: go on */
