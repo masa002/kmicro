@@ -47,9 +47,8 @@ static inline void irq_restore(uint32_t pm) { __asm volatile("msr primask, %0" :
         *p = v;                                                                                                \
         irq_restore(pm);                                                                                       \
     }                                                                                                          \
-    bool __atomic_compare_exchange_##N(volatile T *p, T *expected, T desired, bool weak, int success, int failure) \
+    bool __atomic_compare_exchange_##N(volatile T *p, T *expected, T desired, int success, int failure)        \
     {                                                                                                          \
-        (void)weak;                                                                                            \
         (void)success;                                                                                         \
         (void)failure;                                                                                         \
         uint32_t pm = irq_save();                                                                              \
