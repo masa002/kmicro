@@ -5,6 +5,7 @@
 python -m unittest discover -s tests/unit
 """
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -113,6 +114,12 @@ class Check(unittest.TestCase):
         self.assertIn('NOT FOUND', llvm[0])
         self.assertIn(str(Path(d) / 'data' / 'dependencies'), llvm[0])
         self.assertIn('(KONAN_DATA_DIR)', llvm[0])
+
+
+class BugReportForm(unittest.TestCase):
+    def test_the_form_offers_every_core(self):
+        form = (ROOT / '.github/ISSUE_TEMPLATE/bug_report.yml').read_text(encoding='utf-8')
+        self.assertEqual(sorted(re.findall('^ +- (cortex-[a-z0-9-]+)', form, re.M)), sorted(paths.CORES))
 
 
 if __name__ == '__main__':

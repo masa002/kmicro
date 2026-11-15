@@ -31,12 +31,32 @@ body:
     validations:
       required: true
   - type: dropdown
+    id: core
+    attributes:
+      label: Core
+      description: "The `--cpu` of kbuild and qbuild, or `KMICRO_CPU`. Without either it is cortex-m4f."
+      options:
+        - cortex-m4f (the default)
+        - cortex-m0
+        - cortex-m0plus
+        - cortex-m1
+        - cortex-m3
+        - cortex-m4
+        - cortex-m7
+        - cortex-m7-sp
+        - cortex-m23
+        - cortex-m33
+        - cortex-m33f
+    validations:
+      required: true
+  - type: dropdown
     id: target
     attributes:
       label: Where it runs
       options:
-        - QEMU, qemu-l475 (the default of qbuild)
-        - QEMU, qemu-an386 (qbuild --target an386)
+        - QEMU, the machine qbuild chooses for the core (no --target)
+        - QEMU, mps2-an386 (qbuild --target an386)
+        - QEMU, another --target (it is in the commands below)
         - a board (say which in the description)
         - it does not get that far (build or link)
     validations:
