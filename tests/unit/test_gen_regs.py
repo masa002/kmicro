@@ -199,6 +199,23 @@ typedef struct { UARTX_TypeDef U; __IO uint8_t LAST; } PAIR_TypeDef;      /* U: 
         for name in ('TOO_WIDE', 'TOO_FAR'):                              # no 32-bit values: left out
             self.assertFalse(any(name in line for line in lines), name)
 
+    def test_long_long_constants_and_macros_as_text(self):
+        r, lines = self.gen('--all', *self.more("""#define LOWEST     (-2147483648 / 2)
+#define LL_SHIFT   (-2147483648 >> 4)
+#define UPPER_HALF (~0ULL >> 32)
+#define BACK_DOWN  ((1ULL << 31) * 2 / 4)
+#define LL_MASK    (~0ULL >> 4)
+#define LL_FIELD   (0xFFULL << 28)
+#define SUM        1 + 2
+#define PRODUCT    (SUM * 3)
+"""))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for line in ['LOWEST: UInt = 0xC0000000u', 'LL_SHIFT: UInt = 0xF8000000u', 'UPPER_HALF: UInt = 0xFFFFFFFFu',
+                     'BACK_DOWN: UInt = 0x40000000u', 'SUM: UInt = 0x3u', 'PRODUCT: UInt = 0x7u']:
+            self.assertIn('internal const val ' + line, lines)
+        for name in ('LL_MASK', 'LL_FIELD'):                              # no 32-bit values: left out
+            self.assertFalse(any(name in line for line in lines), name)
+
     def test_interrupt_numbers_in_every_spelling(self):
         (self.d / 'src/sub/irq.kt').write_text('val n = HEX_IRQn + NEXT_IRQn + IF_IRQn + TERNARY_IRQn + AFTER_IRQn',
                                                encoding='utf-8')
@@ -233,6 +250,35 @@ typedef enum {
             'gen_regs: warning: IF_IRQn left out: a preprocessor condition inside the enum decides its value, '
             'at more.h line 10',
             'gen_regs: warning: TERNARY_IRQn left out: (1 ? 2 : 3) is no integer constant, at more.h line 12'])
+
+    def test_an_interrupt_number_given_twice_is_left_out(self):
+        (self.d / 'src/sub/irq.kt').write_text('val n = UART_IRQn + SPI_IRQn + I2C_IRQn + CAN_IRQn', encoding='utf-8')
+        more = self.more("""typedef enum {
+#if defined(CHIP_A)
+  UART_IRQn = 5,
+  SPI_IRQn  = 6,
+  TIM_IRQn  = 7,
+#else
+  SPI_IRQn  = 6,
+  UART_IRQn = 9,
+  TIM_IRQn,
+#endif
+  I2C_IRQn  = UART_IRQn + 20,
+  CAN_IRQn  = SPI_IRQn + 20
+} Chips_IRQn_Type;
+""")
+        r, lines = self.gen('--all', *more)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for line in ['SPI_IRQn: Int = 6', 'CAN_IRQn: Int = 26']:           # the same value on both sides
+            self.assertIn('internal const val ' + line, lines)
+        for name in ('UART_IRQn', 'TIM_IRQn', 'I2C_IRQn'):                 # 5 or 9, 7 or 10: never one of the two
+            self.assertFalse(any(name in line for line in lines), name)
+        r, lines = self.gen('--sources', self.d / 'src', *more)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual([w for w in r.stderr.splitlines() if '_IRQn' in w], [
+            'gen_regs: warning: I2C_IRQn left out: UART_IRQn + 20 is no integer constant, at more.h line 11',
+            'gen_regs: warning: UART_IRQn left out: the header gives it more than one value, a preprocessor '
+            'condition decides which, at more.h line 8'])
 
     def test_pin_map_ports_and_pin_expressions(self):
         more = self.more('#define GPIOI_BASE (AHB2PERIPH_BASE + 0x2000UL)\n'

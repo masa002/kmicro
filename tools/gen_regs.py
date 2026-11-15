@@ -88,60 +88,71 @@ TOKEN = re.compile(r'\s*(?:(0[xX][0-9A-Fa-f]+|\d+)([uUlL]*)(?![\w.])|([A-Za-z_]\
 LEVELS = [('|',), ('^',), ('&',), ('<<', '>>'), ('+', '-'), ('*', '/', '%')]      # loosest first
 
 
-def wrap(v, unsigned):
-    """v in 32 bits: 0 .. 2^32-1 when unsigned, -2^31 .. 2^31-1 otherwise."""
-    v &= 0xFFFFFFFF
-    return v if unsigned or v < 0x80000000 else v - 0x100000000
+def wrap(v, unsigned, bits=32):
+    """v in that many bits: 0 .. 2^bits-1 when unsigned, -2^(bits-1) .. 2^(bits-1)-1 otherwise."""
+    v &= (1 << bits) - 1
+    return v if unsigned or not v >> (bits - 1) else v - (1 << bits)
 
 
-def value(expr, defines, depth=0):
-    """(the value, whether its type is unsigned) of a C integer constant expression, computed as a compiler with a
-    32-bit int and long does: `~0UL >> 4` is 0x0FFFFFFF, `-7 / 2` is -3, `(uint8_t)0x1FF` is 255. Raises ValueError
-    for anything else: an unknown name, a floating-point number, a number that needs more than 32 bits, an operator
-    other than + - * / % << >> | & ^ ~."""
+def tokens(expr, defines, depth=0):
+    """The tokens of expr, a macro's name replaced by the tokens of its text as the preprocessor does: with
+    `#define A 1 + 2`, `A * 3` is `1 + 2 * 3`. Raises ValueError for what is no token here."""
     if depth > 40:
         raise ValueError(expr)
-    tokens, pos = [], 0
+    out, pos = [], 0
     while expr[pos:].strip():
         m = TOKEN.match(expr, pos)
         if not m:
             raise ValueError(expr)
-        tokens.append(m.groups())
         pos = m.end()
-    at = 0
+        if m.group(3) in defines:
+            out += tokens(defines[m.group(3)], defines, depth + 1)
+        else:
+            out.append(m.groups())
+    return out
+
+
+def value(expr, defines):
+    """(the value, whether its type is unsigned, the bits of its type) of a C integer constant expression, computed
+    as a compiler with a 32-bit int and long and a 64-bit long long does: `~0UL >> 4` is 0x0FFFFFFF, `~0ULL >> 4` has
+    60 bits, `-7 / 2` is -3, `(uint8_t)0x1FF` is 255. Raises ValueError for anything else: an unknown name, a
+    floating-point number, a number that needs more than 64 bits, an operator other than + - * / % << >> | & ^ ~."""
+    toks, at = tokens(expr, defines), 0
 
     def peek():
-        return tokens[at][3] if at < len(tokens) else None
+        return toks[at][3] if at < len(toks) else None
 
     def unary():
         nonlocal at
-        if at >= len(tokens):
+        if at >= len(toks):
             raise ValueError(expr)
-        number, suffix, name, op = tokens[at]
+        number, suffix, name, op = toks[at]
         at += 1
         if number:
             octal = number[0] == '0' and number[1:].isdigit()                  # C's octal: 017 (08 is no number)
-            v = int(number, 8 if octal else 0)
-            if v > 0xFFFFFFFF:
-                raise ValueError(expr)
-            return v, 'u' in suffix.lower() or v >= 0x80000000
+            v, suffix = int(number, 8 if octal else 0), suffix.lower()
+            # The first type that holds the number. Only `u` makes a decimal one unsigned: 2147483648 is a long long.
+            decimal = number[0] != '0'
+            for bits in (64,) if 'll' in suffix else (32, 64):
+                for unsigned in (True,) if 'u' in suffix else (False,) if decimal else (False, True):
+                    if not v >> (bits if unsigned else bits - 1):
+                        return v, unsigned, bits
+            raise ValueError(expr)
         if name:
-            if name not in defines:
-                raise ValueError(name)
-            return value(defines[name], defines, depth + 1)
+            raise ValueError(name)
         if op in ('+', '-', '~'):
-            v, unsigned = unary()
-            return wrap({'+': v, '-': -v, '~': ~v}[op], unsigned), unsigned
+            v, unsigned, bits = unary()
+            return wrap({'+': v, '-': -v, '~': ~v}[op], unsigned, bits), unsigned, bits
         if op != '(':
             raise ValueError(expr)
-        cast = at + 1 < len(tokens) and tokens[at][2] in CASTS and tokens[at + 1][3] == ')' and CASTS[tokens[at][2]]
+        cast = at + 1 < len(toks) and toks[at][2] in CASTS and toks[at + 1][3] == ')' and CASTS[toks[at][2]]
         if cast:
             at += 2
             bits, signed = cast
             v = unary()[0] & ((1 << bits) - 1)
             if signed and v >> (bits - 1):
                 v -= 1 << bits
-            return v, bits == 32 and not signed         # a narrower type is promoted to int
+            return v, bits == 32 and not signed, 32     # a narrower type is promoted to int
         r = binary(0)
         if peek() != ')':
             raise ValueError(expr)
@@ -152,18 +163,19 @@ def value(expr, defines, depth=0):
         nonlocal at
         if level == len(LEVELS):
             return unary()
-        x, xu = binary(level + 1)
+        x, xu, xb = binary(level + 1)
         while peek() in LEVELS[level]:
             op = peek()
             at += 1
-            y, yu = binary(level + 1)
-            if op in ('<<', '>>'):
-                if not 0 <= y < 32:
+            y, yu, yb = binary(level + 1)
+            if op in ('<<', '>>'):                      # the result has the type of the left side
+                if not 0 <= y < xb:
                     raise ValueError(expr)
-                x = wrap(x << y if op == '<<' else x >> y, xu)
+                x = wrap(x << y if op == '<<' else x >> y, xu, xb)
                 continue
-            xu = xu or yu                               # one unsigned operand makes both unsigned
-            x, y = wrap(x, xu), wrap(y, xu)
+            # The wider type wins; of two types of one width, the unsigned one.
+            xu, xb = (xu and xb >= yb) or (yu and yb >= xb), max(xb, yb)
+            x, y = wrap(x, xu, xb), wrap(y, xu, xb)
             if op in ('/', '%'):
                 if y == 0:
                     raise ValueError(expr)
@@ -171,23 +183,28 @@ def value(expr, defines, depth=0):
                 x = q if op == '/' else x - q * y
             else:
                 x = {'|': x | y, '^': x ^ y, '&': x & y, '+': x + y, '-': x - y, '*': x * y}[op]
-            x = wrap(x, xu)
-        return x, xu
+            x = wrap(x, xu, xb)
+        return x, xu, xb
 
     r = binary(0)
-    if at != len(tokens):
+    if at != len(toks):
         raise ValueError(expr)
     return r
 
 
-def evaluate(expr, defines, depth=0):
-    """The value of a C integer constant expression as 32 bits (see value())."""
-    return value(expr, defines, depth)[0] & 0xFFFFFFFF
+def evaluate(expr, defines):
+    """The value of a C integer constant expression as 32 bits (see value()). Raises ValueError also for a long long
+    value that neither int nor unsigned int holds."""
+    v = value(expr, defines)[0]
+    if not -0x80000000 <= v <= 0xFFFFFFFF:
+        raise ValueError(expr)
+    return v & 0xFFFFFFFF
 
 
 def enumerators(text, header, defines, irqs, where, unknown):
     """The `NAME_IRQn` enumerators of the header's enums -> irqs, with the values C gives them: the constant after
     `=`, or one more than the enumerator before. unknown: an enumerator without a value here -> the reason."""
+    seen = {}                                           # every enumerator of the header -> its value, or None
     for m in re.finditer(r'\benum\b\s*\w*\s*\{([^{}]*)\}', text):
         known, nxt, gap = {}, 0, ''                     # known: this enum's names so far, for `B = A + 1`
         for item in re.finditer(r'[^,]+', m.group(1)):
@@ -210,16 +227,22 @@ def enumerators(text, header, defines, irqs, where, unknown):
                     gap = 'its value follows from an enumerator that is not understood'
             elif nxt is None:
                 why = gap
+            v = nxt
+            if seen.setdefault(name, v) != v:           # the name once more, as under `#if` and again under `#else`
+                v, why = None, 'the header gives it more than one value, a preprocessor condition decides which'
+            seen[name] = v
             if name.endswith('_IRQn'):
                 where[name] = f'{header} line {line}'
                 irqs.pop(name, None)
                 unknown.pop(name, None)
-                if nxt is None:
+                if v is None:
                     unknown[name] = why
                 else:
-                    irqs[name] = nxt
+                    irqs[name] = v
+            known.pop(name, None)
+            if v is not None:
+                known[name] = str(v)
             if nxt is not None:
-                known[name] = str(nxt)
                 nxt += 1
 
 
