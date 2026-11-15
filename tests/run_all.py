@@ -212,6 +212,7 @@ TESTS = [
          case={'TEST_CALLBACK_THROWS': 1}),
     Test('stdio', Kotlin('stdio', ['tests/stdio/stdio.kt']), ['tests/stdio/main.c']),
     Test('qbuild_c_files', None, ['tests/qbuild/init.c', 'support/hw.c']),
+    Test('qbuild_cxx', None, ['tests/qbuild/cxx.cpp', 'support/hw.c']),
     Test('qbuild_undefined', None, ['tests/qbuild/undefined.c'], fails='link', exit=1),
     # a folder name that no single ANSI code page holds (テ is outside 1252, é outside 932), with a space
     Test('qbuild_folder_name', ADD, ['tests/add/main.c'], folder='テスト café', copy=True,

@@ -10,6 +10,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {                                         /* a C++ file may include this header */
+#endif
+
 #define KM_NOTHROW __attribute__((nothrow))
 #define KM_ALIGN 8u                                  /* kObjectAlignment (Alignment.hpp) */
 #define KM_STR_(x) #x
@@ -146,5 +150,9 @@ static inline int km_in_interrupt(void)
     return 0;
 #endif
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

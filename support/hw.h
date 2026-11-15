@@ -15,6 +15,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {                                         /* a C++ file may include this header */
+#endif
+
 uint32_t hw_rd32(uint32_t addr);
 void     hw_wr32(uint32_t addr, uint32_t v);
 uint16_t hw_rd16(uint32_t addr);
@@ -42,5 +46,9 @@ void     hw_basepri_set(uint32_t v);
 void     hw_basepri_max(uint32_t v);      /* BASEPRI_MAX: only ever raises the mask */
 void     hw_cycles_enable(void);          /* starts the DWT cycle counter at 0 (DEMCR.TRCENA, DWT_CTRL.CYCCNTENA) */
 uint32_t hw_cycles(void);                 /* DWT->CYCCNT: core clock cycles, counted once hw_cycles_enable() ran */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* KT_HW_H */
