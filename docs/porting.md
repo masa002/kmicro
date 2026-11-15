@@ -40,6 +40,15 @@ The other hooks are optional. The runtime has a weak default for each, so a boar
 | `void kmicro_write(const char *buf, size_t n)` | `println`: UTF-8 text with a length, which may hold U+0000 | `kmicro_puts` once per chunk of up to 64 bytes, with U+0000 dropped |
 | `void kmicro_on_uncaught(ObjHeader *e)` | an uncaught exception, after its report and before the panic, also inside an interrupt handler | nothing |
 
+Link the hooks as objects, not as members of a static library. The linker takes a member out of a library only for
+a symbol that nothing has defined yet, and the runtime's weak default already defines each optional hook: a
+`kmicro_getc` or a `kmicro_time_ns` that is alone in a member of `libboard.a` is left there without a message, and
+the program runs with the default (`readlnOrNull()` returns null, `measureTime` stops and asks for the clock that the
+library has). `kmicro_puts` and `kmicro_exit` have no default, so they are found, and so is a hook in the same
+member. When the board code has to be a library, link all of it with
+`--whole-archive libboard.a --no-whole-archive`. `-u kmicro_getc` helps only when the library comes before the
+runtime's objects on the link line; qbuild puts the files it is given after them, so give it the object.
+
 The runtime provides `kmicro_init()`, `kmicro_gc()`, `kmicro_stats()`, `kmicro_put_int()`, `kmicro_panic()`,
 `kmicro_root()` / `kmicro_unroot()` and `km_ref_stored()` to the board and to any C code.
 
