@@ -1,0 +1,1 @@
+this core has no exclusive load and store

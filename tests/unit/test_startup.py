@@ -1,7 +1,8 @@
 # Copyright 2026 the kmicro authors (NOTICE).
 # SPDX-License-Identifier: Apache-2.0
 """The QEMU l475 start code: fault report, stack guard, null guard and clocks, on the default core, on an ARMv8-M
-one and on an ARMv8.1-M one. C programs only (startup_probe.c), no Kotlin compile.
+one and on an ARMv8.1-M one, and the same probes on the start code of QEMU virt for the Cortex-A7. C programs only
+(startup_probe.c), no Kotlin compile.
 
 usage: python -m unittest discover tests/unit       (skipped when LLVM, arm-none-eabi-gcc or QEMU is not installed)
 """
@@ -78,6 +79,39 @@ class StartupArmv81MTest(StartupTest):
     """The same code, built with MVE, on the Cortex-M55 of QEMU mps3-an547, which reads its reset words at address
     0: the linker script of that machine, and the guards on this core."""
     CPU = 'cortex-m55'
+
+
+class StartupCortexATest(StartupTest):
+    """The start code of QEMU virt (targets/qemu-virt) on its Cortex-A7. The guards are memory the MMU does not map,
+    and the report names the exceptions of the A profile: a data abort, an undefined instruction."""
+    CPU = 'cortex-a7'
+
+    def test_fault_report_names_the_faulting_function(self):
+        elf, rc, out = self.run_probe(1)
+        self.assertEqual(rc, 99, out)
+        m = re.search(r'kmicro fault: data abort at (0x[0-9a-f]{8})\n    sp 0x[0-9a-f]{8}  lr 0x.*dfar 0xf0000000', out)
+        self.assertTrue(m, out)
+        self.assertIn('probe_bad_read+', self.symbolized(elf, out))
+
+    def test_usage_fault(self):
+        elf, rc, out = self.run_probe(2)
+        self.assertEqual(rc, 99, out)
+        m = re.search(r'kmicro fault: undefined instruction at (0x[0-9a-f]{8})', out)
+        self.assertTrue(m, out)
+        self.assertIn('probe_undefined+', self.symbolized(elf, out))
+
+    def test_stack_overflow_stops_before_bss(self):
+        _, rc, out = self.run_probe(3)
+        self.assertEqual(rc, 99, out)
+        self.assertIn('kmicro fault: stack overflow (data abort)', out)
+        self.assertNotIn('bss changed', out)
+
+    def test_null_read_faults(self):
+        elf, rc, out = self.run_probe(4)
+        self.assertEqual(rc, 99, out)
+        m = re.search(r'kmicro fault: null pointer access \(data abort\) at (0x[0-9a-f]{8})\n.* dfar 0x0000000c', out)
+        self.assertTrue(m, out)
+        self.assertIn('probe_null_read+', self.symbolized(elf, out))
 
 
 if __name__ == '__main__':

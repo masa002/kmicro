@@ -14,7 +14,7 @@ usage: python tests/run_all.py [NAME ...] [--cpu CORE] [--kotlin] [--stress] [-v
 Each test builds its Kotlin sources with toolchain/kn.py build(), as tools/kbuild.py does (kotlinc-native runs only
 when a source or an option changed), links them with its C files and the runtime with tools/qbuild.py, runs the image
 on QEMU's STM32L475 (with --cpu, on the machine qbuild chooses for the core: the STM32L475, mps2-an385, mps2-an500,
-mps2-an505 or mps3-an547; or on mps2-an386, for a test that says so) and checks:
+mps2-an505, mps3-an547 or virt; or on mps2-an386, for a test that says so) and checks:
 
 - the exit code;
 - the output, line by line against tests/expected/<name>.txt (tests/expected/<architecture>/<name>.txt, for example
@@ -230,6 +230,7 @@ TESTS = [
     Test('qbuild_cxx', None, ['tests/qbuild/cxx.cpp', 'support/hw.c']),
     Test('qbuild_irq', None, ['tests/qbuild/irq.c'], exit=99),
     Test('qbuild_irq_an386', None, ['tests/qbuild/irq.c'], exit=99, target='an386'),
+    Test('qbuild_exclusive', None, ['tests/qbuild/exclusive.c']),
     Test('qbuild_undefined', None, ['tests/qbuild/undefined.c'], fails='link', exit=1),
     # a folder name that no single ANSI code page holds (テ is outside 1252, é outside 932), with a space
     Test('qbuild_folder_name', ADD, ['tests/add/main.c'], folder='テスト café', copy=True,

@@ -42,6 +42,11 @@ KOTLIN_NATIVE_VERSION = '2.4.21'          # retarget.py reads this compiler's IR
 # -print-multi-directory). A core with MVE and no FPU has no entry: -nofp code runs on it. Nothing is built with
 # -mbranch-protection: the code for the Cortex-M85 has no PACBTI instruction, and GCC's libraries with PACBTI are not
 # used.
+# A Cortex-A core runs ARM and Thumb-2 code. kmicro builds Thumb-2 for it, as for a Cortex-M: the multilibs the xPack
+# GCC has for these cores are all Thumb-2 (thumb/v7-a..., also when it is asked for ARM code), and the tools that
+# read machine code (frames.py, isr_check.py) and the runtime's unwinding (the landing pad's Thumb bit, eh.c) were
+# written for it. clang needs -mthumb for that (its default there is ARM state) and writes the triple of ARMv7-A
+# without the profile's letter: thumbv7.
 _SOFT = ['-mfpu=none', '-mfloat-abi=soft']
 _FP_V81 = ['-mfpu=fp-armv8-fullfp16-d16', '-mfloat-abi=hard']
 CORES = {
@@ -68,6 +73,8 @@ CORES = {
     'cortex-m85-nomve': ('thumbv8.1m.main-none-eabihf', ['-mcpu=cortex-m85+nomve', *_FP_V81],
                          'thumb/v8-m.main+dp/hard'),
     'cortex-m85-nofp': ('thumbv8.1m.main-none-eabi', ['-mcpu=cortex-m85', *_SOFT], 'thumb/v8-m.main/nofp'),
+    'cortex-a7': ('thumbv7-none-eabihf', ['-mthumb', '-mcpu=cortex-a7', '-mfpu=neon-vfpv4', '-mfloat-abi=hard'],
+                  'thumb/v7ve+simd/hard'),
 }
 DEFAULT_CPU = 'cortex-m4f'
 
@@ -101,7 +108,7 @@ def triple():
 
 def arch():
     """The architecture of the core, as in its triple: thumbv6m, thumbv7m, thumbv7em, thumbv8m.base, thumbv8m.main,
-    thumbv8.1m.main."""
+    thumbv8.1m.main, and thumbv7 for ARMv7-A."""
     return CORES[cpu()][0].split('-')[0]
 
 

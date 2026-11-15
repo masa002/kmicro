@@ -100,7 +100,7 @@ jobs:
   # The job qemu runs the default core, the Cortex-M4F. This one runs the suite for the others: ARMv6-M code
   # (cortex-m0plus) and the Cortex-M4 without an FPU on the STM32L475, the Cortex-M3 and M7 on their MPS2 machines,
   # ARMv8-M code (cortex-m23, cortex-m33, cortex-m33f) on mps2-an505, ARMv8.1-M code with MVE (cortex-m55) on
-  # mps3-an547. No --stress here.
+  # mps3-an547, and the Cortex-A7 on virt. No --stress here.
   cores:
     name: ${{ matrix.cpu }} (run_all)
     runs-on: ubuntu-latest
@@ -108,7 +108,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cpu: [cortex-m0plus, cortex-m3, cortex-m4, cortex-m7, cortex-m23, cortex-m33, cortex-m33f, cortex-m55]
+        cpu: [cortex-m0plus, cortex-m3, cortex-m4, cortex-m7, cortex-m23, cortex-m33, cortex-m33f, cortex-m55,
+              cortex-a7]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

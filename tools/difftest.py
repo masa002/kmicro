@@ -130,8 +130,8 @@ def kmicro(name, src, opts, stress, size):
     timeout = 3000 if stress else 300                # stress collects before every allocation: legitimately slow
     try:
         # in the image's folder, with its bare name: on Windows QEMU opens files through the ANSI code page
-        machine = qbuild.TARGETS[qbuild.DEFAULT_TARGET.get(paths.cpu(), 'l475')][2]
-        q = subprocess.run([str(paths.qemu_system_arm().resolve()), '-machine', machine, '-nographic',
+        machine = qbuild.qemu_machine(qbuild.DEFAULT_TARGET.get(paths.cpu(), 'l475'))
+        q = subprocess.run([str(paths.qemu_system_arm().resolve()), *machine, '-nographic',
                             '-semihosting-config', 'enable=on,target=native', '-kernel', elf.name, '-serial', 'none',
                             '-monitor', 'none'], capture_output=True, timeout=timeout, cwd=elf.parent)
     except subprocess.TimeoutExpired:

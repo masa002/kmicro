@@ -23,8 +23,8 @@ import qbuild  # noqa: E402
 def run(elf, pad):
     """(exit code, output) of the image with the stack `pad` bytes above the guard."""
     # in the image's folder, with its bare name: on Windows QEMU opens files through the ANSI code page
-    machine = qbuild.TARGETS[qbuild.DEFAULT_TARGET.get(paths.cpu(), 'l475')][2]
-    r = subprocess.run([str(paths.qemu_system_arm().resolve()), '-machine', machine, '-nographic',
+    machine = qbuild.qemu_machine(qbuild.DEFAULT_TARGET.get(paths.cpu(), 'l475'))
+    r = subprocess.run([str(paths.qemu_system_arm().resolve()), *machine, '-nographic',
                         '-semihosting-config', f'enable=on,target=native,arg=pad,arg={pad}', '-kernel', elf.name,
                         '-serial', 'none', '-monitor', 'none'], capture_output=True, timeout=120, cwd=elf.parent)
     return r.returncode, (r.stdout + r.stderr).decode('utf-8', 'replace').replace('\r\n', '\n')
