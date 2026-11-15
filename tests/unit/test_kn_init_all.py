@@ -94,6 +94,25 @@ class InitAll(unittest.TestCase):
                         min(i for i, l in enumerate(lines) if '@CallInitThreadLocal(' in l))
         self.assertEqual(local_states(kn.add_init_all(IR, '')), ['<root>$C:/src/main.kt'])
 
+    def test_calls_with_the_class(self):
+        # Kotlin/Native 2.5 as retarget.py leaves it: the runtime's functions that take the class (null for a file)
+        ir = ('  call void @kmicro_init_global(ptr noundef @"state_global$loop$C:/src/loop.kt", '
+              'ptr noundef @"kfun:loop.$init_global$loop.kt#internal", ptr noundef null)\n'
+              '  call void @kmicro_init_global(ptr noundef @"state_global$loop.Loop", '
+              'ptr noundef @"kfun:loop.Loop.$init_global#internal", ptr noundef @"kclass:loop.Loop")\n'
+              '  call void @kmicro_init_thread_local(ptr noundef @"state_global$loop.Loop", '
+              'ptr noundef @"state_thread_local$loop.Loop", '
+              'ptr noundef @"kfun:loop.Loop.$init_thread_local#internal", ptr noundef @"kclass:loop.Loop")\n'
+              '  call void @kmicro_init_global(ptr noundef @"state_global$loopy.Other", '
+              'ptr noundef @"kfun:loopy.Other.$init_global#internal", ptr noundef @"kclass:loopy.Other")\n')
+        self.assertEqual(kn.add_init_all(ir, 'loop')[1:-2], [
+            '  call void @kmicro_init_global(ptr @"state_global$loop$C:/src/loop.kt", '
+            'ptr @"kfun:loop.$init_global$loop.kt#internal", ptr null)',
+            '  call void @kmicro_init_global(ptr @"state_global$loop.Loop", '
+            'ptr @"kfun:loop.Loop.$init_global#internal", ptr @"kclass:loop.Loop")',
+            '  call void @kmicro_init_thread_local(ptr @"state_global$loop.Loop", ptr @"state_thread_local$loop.Loop", '
+            'ptr @"kfun:loop.Loop.$init_thread_local#internal", ptr @"kclass:loop.Loop")'])
+
     def test_package_with_thread_local_globals_only(self):
         self.assertEqual(local_states(kn.add_init_all(IR, 'tls')), ['tls$C:/src/tls.kt'])
 

@@ -194,6 +194,43 @@ attributes #0 = { "target-cpu"="arm1176jzf-s" "target-features"="+armv6kz,+dsp,+
 '''
 
 
+# The first use of a class's globals as Kotlin/Native 2.5 writes it: the class is the last argument of both calls
+# (null for a file's globals). Kotlin/Native 2.4 writes the same without that argument.
+INIT_MODULE = r'''target datalayout = "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64"
+target triple = "armv6kz-unknown-linux-gnueabihf"
+
+@"kclass:app.Box" = external global ptr
+@"state_global$app.Box" = internal global i32 0, align 4
+@"state_thread_local$app.Box" = internal thread_local global i32 0, align 4
+@text = internal unnamed_addr constant [33 x i8] c"call @CallInitGlobalPossiblyLock("
+
+define void @"kfun:app#use(){}"() #0 personality ptr @__gxx_personality_v0 {
+entry:
+  call void @CallInitGlobalPossiblyLock(ptr noundef @"state_global$app.Box", ptr noundef @"kfun:app.Box.$init_global#internal", ptr noundef @"kclass:app.Box")
+  invoke void @CallInitGlobalPossiblyLock(ptr noundef @"state_global$app.Box", ptr noundef @"kfun:app.Box.$init_global#internal", ptr noundef null)
+          to label %next unwind label %cleanup
+
+next:
+  call void @CallInitThreadLocal(ptr noundef @"state_global$app.Box", ptr noundef @"state_thread_local$app.Box", ptr noundef @"kfun:app.Box.$init_thread_local#internal", ptr noundef @"kclass:app.Box")
+  ret void
+
+cleanup:
+  %0 = landingpad { ptr, i32 }
+          cleanup
+  resume { ptr, i32 } %0
+}
+
+declare void @"kfun:app.Box.$init_global#internal"() #0
+declare void @"kfun:app.Box.$init_thread_local#internal"() #0
+declare void @CallInitGlobalPossiblyLock(ptr noundef, ptr noundef, ptr noundef) #1
+declare void @CallInitThreadLocal(ptr noundef, ptr noundef, ptr noundef, ptr noundef) #1
+declare i32 @__gxx_personality_v0(...)
+
+attributes #0 = { "target-cpu"="arm1176jzf-s" "target-features"="+armv6kz,+dsp,+vfp2" }
+attributes #1 = { nounwind }
+'''
+
+
 def body(text, name):
     m = re.search(r'^define [^\n]*@"' + re.escape(name) + r'"[^\n]*\{$(.*?)^\}$', text, re.M | re.S)
     return m.group(1) if m else None
@@ -249,6 +286,39 @@ class RetargetTest(unittest.TestCase):
         self.assertIn('@"state_thread_local$demo" = internal global i32 0, align 4', text)
         self.assertIn('%0 = load i32, ptr @"state_global$demo", align 4', body(text, 'kfun:state#touch(){}'))
         self.assertIn('single-core: 1 init-state loads made plain', r.stderr)
+
+    def test_init_calls_with_the_class(self):
+        (OUT / 'init25.ll').write_text(INIT_MODULE, encoding='utf-8')
+        r, text = self.retarget(src='init25.ll')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        use = body(text, 'kfun:app#use(){}')
+        self.assertEqual(re.findall(r'^  (?:call|invoke) void @(\w+)\(', use, re.M),
+                         ['kmicro_init_global', 'kmicro_init_global', 'kmicro_init_thread_local'])
+        self.assertIn(', ptr noundef @"kfun:app.Box.$init_global#internal", ptr noundef @"kclass:app.Box")\n', use)
+        self.assertIn('declare void @kmicro_init_global(ptr noundef, ptr noundef, ptr noundef) #1\n', text)
+        self.assertIn('declare void @kmicro_init_thread_local(ptr noundef, ptr noundef, ptr noundef, ptr noundef) #1\n',
+                      text)
+        self.assertEqual(text.count('@CallInit'), 1)
+        self.assertIn('c"call @CallInitGlobalPossiblyLock("\n', text)               # the string literal is as it was
+        c = subprocess.run([str(paths.clang()), *paths.target_flags(), '-O2', '-c', '-x', 'ir', OUT / 'out.ll',
+                            '-o', OUT / 'out.o'], capture_output=True, text=True)
+        self.assertEqual(c.returncode, 0, c.stderr)
+
+    def test_init_calls_without_the_class_keep_their_names(self):
+        module = INIT_MODULE                                                         # as Kotlin/Native 2.4 writes it
+        for old, new in ((', ptr noundef @"kclass:app.Box")', ')'), (', ptr noundef null)', ')'),
+                         ('Lock(ptr noundef, ptr noundef, ptr noundef) #1', 'Lock(ptr noundef, ptr noundef) #1'),
+                         ('Local(ptr noundef, ptr noundef, ptr noundef, ptr noundef) #1',
+                          'Local(ptr noundef, ptr noundef, ptr noundef) #1')):
+            self.assertIn(old, module)
+            module = module.replace(old, new)
+        (OUT / 'init24.ll').write_text(module, encoding='utf-8')
+        r, text = self.retarget(src='init24.ll')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn('kmicro_init_', text)
+        self.assertEqual(re.findall(r'^  (?:call|invoke) void @(\w+)\(', body(text, 'kfun:app#use(){}'), re.M),
+                         ['CallInitGlobalPossiblyLock', 'CallInitGlobalPossiblyLock', 'CallInitThreadLocal'])
+        self.assertIn('declare void @CallInitThreadLocal(ptr noundef, ptr noundef, ptr noundef) #1\n', text)
 
     def test_string_constants_are_not_edited(self):
         # -Xbinary=latin1Strings=true stores a literal as its text, which may be the text a rewrite looks for

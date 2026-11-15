@@ -87,6 +87,15 @@ class IsrCheck(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.run_check(0x08000200, callbacks=['kfun:irq#nope(){}'])
 
+    def test_first_use_of_globals_is_listed_and_not_followed(self):
+        # the function the compiled code calls for it: the first with Kotlin/Native 2.4, the second with 2.5
+        for first_use in ('CallInitGlobalPossiblyLock', 'kmicro_init_global'):
+            funcs = FUNCS + [(0x08000400, 'kfun:irq#count(){}', [first_use]),
+                             (0x08000440, first_use, ['AllocInstance'])]
+            lines, bad, _ = self.run_check(0x08000400, funcs)
+            self.assertEqual(bad, 0, lines)
+            self.assertIn(f'LAZY   kfun:irq#count(){{}}: kfun:irq#count(){{}} -> {first_use}', lines)
+
     def test_throw_paths_are_not_followed(self):
         lines, bad, _ = self.run_check(0x080002c0)
         self.assertEqual(bad, 0, lines)

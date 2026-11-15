@@ -9,6 +9,13 @@
  * kmicro_call_catching does the same catch for eh.c, which runs the unhandled-exception hook and goes on when the
  * hook throws.
  *
+ * Kotlin/Native 2.5 gives the two functions one more argument, the class whose initializer runs (null for a file's),
+ * and its standard library has StaticInitializationFailure(reason, class) in the place of
+ * ThrowFileFailedToInitializeException(reason). C cannot define one name with two signatures, and the LTO link
+ * treats a call through another signature as undefined behaviour, so the functions of 2.5 are kmicro_init_global and
+ * kmicro_init_thread_local here: toolchain/retarget.py gives the calls of a 2.5 program these names. A program calls
+ * one pair, and the link drops the other with the function of the standard library it names.
+ *
  * GC rules followed here: Kotlin frames left by the unwinding are dropped (SetCurrentFrame to our own frame) before
  * anything can allocate, and the caught exception is kept in a slot of our shadow-stack frame, never only in a C++
  * variable, while ThrowFileFailedToInitializeException allocates the wrapper. */
@@ -17,13 +24,18 @@
 
 extern "C" {
 struct ObjHeader;
+struct TypeInfo;
 void EnterFrame(ObjHeader **start, int parameters, int count);
 void LeaveFrame(ObjHeader **start, int parameters, int count);
 void SetCurrentFrame(ObjHeader **start);
 ObjHeader *kmicro_caught_exception(void);       /* runtime/eh.c: the exception between begin_catch and end_catch */
 void ThrowFileFailedToInitializeException(ObjHeader *reason) __attribute__((noreturn));
+void StaticInitializationFailure(ObjHeader *reason, const TypeInfo *type) __attribute__((noreturn));
 void CallInitGlobalPossiblyLock(uintptr_t *state, void (*init)(void));
 void CallInitThreadLocal(volatile uintptr_t *global_state, uintptr_t *local_state, void (*init)(void));
+void kmicro_init_global(uintptr_t *state, void (*init)(void), const TypeInfo *type);
+void kmicro_init_thread_local(volatile uintptr_t *global_state, uintptr_t *local_state, void (*init)(void),
+                              const TypeInfo *type);
 ObjHeader *kmicro_call_catching(void (*fn)(ObjHeader *), ObjHeader *arg, ObjHeader **frame, ObjHeader **slot);
 void kmicro_panic(const char *what) __attribute__((noreturn));
 }
@@ -68,7 +80,10 @@ static void refuse_in_handler(uintptr_t st)
     kmicro_panic("Kotlin globals first used inside an interrupt handler");
 }
 
-void CallInitGlobalPossiblyLock(uintptr_t *state, void (*init)(void))
+/* The two functions, with `failed` for what throws: failed(exception) when the initializer threw it, and
+ * failed(nullptr) for a later use of what it left uninitialised. failed() does not return. */
+template <typename Failed>
+static inline void init_global(uintptr_t *state, void (*init)(void), Failed failed)
 {
     uintptr_t st = *state;
     if (st == INITIALIZED)
@@ -77,19 +92,21 @@ void CallInitGlobalPossiblyLock(uintptr_t *state, void (*init)(void))
     if (st == BEING_INITIALIZED)                     /* the initializer itself uses its file's globals */
         return;
     if (st == FAILED_TO_INITIALIZE)
-        ThrowFileFailedToInitializeException(nullptr);
+        failed(nullptr);
     *state = BEING_INITIALIZED;
     Frame fr;
     EnterFrame(fr.start(), 0, Frame::kSlots);
     if (run_init(fr, init)) {
         *state = FAILED_TO_INITIALIZE;
-        ThrowFileFailedToInitializeException(fr.reason);   /* our frame is popped by the catcher's SetCurrentFrame */
+        failed(fr.reason);                           /* our frame is popped by the catcher's SetCurrentFrame */
     }
     LeaveFrame(fr.start(), 0, Frame::kSlots);
     *state = INITIALIZED;
 }
 
-void CallInitThreadLocal(volatile uintptr_t *global_state, uintptr_t *local_state, void (*init)(void))
+template <typename Failed>
+static inline void init_thread_local(volatile uintptr_t *global_state, uintptr_t *local_state, void (*init)(void),
+                                     Failed failed)
 {
     /* The @ThreadLocal globals of a file. The stock runtime marks them initialised before it runs the initializer;
      * kmicro keeps "being initialised" until it is done, so that a handler that interrupts it is stopped as for
@@ -101,16 +118,39 @@ void CallInitThreadLocal(volatile uintptr_t *global_state, uintptr_t *local_stat
     if (st == BEING_INITIALIZED)                     /* the initializer itself uses its file's thread-locals */
         return;
     if (st == FAILED_TO_INITIALIZE || (global_state != nullptr && *global_state == FAILED_TO_INITIALIZE))
-        ThrowFileFailedToInitializeException(nullptr);
+        failed(nullptr);
     *local_state = BEING_INITIALIZED;
     Frame fr;
     EnterFrame(fr.start(), 0, Frame::kSlots);
     if (run_init(fr, init)) {
         *local_state = FAILED_TO_INITIALIZE;
-        ThrowFileFailedToInitializeException(fr.reason);
+        failed(fr.reason);
     }
     LeaveFrame(fr.start(), 0, Frame::kSlots);
     *local_state = INITIALIZED;
+}
+
+void CallInitGlobalPossiblyLock(uintptr_t *state, void (*init)(void))
+{
+    init_global(state, init, [](ObjHeader *reason) { ThrowFileFailedToInitializeException(reason); });
+}
+
+void CallInitThreadLocal(volatile uintptr_t *global_state, uintptr_t *local_state, void (*init)(void))
+{
+    init_thread_local(global_state, local_state, init,
+                      [](ObjHeader *reason) { ThrowFileFailedToInitializeException(reason); });
+}
+
+void kmicro_init_global(uintptr_t *state, void (*init)(void), const TypeInfo *type)
+{
+    init_global(state, init, [type](ObjHeader *reason) { StaticInitializationFailure(reason, type); });
+}
+
+void kmicro_init_thread_local(volatile uintptr_t *global_state, uintptr_t *local_state, void (*init)(void),
+                              const TypeInfo *type)
+{
+    init_thread_local(global_state, local_state, init,
+                      [type](ObjHeader *reason) { StaticInitializationFailure(reason, type); });
 }
 
 /* Calls fn(arg). Returns nullptr when it returns, else the Kotlin exception it threw, kept in *slot, a slot of the

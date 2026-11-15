@@ -12,6 +12,8 @@ usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot
   paths.target_flags(), so Kotlin and the C runtime carry identical attributes
 - --no-tls: single thread, so thread-local storage becomes ordinary storage (no __aeabi_read_tp)
 - --single-core: the init-state check before a file's globals becomes a plain load (no DMB, hoistable out of loops)
+- the calls that initialise globals on first use, as Kotlin/Native 2.5 writes them, with the class as one more
+  argument, go to the runtime's functions of that signature (kmicro_init_global, kmicro_init_thread_local)
 - --size: minsize/optsize on every Kotlin function; --hot REGEX keeps full speed for the functions whose symbol it
   matches (searched in the symbol as Kotlin/Native writes it, e.g. kfun:pkg#name(kotlin.Int){}kotlin.Int; an error
   when it matches none). The summaries ('N hot functions', 'single-core: N ...') go to stderr.
@@ -184,6 +186,15 @@ if '--single-core' in args:
     # initialise globals (the runtime stops if they try), so a plain load is exact: no barrier, hoistable.
     text, n = re.subn(r'load atomic (i32), ptr (@"state_global\$[^"]*") acquire, align 4', r'load \1, ptr \2, align 4', text)
     print(f'single-core: {n} init-state loads made plain', file=sys.stderr)
+# Kotlin/Native 2.5 gives CallInitGlobalPossiblyLock and CallInitThreadLocal one more argument, the class whose
+# initializer it is. The runtime has the functions of that signature under names of its own, beside those of 2.4
+# (runtime/init_cxx.cpp): one name cannot have both signatures, and the LTO link treats a call that does not match
+# the definition as undefined behaviour. Only the declaration and the calls are renamed, each at the start of its
+# line: a string literal may hold the text.
+for stock, own, n in (('CallInitGlobalPossiblyLock', 'kmicro_init_global', 3),
+                      ('CallInitThreadLocal', 'kmicro_init_thread_local', 4)):
+    if re.search(rf'^declare void @{stock}\((?:ptr[^,()\n]*, ){{{n - 1}}}ptr[^,()\n]*\)', text, re.M):
+        text = re.sub(rf'^(declare void |  (?:call|invoke) void )@{stock}\(', rf'\1@{own}(', text, flags=re.M)
 if '--drop-ctors' in args:
     text = re.sub(r'^@llvm\.global_ctors = .*$', '', text, count=1, flags=re.M)
 # kotlin.random: constructing any Random, Random(42) too, creates Random.Default (NativeRandom), which seeds itself

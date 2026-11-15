@@ -577,26 +577,29 @@ def add_init_all(ll_text, package, name='kt_init_all'):
     """`void <name>(void)`: the globals of `package` and its sub-packages created now, file-level ones and those of
     object declarations (and companion objects), @ThreadLocal ones included. Kotlin initialises each on first use;
     called at boot (thread context, before interrupts), no interrupt handler ever does that allocation. A package with
-    no Kotlin code is an error."""
+    no Kotlin code is an error. The calls are those of the compiled code, as retarget.py left them: with
+    Kotlin/Native 2.5 they go to kmicro_init_global and kmicro_init_thread_local and end with the class."""
     if package:
         mine = re.escape(package) + r'[.$][^"]*'
     else:                                      # the root package: its files, and classes outside any package
         mine = '(?:' + '|'.join([r'<root>\$[^"]*', *map(re.escape, root_classes(ll_text))]) + ')'
+    with_class = r'((?:, ptr noundef (?:null|@"kclass:[^"]*"))?)\)'      # Kotlin/Native 2.5: the class, null for a file
     pairs = sorted(set(re.findall(
-        r'call void @CallInitGlobalPossiblyLock\(ptr noundef (@"state_global\$' + mine + r'"), '
-        r'ptr noundef (@"kfun:[^"]*\$init_global[^"]*")\)', ll_text)))
+        r'call void @(CallInitGlobalPossiblyLock|kmicro_init_global)\(ptr noundef (@"state_global\$' + mine + r'"), '
+        r'ptr noundef (@"kfun:[^"]*\$init_global[^"]*")' + with_class, ll_text)), key=lambda t: t[1:])
     # The @ThreadLocal globals of a file or an object have a state and an initializer of their own. The compiled code
     # runs it after that of the file's other globals, whose state is the first argument (null when there are none).
     local = sorted(set(re.findall(
-        r'call void @CallInitThreadLocal\(ptr noundef (null|@"state_global\$[^"]*"), '
+        r'call void @(CallInitThreadLocal|kmicro_init_thread_local)\(ptr noundef (null|@"state_global\$[^"]*"), '
         r'ptr noundef (@"state_thread_local\$' + mine + r'"), '
-        r'ptr noundef (@"kfun:[^"]*\$init_thread_local[^"]*")\)', ll_text)), key=lambda t: t[1])
+        r'ptr noundef (@"kfun:[^"]*\$init_thread_local[^"]*")' + with_class, ll_text)), key=lambda t: t[2])
     if not pairs and not local and not re.search(r'^define [^\n]*@"kfun:' + re.escape(package) + r'[#.]', ll_text,
                                                  re.M):
         sys.exit(f'kmicro: init_all (--init-all): no Kotlin code in package {package or "<root>"} (--package)')
     return [f'define void @{name}() {{',
-            *[f'  call void @CallInitGlobalPossiblyLock(ptr {st}, ptr {fn})' for st, fn in pairs],
-            *[f'  call void @CallInitThreadLocal(ptr {gl}, ptr {st}, ptr {fn})' for gl, st, fn in local],
+            *[f'  call void @{f}(ptr {st}, ptr {fn}{c.replace(" noundef", "")})' for f, st, fn, c in pairs],
+            *[f'  call void @{f}(ptr {gl}, ptr {st}, ptr {fn}{c.replace(" noundef", "")})'
+              for f, gl, st, fn, c in local],
             '  ret void', '}']
 
 
