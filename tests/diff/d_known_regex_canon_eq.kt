@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Known to differ on kmicro: RegexOption.CANON_EQ is not supported. kmicro throws an IllegalArgumentException with
 // the message "RegexOption.CANON_EQ is not supported on kmicro", which the program can catch; stock Kotlin/Native
 // matches the canonically equivalent text.

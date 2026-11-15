@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* qbuild with several C files and no Kotlin: this driver has the name of a runtime file (runtime/init.c), and
  * support/hw.c, the second file, provides hw_rd32/hw_wr32 through support/ on the include path. */
 #include "kmicro.h"

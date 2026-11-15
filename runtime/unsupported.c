@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Stdlib natives kmicro does not support. Each is defined with the stock signature, so a board build links and
  * link-time optimisation sees a well-typed call, and calling one stops the program with a message that names the
  * Kotlin API. tools/missing_natives.py lists them with the rest of the stdlib's natives. */

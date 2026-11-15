@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 fun main() {
     val words = listOf("kotlin", "Native", "", "マイコン", "émoji😀", "a,b,,c", "  pad  ")
     for (w in words) {

@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* A coroutine resumed by events from C: 300 suspend/resume cycles (coroutines.kt). */
 #include "kmicro.h"
 

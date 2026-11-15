@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """kmicro regression suite: the test programs and the examples, built the way a user builds them and run on QEMU.
 
 usage: python tests/run_all.py [NAME ...] [--cpu CORE] [--kotlin] [--stress] [-v]

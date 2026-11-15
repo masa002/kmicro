@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Numeric helpers (Operator.cpp of the stock runtime). Zero inputs to the bit counts return the bit width (the
  * stock code calls the builtins directly, which are undefined for zero in C). */
 #include <math.h>

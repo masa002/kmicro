@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* The Unicode decomposition natives of kotlin.text.Regex (Regex.cpp of the stock runtime). Only canonical equivalence
  * (RegexOption.CANON_EQ) uses them: Lexer.normalize, Pattern.processDecomposedChar and DecomposedCharSet. kmicro has
  * no decomposition tables, so each one throws IllegalArgumentException, which the caller can catch; every other

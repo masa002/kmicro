@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Language probe 3: generics, reified types, value classes, typealias, reflection-lite, default Any members.
 import kotlin.reflect.KClass
 import kotlin.reflect.typeOf

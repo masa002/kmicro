@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Build the selftest for an STM32L431 board: build/stm32l431/selftest.elf, .hex and .bin.
 
 usage: python examples/selftest/stm32l431/build.py [--kotlin] [--kotlin-dir DIR]

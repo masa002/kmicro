@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Language probe 10: @ThreadLocal objects, box identity, suspend functions with try/finally across suspension points,
 // suspend interface members, sequences with finally, generic suspend lambdas.
 import kotlin.coroutines.Continuation

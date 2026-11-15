@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 @file:OptIn(kotlin.experimental.ExperimentalNativeApi::class, kotlin.native.runtime.NativeRuntimeApi::class)
 
 // Platform, GC.schedule and exitProcess. Only what is the same on the host and on the board is printed: osFamily,

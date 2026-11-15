@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // String.toDouble()/toFloat() and their OrNull forms on decimal, named and hexadecimal text, valid and invalid. The
 // hexadecimal cases cover the grammar, rounding (ties, digits beyond the 15 that fit the mantissa), subnormals,
 // overflow and huge exponents; a batch of generated strings is compared through a hash of the bits.

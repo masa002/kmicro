@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* The selftest on an STM32L431 (Cortex-M4F, 256 KB flash, 64 KB SRAM): start-up code, a 16 MHz clock, USART1 for
  * kmicro_puts, and the checks of ../main.c, each one timed with the Cortex-M4 cycle counter.
  *

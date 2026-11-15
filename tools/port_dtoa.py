@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Port the Kotlin/Native copy of the Apache Harmony floating-point conversion code to kmicro (runtime/dtoa).
 
 usage: python tools/port_dtoa.py [DIR]          (default: runtime/dtoa)

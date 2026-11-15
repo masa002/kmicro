@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 data class Point(val x: Int, val y: Int)
 sealed interface Ev {
     data object Press : Ev

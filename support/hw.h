@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* hw.h - what Kotlin cannot say by itself, one instruction each after LTO.
  *
  * Kotlin has no volatile memory access (@Volatile applies to properties only) and no way to emit a CPU instruction

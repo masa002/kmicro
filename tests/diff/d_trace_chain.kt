@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // printStackTrace()/stackTraceToString() of exceptions with causes and suppressed exceptions. Frame lines ("at ...",
 // "... and N more common stack frames skipped") differ between the targets and are left out; the rest must match.
 

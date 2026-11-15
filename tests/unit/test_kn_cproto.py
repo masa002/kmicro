@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """toolchain/kn.py c_prototypes(): the --c-api prototypes of a header, read by clang (skipped without the LLVM that
 Kotlin/Native downloads).
 

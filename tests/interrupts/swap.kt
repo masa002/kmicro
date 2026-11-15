@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 package isr
 
 // A handler may move references while the collector marks: SysTick swaps two fields of each Holder (or the two ends

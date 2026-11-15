@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Kotlin sources -> Cortex-M LTO objects, the steps every kmicro build shares.
 
     compile_ir()   the official kotlinc-native 2.4.21, unmodified, for linux_arm32_hfp (a 32-bit EABI target whose

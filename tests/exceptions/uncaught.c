@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Uncaught exceptions and the unhandled-exception hook (uncaught.kt): run_all builds this file once per test case,
  * with one TEST_* macro defined, and the case's Kotlin function runs. */
 #include "kmicro.h"

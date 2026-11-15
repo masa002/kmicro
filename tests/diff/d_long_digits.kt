@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // String.toDouble() and toFloat() on decimal text with 399 to 800 significant digits: more than the runtime's parser
 // reads, and from 400 on more than its buffer holds. (Shorter text: d_to_double.kt.)
 // difftest: heap 32768 -- a text of 800 digits takes 1.6 KB and the stdlib copies it to parse it: the free memory of

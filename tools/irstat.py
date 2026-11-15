@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Quick statistics over a textual LLVM IR module (.ll) produced by kotlinc-native -Xsave-llvm-ir-after.
 
 usage: python tools/irstat.py MODULE [--list-decls] [--list-defs]

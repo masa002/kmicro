@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Atomics of 1, 2 and 4 bytes on a core without LDREX/STREX (ARMv6-M: Cortex-M0, M0+, M1).
  *
  * On the other cores the compiler turns an atomic operation into an exclusive load and store that an interrupt in

@@ -38,10 +38,18 @@ The kmicro files derived from it, with the upstream files they follow (under kot
     runtime/strings.c        main/cpp/KString.h, KString.cpp, ToString.cpp, Console.cpp
     runtime/types.c          main/cpp/Types.cpp, Natives.cpp, Boxing.cpp, Arrays.cpp
     runtime/interop.c        main/cpp/Natives.cpp: Kotlin_interop_malloc, Kotlin_interop_free
+    runtime/system.c         main/cpp/Runtime.cpp, Natives.cpp, Console.cpp, Random.cpp, Memory.cpp: platform
+                             values, GC statistics, console input
+    runtime/time.c           main/cpp/Time.cpp
+    runtime/regex.c          main/cpp/Regex.cpp: the Unicode decomposition natives
+    runtime/eh.c             main/cpp/Exceptions.cpp: the report of an uncaught exception, the hook
+    runtime/unsupported.c    main/cpp/Memory.cpp, Worker.cpp, Thread.cpp, Monitor.cpp: the signatures
+    runtime/hexfloat.c       main/kotlin/kotlin/native/internal/HexStringParser.kt (from Apache Harmony)
 
 Apart from runtime/dtoa, these files are written for kmicro in C or C++: they implement the same runtime interface,
-with the same data layouts and behaviour, and their comments name the upstream sources they follow. Any other
-kmicro file whose comments name a Kotlin/Native source it follows is derived in the same way.
+with the same data layouts and behaviour, and their comments name the upstream sources they follow. Each starts
+with the first copyright line quoted above, followed by kmicro's own. Any other kmicro file whose comments name a
+Kotlin/Native source it follows is derived in the same way.
 
 ------------------------------------------------------------------------------------------------------------------
 Apache Harmony

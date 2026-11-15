@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Type checks, identity hash, box caches, primitive and object arrays, interface dispatch (Types.cpp, TypeInfo.cpp,
  * Natives.cpp, Boxing.cpp, Arrays.cpp of the stock runtime). */
 #include <string.h>

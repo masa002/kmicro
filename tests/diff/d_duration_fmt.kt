@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Duration.toString(unit, decimals): exact decimal digits, rounded half to even like printf("%.*f").
 
 import kotlin.time.Duration

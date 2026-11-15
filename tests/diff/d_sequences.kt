@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // sequence {} is a coroutine (suspend + yield): the same machinery as any suspend function.
 fun fib() = sequence {
     var a = 0L

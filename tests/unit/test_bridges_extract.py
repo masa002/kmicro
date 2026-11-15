@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """toolchain/bridges.py extract() on a small module in the shape kotlinc-native saves (no Kotlin compiler needed;
 one test assembles the result with clang when it is installed).
 

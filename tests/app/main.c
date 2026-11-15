@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* A small device app (app.kt): events from C drive a state machine in a coroutine, which keeps a log of strings. */
 #include "kmicro.h"
 

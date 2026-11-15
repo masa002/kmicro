@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Initialization semantics: lazy top-level properties, objects, a failing initializer (accessed twice), companions.
 object Registry {
     val names = mutableListOf<String>()

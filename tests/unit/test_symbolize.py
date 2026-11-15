@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """tools/symbolize.py: names for trace addresses from a synthetic nm listing (no tools needed), then, with the xPack
 GCC, on an image built here from symbolize_probe.c: the call before a return address, the inlined levels, a log file,
 UTF-8 text, the exit codes, and the image in a folder that the host's ANSI code page cannot name (tools/frames.py

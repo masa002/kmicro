@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Which runtime functions the Kotlin/Native stdlib needs, and which of them kmicro does not provide.
 
     python tools/missing_natives.py [-v] [--check] [--ir FILE.ll ...]

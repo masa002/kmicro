@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Random malloc/free on the native-memory arena (nativeHeap, memScoped), through the functions Kotlin code calls:
  * every live block keeps its fill pattern, blocks never overlap, a request fails only when no free run is big enough,
  * and everything freed gives back the whole arena. C only. */

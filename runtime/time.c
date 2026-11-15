@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* kotlin.time and kotlin.random natives (Time.cpp of the stock runtime) on hooks the board provides (kmicro.h):
  *
  *   int64_t kmicro_time_ns(void)       monotonic nanoseconds from any origin: measureTime, TimeSource.Monotonic

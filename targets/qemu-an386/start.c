@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Bare-metal start for QEMU mps2-an386, the target with megabytes of memory: Kotlin modules compiled exactly as for
  * the device, linked with C code that needs more RAM than the device has (a test that models a large peripheral in
  * memory, for example). Vector table, FPU on, .data/.bss, constructors, newlib's semihosting stdio (rdimon), the

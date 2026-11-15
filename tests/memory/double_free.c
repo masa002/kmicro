@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* The native-memory arena (nativeHeap, memScoped): freeing a block twice must stop the program, also when the first
  * free merged it into the free block below it. C only: these are the functions Kotlin code calls. */
 #include "kmicro.h"

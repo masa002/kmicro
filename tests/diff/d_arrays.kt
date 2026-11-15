@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Arrays of every primitive type, Array<T>, unsigned arrays, sequences.
 // difftest: heap 32768 -- main keeps every array and sequence of the test alive until it returns
 // difftest: large -- the API of every array type in one program: about 310 KB of flash

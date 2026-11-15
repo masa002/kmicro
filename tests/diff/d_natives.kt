@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlin.reflect.ExperimentalAssociatedObjects::class)
 
 // Smaller stdlib natives: vectorOf, String pinning, associated objects, and a Regex without CANON_EQ (it links the

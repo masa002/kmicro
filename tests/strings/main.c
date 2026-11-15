@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Strings: templates, UTF-16, hashCode, split, replace, StringBuilder (strings.kt). */
 #include "kmicro.h"
 

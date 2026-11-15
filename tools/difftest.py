@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Differential test: the same Kotlin program on the official runtime (built for this computer) and on kmicro
 (Cortex-M, QEMU). The outputs must be byte-identical.
 

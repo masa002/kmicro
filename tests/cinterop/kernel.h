@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 #include <stdint.h>
 /* A C API that Kotlin calls through cinterop (kernel.def); main.c implements it. */
 int32_t k_button_count(void);

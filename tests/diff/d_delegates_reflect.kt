@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Delegated properties, KClass and typeOf, references, boxing, value classes, use. (A stack trace with a cause:
 // d_trace_chain.kt; exitProcess: d_system.kt)
 import kotlin.properties.Delegates

@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // kotlin.random and kotlin.time. A seeded Random gives the same numbers on every platform. Random.Default, the
 // monotonic clock and the system clock give different values on every run, so only their properties are printed.
 @file:OptIn(kotlin.time.ExperimentalTime::class)

@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Language probe 4: functions, operators, lambdas, references, inline, scope functions, DSL builders.
 import kotlin.reflect.KFunction
 import kotlin.reflect.KProperty0

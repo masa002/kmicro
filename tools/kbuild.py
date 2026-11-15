@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Kotlin sources -> Cortex-M objects to link with the kmicro runtime (toolchain/kn.py build()).
 
 usage: python tools/kbuild.py <outdir> <file.kt or folder>... [options]      (--help lists the options)

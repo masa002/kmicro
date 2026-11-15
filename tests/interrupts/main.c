@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Kotlin code in an interrupt handler: what the runtime refuses, and what works. run_all builds this file once per test
  * case, with one TEST_* macro defined; SysTick_Handler then calls that case's Kotlin function (isr.h). */
 #include "kmicro.h"

@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Where the external tools are. Every kmicro script imports this instead of naming a path.
 
 Each tool is looked up in this order: its environment variable, then the usual install place under the home folder.

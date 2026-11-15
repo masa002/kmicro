@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // UTF-8 decoding with replacement (decodeToString) and the throwing variant. A sequence cut short gives one U+FFFD;
 // an invalid lead byte, an overlong form, an encoded surrogate or a value above U+10FFFF gives one per byte.
 

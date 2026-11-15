@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // hashCode, enums, data classes, comparators, Pair/Triple, Result, lazy, preconditions. (kotlin.random:
 // d_random_time.kt, d_random_api.kt)
 // difftest: heap 32768 -- the default 16 KB runs out: one long main keeps the objects of its checks alive

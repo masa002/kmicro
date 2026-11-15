@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* The smallest test: C starts the runtime and calls one Kotlin function (add.kt) by its @CName name. */
 #include "kmicro.h"
 

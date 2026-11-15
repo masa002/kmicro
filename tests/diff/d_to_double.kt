@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // String.toDouble()/toFloat() and their OrNull forms on decimal text: the largest and smallest values, subnormals,
 // overflow and underflow, hundreds of digits, exponents beyond Int, named values and malformed text. (Hexadecimal
 // text in depth: d_parse_small.kt.)

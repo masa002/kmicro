@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 @file:OptIn(kotlin.native.runtime.NativeRuntimeApi::class)
 
 package isr

@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* cinterop support: thread-state switches (one thread: nothing to do) and the native memory that memScoped,
  * cstr and nativeHeap use (Natives.cpp Kotlin_interop_malloc/free). kmicro has no malloc: a small arena, with
  * first-fit reuse of freed blocks in any order. */

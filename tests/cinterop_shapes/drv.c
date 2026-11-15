@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* The C side of the cinterop_shapes test: implements drv.h and checks every call shape of shapes.kt, calling the
  * Kotlin functions by their @CName names. Built with TEST_CALLBACK_THROWS, it runs a callback that throws instead. */
 #include "kmicro.h"

@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """toolchain/kn.py add_kotlin_main(): the C name kmicro_kotlin_main for the program's `fun main()` (IR excerpts, no
 compiler needed).
 

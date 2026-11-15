@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Generate Kotlin register constants from CMSIS headers: every register address and every bit constant.
 
     python tools/gen_regs.py --header core_cm4.h --header stm32l431xx.h [--pins board.h] --sources kotlin/

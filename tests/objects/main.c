@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Classes, an interface and virtual calls (objects.kt). */
 #include "kmicro.h"
 

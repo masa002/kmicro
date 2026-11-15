@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* kotlin.native.Platform, exitProcess, readln, GC.schedule/lastGCInfo, Uuid.random and the Debugging queries
  * (Runtime.cpp, Natives.cpp, Console.cpp, Random.cpp, Memory.cpp of the stock runtime). Board input and entropy come
  * through weak hooks; without them readln sees the end of input and Uuid.random stops with the hook's name. */

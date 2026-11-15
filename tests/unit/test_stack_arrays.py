@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Arrays on the stack: kn.check_stack_arrays() before linking (IR) and tools/frames.py after (machine code); canned
 inputs, no compiler needed.
 

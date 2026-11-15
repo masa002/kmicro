@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Static check of a firmware image: no interrupt handler can reach a Kotlin allocation.
 
     python tools/isr_check.py firmware.elf [--callback NAME ...] [--boxing]

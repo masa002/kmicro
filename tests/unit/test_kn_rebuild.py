@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """toolchain/kn.py compile_ir(): when the saved IR is reused and when kotlinc-native runs again, and the klibs of
 kbuild --def (no compiler needed: the compiler call is replaced by a fake that writes the IR files or the klib).
 

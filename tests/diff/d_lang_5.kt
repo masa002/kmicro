@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Language probe 5: control flow, smart casts, null safety, casts, ranges, strings and templates.
 // difftest: heap 32768 -- one long main: its frame keeps the objects of every check alive until it returns
 

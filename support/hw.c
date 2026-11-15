@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* hw.c - see hw.h. Compiled by clang -flto together with the Kotlin code, so each body is inlined at the call. */
 #include "hw.h"
 

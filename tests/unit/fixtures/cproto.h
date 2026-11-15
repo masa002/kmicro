@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* --c-api header cases for tests/unit/test_kn_cproto.py: the comment after each line says whether it is a
    prototype the Kotlin code implements. */
 #include <stdint.h>

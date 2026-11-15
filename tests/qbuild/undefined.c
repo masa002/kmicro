@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* A symbol nothing defines: qbuild's link must fail and name the file that needs it (it stubs only runtime natives
  * that Kotlin code calls). */
 #include "kmicro.h"

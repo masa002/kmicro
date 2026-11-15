@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 #include "kmicro.h"
 void kt_main(void) __asm__("kfun:#main(){}");
 int main(void)

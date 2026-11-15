@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Extract the cinterop bridges from a kotlinc-native module saved after LinkBitcodeDependencies.
 
 usage: python toolchain/bridges.py out.LinkBitcodeDependencies.ll bridges.ll [--codegen out.Codegen.ll]

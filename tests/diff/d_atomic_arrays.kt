@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 @file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class, ExperimentalStdlibApi::class)
 @file:Suppress("DEPRECATION")
 

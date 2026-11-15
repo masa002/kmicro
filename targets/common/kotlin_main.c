@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* The C main of a Kotlin-only program: start the Kotlin runtime, then run the Kotlin `fun main()`.
  *
  *     python tools/kbuild.py build/app app.kt

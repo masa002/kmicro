@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* A Kotlin interrupt handler: C starts the runtime and the Kotlin globals, Kotlin does the rest (irq.kt). */
 #include "kmicro.h"
 #include "irq.h"

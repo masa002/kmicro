@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Retarget a kotlinc-native textual IR module to a Cortex-M core (paths.CORES; KMICRO_CPU, default cortex-m4f).
 
 usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot REGEX]]

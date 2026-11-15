@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* The C side of the event loop (event_loop.kt) on QEMU: a 1 kHz SysTick clock, injected button presses, WFI between
  * steps. */
 #include "kmicro.h"

@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* newlib's stdio from C and from Kotlin (stdio.kt): what printf, puts and fprintf(stderr) write goes where println
  * goes, through the runtime's _write. */
 #include <stdio.h>

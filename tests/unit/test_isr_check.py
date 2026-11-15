@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """tools/isr_check.py on canned objdump output: which handlers it finds and what it reports.
 
 usage: python tests/unit/test_isr_check.py      (or python -m unittest discover tests/unit)

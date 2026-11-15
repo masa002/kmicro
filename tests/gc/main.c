@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* The garbage collector: 6000 objects through a small heap, survivors in locals, a global and an array (gc.kt).
  * run_all runs it with a 16 KB and a 5 KB heap. */
 #include "kmicro.h"

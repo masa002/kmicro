@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Run a program of the xPack arm-none-eabi binutils (nm, size, objdump, readelf, addr2line, objcopy) on a file.
 
 On Windows these programs open files through the ANSI code page, so they cannot reach a folder whose name has a

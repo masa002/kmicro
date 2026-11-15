@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // 200 reference globals in one file, more than the default KM_GLOBALS (160) holds together with the standard
 // library's own. Generated: gN = listOf(N).
 @file:OptIn(kotlin.experimental.ExperimentalNativeApi::class)

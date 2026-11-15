@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Language probe 2: constructors, properties, lateinit, delegated properties, class delegation.
 import kotlin.properties.Delegates
 import kotlin.properties.PropertyDelegateProvider

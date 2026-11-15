@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """toolchain/kn.py check_regex(): kbuild's warning for a program that uses Regex (canned IR, no compiler needed).
 
 python -m unittest discover -s tests/unit

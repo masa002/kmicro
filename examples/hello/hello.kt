@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 package hello
 
 // C calls this as `int32_t hello(int32_t times)` (hello.h): kbuild.py --c-api hello.h --package hello gives the

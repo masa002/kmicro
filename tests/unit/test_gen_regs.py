@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """tools/gen_regs.py on a CMSIS-style header written here: register addresses from struct layouts and instance macros,
 bit constants, IRQ numbers, a board pin map, and only the names the Kotlin sources use; then on C that such headers
 also hold: array sizes from macros and divisions, struct tags, two registers in one declaration, octal and

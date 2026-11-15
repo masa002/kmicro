@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* kmicro shim for the Apache Harmony floating-point conversion code in this folder: Kotlin/Native 2.4.21's copy
  * (kotlin-native/runtime/src/main/cpp/dtoa, Apache License 2.0) with the changes listed in README.md. It replaces the
  * Kotlin/Native runtime headers those files included with the few definitions they actually use. */

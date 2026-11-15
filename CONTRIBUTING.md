@@ -100,6 +100,11 @@ kmicro is licensed under the Apache License 2.0 ([LICENSE](LICENSE)). A contribu
 the same terms, as section 5 of the license says, unless you state otherwise. Code taken from elsewhere must carry a
 license that allows this, and its origin goes in [NOTICE](NOTICE) and in the file's first comment.
 
+A source file starts with two lines, in the comment form of its language: `Copyright <year> the kmicro authors
+(NOTICE).` and `SPDX-License-Identifier: Apache-2.0`. A runtime file that follows a Kotlin/Native source keeps
+that source's copyright line above them (NOTICE lists these files), a file copied from elsewhere keeps its own
+header instead, and a generated file has none.
+
 ## Reporting a bug
 
 Open an issue with the bug report form. It asks for:

@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Retarget a program's Codegen IR to Cortex-M (the core of KMICRO_CPU, default cortex-m4f), link it with full LTO +
 --gc-sections against trapping stubs, and report (1) the flash/RAM the Kotlin side really costs and (2) the runtime
 symbols that survive dead-code elimination.

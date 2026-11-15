@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Language probe 1: classes, interfaces, data classes, enums, objects, nested/inner/local/anonymous classes.
 
 interface Shape {

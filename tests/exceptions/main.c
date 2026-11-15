@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Exceptions: throw, catch, finally and Result (exceptions.kt), then an uncaught one, which stops the program with
  * the uncaught-exception report and exit 98. */
 #include "kmicro.h"

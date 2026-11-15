@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Regex: find, findAll with groups, replace with group references, split, IGNORE_CASE, destructured, matchEntire,
 // \w \d \s. More patterns, or \p{L}, need more heap (d_known_regex_heap.kt).
 // difftest: heap 32768 -- the Regex engine builds its tables on the heap: the default 16 KB runs out

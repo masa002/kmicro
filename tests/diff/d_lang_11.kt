@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Language probe 11: remaining syntax: property overrides and super, companion as value, delegation to objects,
 // extension shadowing, unicode and backtick names, Duration formatting, long literals, big string when.
 // (Duration.toString(unit, decimals): d_duration_fmt.kt; a public backtick name: d_known_backtick_name.kt)

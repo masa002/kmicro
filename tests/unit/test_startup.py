@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """The QEMU l475 start code: fault report, stack guard, null guard and clocks, on the default core and on an ARMv8-M
 one. C programs only (startup_probe.c), no Kotlin compile.
 

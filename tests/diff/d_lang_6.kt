@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Language probe 6: Nothing/TODO/error/require/check/assert, numeric semantics, annotations, newer Kotlin 2.x features.
 // difftest: heap 32768 -- one long main: its frame keeps the objects of every check alive until it returns
 

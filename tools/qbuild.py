@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Build a QEMU test image: Kotlin LTO object(s) + the kmicro runtime + C code, for an emulated Cortex-M.
 
 usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--cpu CORE] [--target NAME] [--large]

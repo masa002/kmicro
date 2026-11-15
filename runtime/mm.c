@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* kmicro memory manager: one thread, stop-the-world precise mark-sweep, non-moving, no per-object header.
  *
  * Heap: a static arena of 8-byte granules. An allocated block IS the Kotlin object: its first word is the TypeInfo

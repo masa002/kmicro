@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Calls the cinterop test's Kotlin function from an archive of its objects (kotlin.a: k.o and bridges.o) without the
  * C side of tests/cinterop: the link must fail on the C functions Kotlin calls, naming the archive. */
 #include "kmicro.h"

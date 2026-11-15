@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """tools/frames.py: the stack a function's prologue takes, read from objdump -d text."""
 import sys
 import unittest

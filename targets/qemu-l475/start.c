@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Bare-metal start for the QEMU harness: vector table, FPU on, .data/.bss init, MPU null and stack guards,
  * init_array, main, semihosting output, exit and clocks, a fault report. */
 #include <stdint.h>

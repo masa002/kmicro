@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 class AppError(msg: String, val code: Int) : RuntimeException(msg)
 
 fun risky(n: Int): Int {

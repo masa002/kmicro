@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """toolchain/kn.py add_init_all(): which globals --init-all initialises (an IR excerpt, no compiler needed).
 
 python -m unittest discover -s tests/unit

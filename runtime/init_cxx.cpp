@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* File / object initializers (Runtime.cpp CallInitGlobalPossiblyLock / CallInitThreadLocal), in C++ because a
  * failing initializer must be caught: the state becomes FILE_FAILED_TO_INITIALIZE and the Kotlin exception is
  * rethrown wrapped (ThrowFileFailedToInitializeException), exactly as the stock runtime does. The catch(...) runs

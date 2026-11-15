@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Unicode: case mapping, Char properties, UTF-8 encoding and strict decoding. (Lenient decoding of
 // invalid UTF-8: d_utf8_decode.kt)
 fun err(label: String, block: () -> Any?) {

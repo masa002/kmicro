@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Hexadecimal floating-point text ("0x1.8p1") for String.toDouble()/toFloat() and their OrNull forms: the stdlib's
  * HexStringParser (kotlin/native/internal/HexStringParser.kt, from Apache Harmony) step by step, without its regular
  * expressions. toolchain/retarget.py turns HexStringParser.Companion.parseDouble/parseFloat into calls to the two

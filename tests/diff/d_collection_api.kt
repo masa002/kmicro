@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Collections API: lists, sets, maps, ArrayDeque, transformations, sorting, equality, the exceptions and their messages.
 // difftest: heap 49152 -- main keeps every collection of the test alive until it returns, and the free memory
 // ends up in small pieces: 40 KB runs out

@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // The stdlib's Unicode tables: categories, letter/digit tests and case mappings over every UTF-16 code unit, compared
 // through hashes, plus samples. kmicro reads these tables in place in flash.
 

@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """tools/difftest.py: the `// difftest: ...` lines of a program (no compiler needed).
 
 python -m unittest discover -s tests/unit

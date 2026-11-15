@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Calls the Kotlin functions of cname.kt by their @CName names, with plain C types. */
 #include <stdbool.h>
 #include <stdint.h>

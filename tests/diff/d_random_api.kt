@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // kotlin.random beyond d_random_time.kt: the Random functions on seeded generators (ranges, bits, unsigned, bytes
 // into part of an array), shuffle and random() on collections, the exceptions for an empty range or collection, and
 // Random.Default. measureTime and TimeSource.Monotonic differ on every run: only their properties are printed.

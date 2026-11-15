@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // The Kotlin features a firmware leans on, one function each; main.c calls them through selftest.h and checks
 // the results. Ordinary Kotlin: nothing here knows it runs on a microcontroller.
 package selftest

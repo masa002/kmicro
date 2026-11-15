@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // StableRef: a Kotlin object that only C holds (its void * kept as a number) survives full collections, and
 // dispose frees the slot, so many more create/dispose rounds than the table has slots work.
 @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlin.native.runtime.NativeRuntimeApi::class)

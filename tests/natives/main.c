@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* The runtime natives (natives.kt): run_all builds this file once per test case, with one TEST_* macro defined. It
  * provides the board hooks a case needs: console input (kmicro_getc) and, for one case, an entropy source. */
 #include "kmicro.h"

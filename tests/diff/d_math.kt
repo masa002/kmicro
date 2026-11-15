@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // kotlin.math: Double and Float functions over a spread of inputs, special values and corner cases.
 // difftest: ulp 2 -- kmicro's kotlin.math is newlib's libm (fdlibm), the host's is another libm: transcendental results may differ in the last bit (0.0 and -0.0 count as equal)
 import kotlin.math.*

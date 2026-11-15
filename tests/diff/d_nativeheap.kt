@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // nativeHeap / memScoped memory: blocks freed out of order are reused and merged, impossible sizes throw a catchable
 // OutOfMemoryError (finally runs), and the memory is usable again afterwards. kmicro keeps this memory in a small
 // arena (KM_INTEROP_BYTES, 1 KB by default), so a request that fits the host may not fit here: those checks print

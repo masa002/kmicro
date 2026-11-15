@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* kmicro self-test: runs every check of selftest.kt and prints PASS / FAIL, then the heap statistics.
  * The exit code is the number of failed checks. */
 #include "kmicro.h"

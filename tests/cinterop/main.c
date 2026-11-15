@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* The C side of the cinterop test: implements the C API of kernel.h, which cinterop.kt calls through cinterop
  * (kernel.def, package kmicro.example.kernel), then calls the Kotlin function poke by its @CName name. */
 #include "kmicro.h"

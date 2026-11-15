@@ -127,7 +127,7 @@ The files are `runtime/*.c`, `runtime/*.cpp` and `runtime/dtoa/*.cpp`.
 Compiled without `-fexceptions`, clang stops at `eh.c`:
 
 ```
-runtime/eh.c:23:2: error: "compile the kmicro runtime with -fexceptions -funwind-tables (docs/porting.md)"
+runtime/eh.c:26:2: error: "compile the kmicro runtime with -fexceptions -funwind-tables (docs/porting.md)"
 ```
 
 arm-none-eabi-gcc cannot build the runtime: `eh.c` names two Kotlin functions by their symbols

@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Stack traces: an exception created inside a try block lists every frame once, and a trace starts in the function
 // that created the exception. Frame lines differ between the targets (symbols on the host, addresses on kmicro), so
 // only facts about them are printed.

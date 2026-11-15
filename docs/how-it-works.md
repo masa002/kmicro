@@ -269,9 +269,9 @@ now an uncaught one (expected to stop with a report):
 Uncaught Kotlin exception: PanelError: panel error -5
     at 0x08009f24  PanelError#<init>(kotlin.Int){}+0x1e4
     at 0x08002984  run_main+0x8b4
-        run_main (main.c:21)
+        run_main (main.c:23)
     at 0x08001942  start_c+0xaa
-        start_c (start.c:101)
+        start_c (start.c:103)
 kmicro panic: uncaught Kotlin exception
 qemu: exit 98
 ```
@@ -280,7 +280,7 @@ symbolize.py adds the function and the offset after each `at 0x...`. A trace add
 names the function that made the call; the offset is the return address's. The trace starts where the exception
 was created, here in the constructor of `PanelError`. LTO inlined `uncaught`, `deep` and `check` into `main` of
 `main.c`, and `main` into `run_main` of the start code, so the Kotlin functions fold into `run_main`. The C files are
-compiled with `-g` by qbuild, hence `main.c:21`.
+compiled with `-g` by qbuild, hence `main.c:23`.
 
 Compiled with debug information, the Kotlin frames come back:
 
@@ -299,13 +299,13 @@ now an uncaught one (expected to stop with a report):
 Uncaught Kotlin exception: PanelError: panel error -5
     at 0x0800a5f8  PanelError#<init>(kotlin.Int){}+0x1c0
     at 0x08002a54  run_main+0x984
-        #check(kotlin.Int){} (exceptions.kt:6) [inlined]
-        #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exceptions.kt:7) [inlined]
-        #uncaught(kotlin.Int){}kotlin.Int (exceptions.kt:40) [inlined]
-        main (main.c:21) [inlined]
-        run_main (start.c:91)
+        #check(kotlin.Int){} (exceptions.kt:8) [inlined]
+        #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exceptions.kt:9) [inlined]
+        #uncaught(kotlin.Int){}kotlin.Int (exceptions.kt:42) [inlined]
+        main (main.c:23) [inlined]
+        run_main (start.c:93)
     at 0x08001942  start_c+0xaa
-        start_c (start.c:101)
+        start_c (start.c:103)
 kmicro panic: uncaught Kotlin exception
 qemu: exit 98
 ```
@@ -327,11 +327,11 @@ python tools/symbolize.py build/exc/exc.elf 0x08002a54
 
 ```
 0x08002a54  run_main+0x984
-        #check(kotlin.Int){} (exceptions.kt:6) [inlined]
-        #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exceptions.kt:7) [inlined]
-        #uncaught(kotlin.Int){}kotlin.Int (exceptions.kt:40) [inlined]
-        main (main.c:21) [inlined]
-        run_main (start.c:91)
+        #check(kotlin.Int){} (exceptions.kt:8) [inlined]
+        #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exceptions.kt:9) [inlined]
+        #uncaught(kotlin.Int){}kotlin.Int (exceptions.kt:42) [inlined]
+        main (main.c:23) [inlined]
+        run_main (start.c:93)
 ```
 
 It reads the log as UTF-8: in Windows PowerShell, save the log with `| Out-File -Encoding utf8 exc.log` rather than
@@ -371,7 +371,7 @@ Uncaught Kotlin exception: kotlin.IllegalStateException: boot failed at sensor 3
     at 0x08002134  run_main+0x64
         run_main (trace.kt:10)
     at 0x08001942  start_c+0xaa
-        start_c (start.c:101)
+        start_c (start.c:103)
 Caused by: SensorMissing: sensor 3 not answering
     at 0x08009ab6  SensorMissing#<init>(kotlin.Int){}+0x1ea
     at 0x08009b52  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x86

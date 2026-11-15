@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Kotlin exceptions on ARM EHABI, bare metal: libgcc's unwinder plus kmicro's own personality routine.
  *
  * How the compiler lowers exceptions (docs/research/R_eh.md, CodeGenerator.kt / IrToBitcode.kt at v2.4.21):

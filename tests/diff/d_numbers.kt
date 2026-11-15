@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 fun Double.pow10(): Double { var r = 1.0; repeat(10) { r *= this }; return r }
 
 fun main() {

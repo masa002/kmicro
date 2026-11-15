@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """toolchain/kn.py compiler_messages(): which kotlinc-native messages kbuild shows (canned compiler output).
 
 python -m unittest discover -s tests/unit

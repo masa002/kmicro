@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Faults (faults.kt): run_all builds this file once per test case, with one TEST_* macro defined. */
 #include "kmicro.h"
 

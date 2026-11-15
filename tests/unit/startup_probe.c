@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* C programs for test_startup.py, one per PROBE value, run on the QEMU l475 target. */
 #include "kmicro.h"
 

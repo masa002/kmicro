@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* A handler that uses a file's globals while the thread code is creating them (window.kt): the runtime must stop the
  * program, because the globals are still unset and a handler cannot wait for the thread code. */
 #include "kmicro.h"

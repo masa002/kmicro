@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* kotlin.math natives (KotlinMath.cpp of the stock runtime) on newlib's libm. Same corner cases as the stock code;
  * asinh/acosh call libm directly (the stock custom versions only compensate for some host libms). */
 #include <math.h>

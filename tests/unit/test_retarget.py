@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """toolchain/retarget.py on a small IR module shaped like kotlinc-native's output: the target attributes equal clang's
 for paths.target_flags(), --no-tls, --single-core, --hot, and the stdlib rewrites (Random seed, hex float parser, Unicode
 tables). The output must compile with clang.

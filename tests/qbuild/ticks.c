@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* qbuild --icount: QEMU's clock is the number of instructions the program has run, so SysTick, which counts that
  * clock, interrupts a loop after the same number of turns each time. On the host's clock that number differs from
  * tick to tick by far more than the one turn the loop's own length allows. */

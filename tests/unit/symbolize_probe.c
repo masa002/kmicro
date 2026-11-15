@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* A tiny image for test_symbolize.py: top() ends with a call that never returns (sink), reached through two inlined
  * functions, so its return address is already the first instruction of the next function. */
 __attribute__((noinline, noreturn)) void sink(int x) { __asm volatile("" :: "r"(x)); for (;;) {} }

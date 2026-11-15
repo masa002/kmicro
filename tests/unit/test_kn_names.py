@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """toolchain/kn.py: the Kotlin name of a C name (camel) and the --c-api aliases built from it.
 
 python -m unittest discover -s tests/unit

@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """toolchain/kn.py add_cname_aliases(): @CName names from kotlinc-native's C adapter (IR excerpts, no compiler needed;
 tests/cname/cname.kt runs the real thing).
 

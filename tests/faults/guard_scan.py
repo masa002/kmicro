@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Runs the stack_guard test image once per stack position: String.toDouble() called with the stack 0, 8, 16 ...
 4096 bytes above the stack guard of qemu-l475 (main.c reads the distance from QEMU's command line).
 

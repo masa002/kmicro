@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Known not to work on kmicro: a backtracking Regex over a long input. The engine recurses for each repetition of a
 // group, and on these 691 characters it needs more than the 40 KB of stack that QEMU's STM32L475 leaves next to this
 // program's 48 KB heap: the stack guard stops it with "kmicro fault: stack overflow" (exit 99).

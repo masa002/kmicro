@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """The largest stack frames of a linked image, read from its machine code.
 
     python tools/frames.py app.elf [--top N] [--limit BYTES]

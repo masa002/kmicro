@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """toolchain/kn.py def_headers(): the files whose change re-runs cinterop for kbuild --def, listed by clang (skipped
 without the LLVM that Kotlin/Native downloads).
 

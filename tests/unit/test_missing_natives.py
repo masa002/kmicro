@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """tools/missing_natives.py --ir: the functions an IR file declares, and a file that declares none. No compiler
 needed.
 

@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Runtime start: module initializer list, thread-local records (= ordinary storage: one thread), safepoints. */
 #include "kmicro.h"
 

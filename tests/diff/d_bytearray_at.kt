@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 @file:OptIn(kotlin.experimental.ExperimentalNativeApi::class, ExperimentalUnsignedTypes::class)
 
 // ByteArray.get/set{Char,Short,Int,Long,Float,Double}At: little-endian values at any byte index, and the bounds.

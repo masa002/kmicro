@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* 64-bit atomics for ARMv7-M (no LDREXD/STREXD): the libatomic ABI that LLVM calls for i64 atomicrmw/cmpxchg
  * (AtomicLong, kotlin.random). libgcc for v7e-m has none. There is one core, so masking interrupts around the
  * access makes it atomic against interrupt handlers as well, which may use the same atomics; PRIMASK is saved and

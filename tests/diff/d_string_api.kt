@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // String API: split, replace, substring, pad, trim, number parsing to Int/Long, StringBuilder, comparison.
 // (String.toDouble: d_to_double.kt; Regex: d_regex.kt)
 // difftest: heap 32768 -- the default 16 KB runs out: the free memory ends up in small pieces

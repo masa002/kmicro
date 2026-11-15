@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Unsigned types: arithmetic, division, comparison, conversion, parsing, boxing.
 import kotlin.math.*
 

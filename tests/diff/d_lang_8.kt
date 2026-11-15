@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Language probe 8: corner cases: bridges, diamonds, init-order pitfalls, exceptions in finally/lazy/init,
 // overloads, collisions in string when, comparators, identity keys, captured loop variables.
 // difftest: heap 49152 -- one long main keeps the objects of its checks alive, and the free memory ends up in

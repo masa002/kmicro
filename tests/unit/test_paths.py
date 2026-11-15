@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """toolchain/paths.py: which installed tool version is picked, and the `python toolchain/paths.py` check.
 
 python -m unittest discover -s tests/unit

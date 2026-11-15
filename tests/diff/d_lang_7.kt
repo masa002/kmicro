@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Language probe 7: things a Kotlin developer tries next: coroutines builders, use/Result, atomics,
 // exception chaining, arrays, Duration, hashCode/toString of common types. (kotlin.random and the clock:
 // d_random_time.kt, d_random_api.kt)

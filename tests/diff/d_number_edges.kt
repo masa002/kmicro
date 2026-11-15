@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Numbers: overflow, division, bit operations, Double/Float toString, rounding, conversions. (String.toDouble:
 // d_to_double.kt, d_parse_small.kt)
 import kotlin.math.*

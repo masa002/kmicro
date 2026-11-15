@@ -1,3 +1,5 @@
+/* Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* The C names of the Kotlin functions of package isr (kbuild --c-api isr.h --package isr --init-all kt_init_all). */
 #pragma once
 #include <stdint.h>

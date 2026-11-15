@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 package isr
 
 // A handler that throws and catches while the thread code is itself between a throw and its catch. The handler's

@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Interface dispatch through LookupInterfaceTableRecord: class All implements 40 interfaces, more than the 32
 // colours a fast interface table has room for, so the compiler emits the slow lookup on every interface call and
 // type check, and gives All (and the small classes whose interface ids collide) a sorted table instead.

@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """toolchain/kn.py --c-api type checks: a C prototype must match the Kotlin function it becomes an alias of, and only
 types with a plain C equivalent may cross (the clang part is skipped without the LLVM of Kotlin/Native).
 

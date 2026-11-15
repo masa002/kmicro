@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // A file whose global fails to initialise: its first use throws FileFailedToInitializeException, caused by the
 // initializer's exception (uncaught.kt, failedInitializer).
 val config: Int = loadConfig()

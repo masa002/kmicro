@@ -1,3 +1,6 @@
+/* Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2026 the kmicro authors (NOTICE).
+ * SPDX-License-Identifier: Apache-2.0 */
 /* Kotlin strings (KString.h/.cpp, ToString.cpp, Console.cpp of the stock runtime).
  *
  * A String is a CharArray-shaped object: ArrayHeader, then int32 hashCode_, uint16 flags_, then the data. count_

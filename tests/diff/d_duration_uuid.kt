@@ -1,3 +1,5 @@
+// Copyright 2026 the kmicro authors (NOTICE).
+// SPDX-License-Identifier: Apache-2.0
 // Duration, Uuid, HexFormat, Base64, atomics, print. (Duration.toString(unit, decimals): d_duration_fmt.kt; the
 // clock: d_random_time.kt)
 // difftest: heap 32768 -- one long main keeps the objects of its checks alive: the default 16 KB runs out at Uuid

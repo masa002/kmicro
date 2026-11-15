@@ -1,3 +1,5 @@
+# Copyright 2026 the kmicro authors (NOTICE).
+# SPDX-License-Identifier: Apache-2.0
 """Turn the addresses of a kmicro stack trace into Kotlin function names, using the firmware's ELF symbols.
 
 usage: python tools/symbolize.py firmware.elf [log.txt]      (rewrites every "at 0x........" line; stdin without a file)
