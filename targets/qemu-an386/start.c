@@ -46,6 +46,12 @@ __attribute__((noinline, used, noreturn)) void start_c(void)
     memcpy(&_sdata, &_sidata, (size_t)((char *)&_edata - (char *)&_sdata));
     memset(&_sbss, 0, (size_t)((char *)&_ebss - (char *)&_sbss));
     *(volatile uint32_t *)0xE000ED24 |= 7u << 16;              /* SHCSR: MemManage, BusFault, UsageFault handlers on */
+#ifndef __ARM_FEATURE_UNALIGNED
+    /* The core this code is built for (ARMv6-M, ARMv8-M Baseline) faults on an unaligned LDR or STR. QEMU runs the
+     * code on a core that allows them, so ask that core to fault too (CCR.UNALIGN_TRP): a test then fails here as
+     * the program would fail on the chip. */
+    *(volatile uint32_t *)0xE000ED14 |= 1u << 3;
+#endif
     initialise_monitor_handles();
     for (void (**f)(void) = __init_array_start; f < __init_array_end; f++)
         (*f)();

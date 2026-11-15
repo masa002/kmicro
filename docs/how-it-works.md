@@ -273,7 +273,7 @@ Uncaught Kotlin exception: PanelError: panel error -5
     at 0x08002984  run_main+0x8b4
         run_main (main.c:23)
     at 0x08001942  start_c+0xaa
-        start_c (start.c:103)
+        start_c (start.c:110)
 kmicro panic: uncaught Kotlin exception
 qemu: exit 98
 ```
@@ -305,9 +305,9 @@ Uncaught Kotlin exception: PanelError: panel error -5
         #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exceptions.kt:9) [inlined]
         #uncaught(kotlin.Int){}kotlin.Int (exceptions.kt:42) [inlined]
         main (main.c:23) [inlined]
-        run_main (start.c:93)
+        run_main (start.c:94)
     at 0x08001942  start_c+0xaa
-        start_c (start.c:103)
+        start_c (start.c:110)
 kmicro panic: uncaught Kotlin exception
 qemu: exit 98
 ```
@@ -333,7 +333,7 @@ python tools/symbolize.py build/exc/exc.elf 0x08002a54
         #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exceptions.kt:9) [inlined]
         #uncaught(kotlin.Int){}kotlin.Int (exceptions.kt:42) [inlined]
         main (main.c:23) [inlined]
-        run_main (start.c:93)
+        run_main (start.c:94)
 ```
 
 It reads the log as UTF-8: in Windows PowerShell, save the log with `| Out-File -Encoding utf8 exc.log` rather than
@@ -373,7 +373,7 @@ Uncaught Kotlin exception: kotlin.IllegalStateException: boot failed at sensor 3
     at 0x08002134  run_main+0x64
         run_main (trace.kt:10)
     at 0x08001942  start_c+0xaa
-        start_c (start.c:103)
+        start_c (start.c:110)
 Caused by: SensorMissing: sensor 3 not answering
     at 0x08009ab6  SensorMissing#<init>(kotlin.Int){}+0x1ea
     at 0x08009b52  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x86

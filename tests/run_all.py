@@ -218,6 +218,7 @@ TESTS = [
          checks=[Check('symbolize', ['tools/symbolize.py', '{elf}', '0x08000101']),
                  Check('frames', ['tools/frames.py', '{elf}', '--top', '1'])]),
     Test('qbuild_icount', None, ['tests/qbuild/ticks.c']),
+    Test('qbuild_unaligned', None, ['tests/qbuild/unaligned.c']),
     # interrupt handlers: the run-time guards, isr_check, --init-all, reference stores while the collector marks
     isr('isr_alloc', 'TEST_ALLOC', checks=[Check('isr_check', ['tools/isr_check.py', '{elf}'], exit=1), SYMBOLIZE]),
     isr('isr_to_string', 'TEST_TO_STRING'),

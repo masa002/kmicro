@@ -62,8 +62,10 @@ each. A core without an FPU uses the soft-float calling convention.
   Cortex-M4F of QEMU's STM32L475 runs the code built for the Cortex-M0, M0+ and M1, and QEMU has no Cortex-M23, so
   its code runs on the Cortex-M33. The compiler's flags keep such an image to the instructions of its core: the
   build attributes of the `cortex-m0plus` selftest say ARMv6S-M and Thumb-1, those of `cortex-m23` ARMv8-M Baseline
-  (`arm-none-eabi-readelf -A`). What belongs to the core and not to the code was not tested there: its reset state,
-  its MPU and its fault registers are those of the larger core.
+  (`arm-none-eabi-readelf -A`). Those cores fault on an unaligned LDR or STR and the larger ones do not, so the
+  QEMU start code asks the larger core to fault too (CCR.UNALIGN_TRP); run_all passes with it for `cortex-m0plus`
+  and `cortex-m23`, and difftest for `cortex-m0plus`. What else belongs to the core and not to the code was not
+  tested there: its reset state, its MPU and its fault registers are those of the larger core.
 - **The ARMv8-M cores run in the Secure state,** in which the Cortex-M33 starts. The program never leaves it and
   does not use the Security Extension.
 - **On a board,** only the Cortex-M4F has run: an STM32L431, in
