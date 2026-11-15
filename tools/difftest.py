@@ -21,7 +21,9 @@ A program can declare, each on a comment line of its own:
     // difftest: heap BYTES -- reason     a bigger kmicro heap
     // difftest: large -- reason          allowed to exceed the STM32L431 (256 KB of flash, 64 KB of RAM): linked
                                           with qbuild --large
-    // difftest: ulp N -- reason          numbers in the output may differ by N units in the last place
+    // difftest: ulp N -- reason          floating-point numbers in the output may differ by N units in the last
+                                          place: of a Float where the program prints an `f` after the number
+                                          ("${sin(x)}f"), of a Double elsewhere. Integers must be equal
     // difftest: frame -- reason          allowed to have a stack frame larger than the 4 KB stack guard
 
 Each line of the report shows SAME, DIFF, OVER (same output, but the image does not fit the STM32L431), FRAME (same
@@ -52,7 +54,9 @@ DIFF = ROOT / 'tests/diff'
 FLASH, RAM = 256 * 1024, 64 * 1024              # the STM32L431
 STATS = re.compile(rb'kmicro-difftest: heap (\d+) peak (\d+) live (\d+)\n\Z')   # driver.c's last line
 NUMBER = re.compile(r'-?(?:\d+(?:\.\d+)?(?:E-?\d+)?|Infinity)|NaN')
-FLOAT_MAX = 3.4028234663852886e38               # Float.MAX_VALUE: a bigger number is a Double
+INTEGER = re.compile(r'-?\d+')
+FLOAT_MARK = re.compile(r'f(?!\w)')                # after a number: the program says that it printed a Float
+FLOAT_MAX = 3.4028234663852886e38               # Float.MAX_VALUE
 VALUE, FLAG = {'heap', 'ulp'}, {'large', 'frame'}   # the directives with a number and those without
 
 
@@ -139,11 +143,6 @@ def kmicro(name, src, opts, stress, size):
     return out, q.returncode, notes, (text + data, data + bss), frame, stats and tuple(map(int, stats.groups()))
 
 
-def significant_digits(token):
-    mantissa = re.sub(r'E.*|[-.]', '', token).strip('0')
-    return len(mantissa)
-
-
 def float_ulp(x):
     bits = struct.unpack('<I', struct.pack('<f', abs(x)))[0]
     lo, hi = (struct.unpack('<f', struct.pack('<I', b))[0] for b in (bits, bits + 1))
@@ -151,19 +150,25 @@ def float_ulp(x):
 
 
 def close(golden, got, ulps):
-    """Equal text, and numbers at most `ulps` units in the last place apart: of a Float when both are printed with at
-    most 9 significant digits, of a Double otherwise."""
+    """Equal text, and floating-point numbers at most `ulps` units in the last place apart: of a Float when the
+    text goes on with the mark `f` ("0.84147096f"), of a Double otherwise. What a number is cannot be told from its
+    digits: the Double 2.5 prints as short as a Float. Integers (no `.`, no `E`) must be equal."""
     a, b = golden.decode('utf-8', 'replace'), got.decode('utf-8', 'replace')
     if NUMBER.split(a) != NUMBER.split(b):
         return False
-    for x, y in zip(NUMBER.findall(a), NUMBER.findall(b)):
+    for mx, my in zip(NUMBER.finditer(a), NUMBER.finditer(b)):
+        x, y = mx.group(0), my.group(0)
         if x == y:
             continue
+        if INTEGER.fullmatch(x) or INTEGER.fullmatch(y):
+            return False
         fx, fy = float(x), float(y)
         if not (math.isfinite(fx) and math.isfinite(fy)):
             return False
-        short = significant_digits(x) <= 9 and significant_digits(y) <= 9 and abs(fx) <= FLOAT_MAX
-        if abs(fx - fy) > ulps * (float_ulp(fx) if short else math.ulp(fx)):
+        if FLOAT_MARK.match(a, mx.end()):               # the text between the numbers is the same on both sides
+            if abs(fx) > FLOAT_MAX or abs(fx - fy) > ulps * float_ulp(fx):
+                return False
+        elif abs(fx - fy) > ulps * math.ulp(fx):
             return False
     return True
 

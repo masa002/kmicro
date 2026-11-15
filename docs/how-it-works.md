@@ -442,8 +442,9 @@ call.
   exceptions, initialisers, number formatting and parsing, sequences. The kmicro side is built as kbuild builds it,
   at the default 16 KB heap; a program that needs more says `// difftest: heap BYTES -- reason`, and
   `// difftest: large -- reason` allows an image above the STM32L431's 256 KB of flash and 64 KB of RAM (the report
-  marks one without it `OVER`); `// difftest: ulp N -- reason` lets numbers differ by N units in the last place
-  (`d_math`: kotlin.math is newlib's libm on kmicro). As run_all does, it fails an image with a stack frame larger
+  marks one without it `OVER`); `// difftest: ulp N -- reason` lets floating-point numbers differ by N units in the last
+  place (`d_math`: kotlin.math is newlib's libm on kmicro; the program prints an `f` after each Float, so that it is
+  compared as a Float and every other number as a Double; integers must be equal). As run_all does, it fails an image with a stack frame larger
   than the 4 KB stack guard (`FRAME` in the report), unless the program says `// difftest: frame -- reason`.
   `--stress` collects at every allocation; the heap peak in the report is then the most the program had live at
   once, while without it the peak is often the heap size. The `d_known_*.kt` programs show what does not work and
