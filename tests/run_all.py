@@ -88,8 +88,9 @@ class Kotlin:
 @dataclass
 class Check:
     """A tool run after the test: tools/<script> with args, in the checkout's folder; {elf}, {log}, {dir} and {kotlin}
-    stand for the image, run.log, the test's build folder and its Kotlin build folder. The output is compared with
-    tests/expected/<test>.<name>.txt; `same` names two files that must then be identical."""
+    stand for the image, run.log, the test's build folder and its Kotlin build folder, {in_entry} for an address in
+    the image's code (in its entry function). The output is compared with tests/expected/<test>.<name>.txt; `same`
+    names two files that must then be identical."""
     name: str
     args: list
     exit: int = 0
@@ -234,7 +235,7 @@ TESTS = [
     Test('qbuild_undefined', None, ['tests/qbuild/undefined.c'], fails='link', exit=1),
     # a folder name that no single ANSI code page holds (テ is outside 1252, é outside 932), with a space
     Test('qbuild_folder_name', ADD, ['tests/add/main.c'], folder='テスト café', copy=True,
-         checks=[Check('symbolize', ['tools/symbolize.py', '{elf}', '0x08000101']),
+         checks=[Check('symbolize', ['tools/symbolize.py', '{elf}', '{in_entry}']),
                  Check('frames', ['tools/frames.py', '{elf}', '--top', '1'])]),
     Test('qbuild_icount', None, ['tests/qbuild/ticks.c'], tick=True),
     Test('qbuild_unaligned', None, ['tests/qbuild/unaligned.c']),
@@ -435,6 +436,9 @@ def run_check(t, c, d, args):
     k = BUILD / (t.kotlin.folder if t.kotlin else '')
     subst = dict(elf=(d / f'{t.name}.elf').as_posix(), log=(d / 'run.log').as_posix(), dir=d.as_posix(),
                  kotlin=k.as_posix())
+    if '{in_entry}' in c.args:                      # e_entry of the ELF header, and 4 bytes on
+        entry = int.from_bytes((d / f'{t.name}.elf').read_bytes()[24:28], 'little')
+        subst['in_entry'] = hex((entry & ~1) + 4)
     argv = [a.format(**subst) for a in c.args]
     if c.same:
         shutil.rmtree(Path(c.same[0].format(**subst)).parent, ignore_errors=True)
