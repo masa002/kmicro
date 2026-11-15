@@ -30,7 +30,7 @@ what the next compiler changes before anyone depends on it.
 
 ## Targets
 
-kmicro builds for the Cortex-M cores from the Cortex-M0 to the Cortex-M33. `--cpu CORE` on kbuild, qbuild, run_all
+kmicro builds for the Cortex-M cores from the Cortex-M0 to the Cortex-M85. `--cpu CORE` on kbuild, qbuild, run_all
 and difftest, or the environment variable `KMICRO_CPU`, chooses the core; the default is `cortex-m4f`. `CORES` in
 [toolchain/paths.py](../toolchain/paths.py) holds the clang target, the flags and the newlib and libgcc multilib of
 each. A core without an FPU uses the soft-float calling convention.
@@ -48,13 +48,19 @@ each. A core without an FPU uses the soft-float calling convention.
 | `cortex-m23` | ARMv8-M Baseline | none | `mps2-an505`, a Cortex-M33 | run_all | 121.1 KB | 18.5 KB |
 | `cortex-m33` | ARMv8-M Mainline | none | `mps2-an505`, a Cortex-M33 | run_all | 131.5 KB | 18.5 KB |
 | `cortex-m33f` | ARMv8-M Mainline | FPv5, single precision | `mps2-an505`, a Cortex-M33 | run_all | 131.1 KB | 18.5 KB |
+| `cortex-m55` | ARMv8.1-M Mainline | FPv5, double precision; MVE | `mps3-an547`, a Cortex-M55 | run_all | 126.1 KB | 18.5 KB |
+| `cortex-m55-nomve` | ARMv8.1-M Mainline | FPv5, double precision | `mps3-an547`, a Cortex-M55 | the selftest | 130.3 KB | 18.5 KB |
+| `cortex-m55-nofp` | ARMv8.1-M Mainline | none | `mps3-an547`, a Cortex-M55 | the selftest | 131.5 KB | 18.5 KB |
+| `cortex-m85` | ARMv8.1-M Mainline | FPv5, double precision; MVE | `mps3-an547`, a Cortex-M55 | the selftest | 127.7 KB | 18.5 KB |
+| `cortex-m85-nomve` | ARMv8.1-M Mainline | FPv5, double precision | `mps3-an547`, a Cortex-M55 | the selftest | 129.8 KB | 18.5 KB |
+| `cortex-m85-nofp` | ARMv8.1-M Mainline | none | `mps3-an547`, a Cortex-M55 | the selftest | 131.0 KB | 18.5 KB |
 
 - **run_all** means that `python tests/run_all.py --cpu CORE` passes: every test program and example, with the
-  checks the tools make on the images. The two tests of the large-memory machine, `mps2-an386`, are skipped for a
-  core whose code its Cortex-M4F does not run: the Cortex-M7 and the three cores of ARMv8-M.
+  checks the tools make on the images. The three tests of the large-memory machine, `mps2-an386`, are skipped for a
+  core whose code its Cortex-M4F does not run: the Cortex-M7 and the cores of ARMv8-M and ARMv8.1-M.
 - **The selftest** means that `python tests/run_all.py --cpu CORE selftest` passes and nothing else was run.
   `cortex-m0` and `cortex-m1` differ from `cortex-m0plus` only in the `-mcpu` value, and `cortex-m7-sp` from
-  `cortex-m7` in the FPU and its multilib.
+  `cortex-m7` in the FPU and its multilib. Of the six entries of ARMv8.1-M (below), run_all ran for `cortex-m55`.
 - **The sizes** are those of [examples/selftest](../examples/selftest) as that test builds it, with the default
   16 KB heap and the QEMU start code: flash is text and data, RAM is data and `.bss` (the heap, the runtime's tables,
   the globals), without the stack.
@@ -66,8 +72,27 @@ each. A core without an FPU uses the soft-float calling convention.
   QEMU start code asks the larger core to fault too (CCR.UNALIGN_TRP); run_all passes with it for `cortex-m0plus`
   and `cortex-m23`, and difftest for `cortex-m0plus`. What else belongs to the core and not to the code was not
   tested there: its reset state, its MPU and its fault registers are those of the larger core.
-- **The ARMv8-M cores run in the Secure state,** in which the Cortex-M33 starts. The program never leaves it and
-  does not use the Security Extension.
+- **The ARMv8-M and ARMv8.1-M cores run in the Secure state,** in which the Cortex-M33 and the Cortex-M55 of
+  these machines start. The program never leaves it and does not use the Security Extension.
+- **The Cortex-M55 and the Cortex-M85 have three entries each.** A chip maker builds these cores with or without
+  the FPU (half, single and double precision) and with or without MVE (Helium). `cortex-m55` is the core with both,
+  which is what `-mcpu=cortex-m55` means to clang and to GCC; `cortex-m55-nomve` has the FPU only, and
+  `cortex-m55-nofp` neither. The first two link the newlib and libgcc of ARMv8-M Mainline with a double-precision
+  FPU (`thumb/v8-m.main+dp/hard`) and the third the ones without an FPU: the xPack GCC has no others for these
+  cores and chooses the same. A core with MVE and no FPU has no entry; `-nofp` code runs on it and leaves MVE
+  unused. With MVE the compiler puts vector instructions into ordinary code: the `cortex-m55` selftest has them in
+  the string functions of the runtime and of the standard library, and run_all runs every test program built that
+  way. [porting.md](porting.md#another-core) says what that means for a board. CI does not run difftest for
+  these cores. Run by hand, it gave the output of the stock runtime for 14 of its programs for `cortex-m55` (among
+  them those with floating point and 64-bit integers) and for 4 of those for `cortex-m55-nomve`, `cortex-m55-nofp`
+  and `cortex-m85`.
+- **Cortex-M85 code is tested on the Cortex-M55,** because QEMU 9.2.4 has no model of the Cortex-M85. For the
+  compiler the Cortex-M85 is the Cortex-M55 with PACBTI (pointer authentication and branch target identification)
+  and another tuning. kmicro builds nothing with `-mbranch-protection`, and the disassembly of the three
+  `cortex-m85` selftest images shows none of the PACBTI instructions: these images hold only instructions that the
+  Cortex-M55 has too, and its model runs them. (The build attributes of an image do not show this: ld.lld keeps
+  those of the first object that has any, which is a member of newlib.) Nothing that belongs to the Cortex-M85
+  itself was tested: its reset state, its MPU and its fault registers.
 - **On a board,** only the Cortex-M4F has run: an STM32L431, in
   [the recorded run](../examples/selftest/stm32l431-report.txt), which predates release 0.1.0.
   [porting.md](porting.md#another-core) says what a board with another core changes.
@@ -75,7 +100,8 @@ each. A core without an FPU uses the soft-float calling convention.
 
 Not supported:
 
-- **Cortex-M55 and Cortex-M85** (ARMv8.1-M): they are not in the table, and nothing was tested for them.
+- **PACBTI on the Cortex-M85:** the code is built without pointer authentication and branch target
+  identification, and the libraries GCC has for them are not linked.
 - **Cortex-R and 32-bit Cortex-A cores:** they have the same instruction sets but another start-up and interrupt
   model. They are a separate step after the Cortex-M cores.
 - **64-bit ARM:** out of reach of this approach, which reads the IR of the compiler's 32-bit ARM target.

@@ -2,7 +2,7 @@
 
 Kotlin/Native has no target for a microcontroller without an operating system. It does have `linux_arm32_hfp`:
 32-bit ARM, hard-float, EABI. The LLVM data layout of that target is identical, character for character, to the
-one of every Cortex-M target, from `thumbv6m-none-eabi` (Cortex-M0) to `thumbv8m.main-none-eabihf` (Cortex-M33):
+one of every Cortex-M target, from `thumbv6m-none-eabi` (Cortex-M0) to `thumbv8.1m.main-none-eabihf` (Cortex-M85):
 
     e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64
 
@@ -49,8 +49,9 @@ the Kotlin code calls C). `-D` applies to every C file and to the runtime, which
 values, and `-I` to every C file; `runtime/` and `support/` are always on the include path. `--cpu` names the core,
 as for kbuild, whose objects must be built for the same one. qbuild links for the QEMU machine that runs the code
 of that core: the STM32L475 (`--target l475`) for the default core and the cores below it, `mps2-an385` for the
-Cortex-M3, `mps2-an500` for the Cortex-M7 and `mps2-an505` for the cores of ARMv8-M (`--target an385`, `an500`,
-`an505`: the start code of `qemu-l475` with the linker script of the machine). `--target an386` links for QEMU's
+Cortex-M3, `mps2-an500` for the Cortex-M7, `mps2-an505` for the cores of ARMv8-M and `mps3-an547` for those of
+ARMv8.1-M. `--target an385`, `an500`, `an505` and `an547` name these machines: each is the start code of
+`qemu-l475` with the linker script of the machine. `--target an386` links for QEMU's
 `mps2-an386` (4 MB of code, 16 MB of RAM) instead, for a program that needs more memory than a microcontroller
 has. qbuild stops when the `--target` does not run the code of the core: the machine lacks its FPU or its
 instructions, or has the other kind of MPU, and the guards of the start code, compiled for the core, would then

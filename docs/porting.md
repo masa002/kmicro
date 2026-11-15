@@ -222,7 +222,7 @@ Kotlin/Native stdlib: 261 implemented, 52 unsupported, 40 Objective-C, 0 missing
 
 ## Another core
 
-kmicro builds for the cores from the Cortex-M0 to the Cortex-M33. [roadmap.md](roadmap.md#targets) lists them with
+kmicro builds for the cores from the Cortex-M0 to the Cortex-M85. [roadmap.md](roadmap.md#targets) lists them with
 what was checked on each: all of it on QEMU, and only the Cortex-M4F on a board. For a core other than the
 Cortex-M4F, these parts of a board build change:
 
@@ -259,6 +259,18 @@ Cortex-M4F, these parts of a board build change:
   guards are set up in another way ([below](#optional-a-fault-report-and-mpu-guards)). A core with the Security
   Extension starts in the Secure state; the tests leave it there and link the program into the Secure aliases of
   the machine's memories ([an505.ld](../targets/qemu-l475/an505.ld)).
+- **ARMv8.1-M (Cortex-M55, M85).** What the item above says holds here too. Choose the entry by what the chip
+  has: `cortex-m55` for the FPU and MVE (Helium), `cortex-m55-nomve` for the FPU alone, `cortex-m55-nofp` for
+  neither, and the same three for the Cortex-M85. With MVE the compiler turns ordinary loops into vector code, so
+  the image has MVE instructions although the program has no floating-point or vector code of its own. MVE uses
+  the registers of the FPU: the reset entry gives access to CP10/CP11 before any compiled code runs (step 1 of
+  [Start-up](#start-up); `__ARM_FP` is defined for these entries), and an interrupt saves and restores them as it
+  does for floating-point code, with no code of yours. C compiled with arm-none-eabi-gcc takes
+  `-mcpu=cortex-m55 -mfloat-abi=hard`, with `+nomve` after the core's name for the second entry, and
+  `-mcpu=cortex-m55+nofp+nomve -mfloat-abi=soft` for the third; GCC then links the multilib of the entry. To read
+  the MVE instructions of an image, give `arm-none-eabi-objdump -d` the option `-m armv8.1-m.main`: without it
+  they are shown as coprocessor instructions (`ldc2`) or as undefined. The code for the Cortex-M85 was run on a
+  Cortex-M55 only, and nothing is built with PACBTI ([roadmap.md](roadmap.md#targets)).
 
 ## A check on QEMU
 
@@ -350,10 +362,11 @@ purpose. For a board, replace `start.c` and `l475.ld` with its own and write the
   region can refuse every access: the guards are regions 0 and 1. The MPU of ARMv8-M gives a region a base and a
   limit (`MPU_RBAR`, `MPU_RLAR`), and none of its permissions refuses a privileged read. An address that lies in
   two regions faults whatever they allow, so there the start code sets up each guard as the same region twice:
-  regions 0 and 1 for the null guard, 2 and 3 for the stack guard. The guards and the fault report ran on QEMU's
-  Cortex-M3, M4F, M7 and M33. They never ran on an ARMv6-M or ARMv8-M Baseline core, whose code the tests run on a
-  larger core: such a core has the HardFault exception only, without MemManage, BusFault and UsageFault and their
-  status registers (CFSR, MMFAR, BFAR), and a Cortex-M0 or M1 has no MPU.
+  regions 0 and 1 for the null guard, 2 and 3 for the stack guard. The Cortex-M55 has the MPU of ARMv8-M. The
+  guards and the fault report ran on QEMU's Cortex-M3, M4F, M7, M33 and M55. They never ran on an ARMv6-M or
+  ARMv8-M Baseline core, whose code the tests run on a larger core: such a core has the HardFault exception only,
+  without MemManage, BusFault and UsageFault and their status registers (CFSR, MMFAR, BFAR), and a Cortex-M0 or M1
+  has no MPU.
 - **Limits.** The stack-overflow report has no PC. A frame larger than the guard can step over it:
   `python tools/frames.py app.elf` lists the largest frames, and `--limit 4096` makes it fail for a larger one and
   for a function that computes the size of its frame (a variable-length array, `alloca()`).
