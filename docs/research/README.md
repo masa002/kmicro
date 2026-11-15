@@ -18,6 +18,7 @@ now.
 | [design-plan.md](design-plan.md) | The plan built from those answers, the experiments meant to prove it, and the status of each decision |
 | [design-check.md](design-check.md) | Each claim of the plan checked against the compiler and runtime sources |
 | [MEASUREMENTS.md](MEASUREMENTS.md) | What the first measurements found: getting the IR out, the size of the stock runtime, feature costs |
+| [R_arm32_target.md](R_arm32_target.md) | A later note (November 2026): how deprecated is the compiler's `linux_arm32_hfp` target in Kotlin 2.5.0-RC, and what can kmicro build on when it goes? |
 | [PROVENANCE.txt](PROVENANCE.txt) | The Kotlin/Native 2.4.21 release archive the work used, and its SHA-256 |
 
 ## Conventions

@@ -19,7 +19,9 @@ their known issues. A release is cut when a set of fixes or a feature is ready a
 
 kmicro reads the IR of one compiler, Kotlin/Native 2.4.21, and is tested only with it; `python toolchain/paths.py`
 warns when another version is installed. kmicro builds on the compiler's `linux_arm32_hfp` target, which JetBrains
-has deprecated, so a later compiler may not offer it.
+has deprecated, so a later compiler may not offer it. In Kotlin 2.5.0-RC the deprecation is still a warning, and no
+release is named for the removal; [research/R_arm32_target.md](research/R_arm32_target.md) has the sources, and what
+kmicro can build on when the target goes.
 
 Another compiler version becomes supported when the runtime contract ([runtime/kmicro.h](../runtime/kmicro.h), the
 notes in [research/](research)) and [toolchain/retarget.py](../toolchain/retarget.py) have been checked against its
