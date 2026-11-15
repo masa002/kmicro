@@ -63,6 +63,7 @@ sys.path.insert(0, str(ROOT / 'tools'))
 import frames  # noqa: E402
 import kn  # noqa: E402
 import paths  # noqa: E402
+from qbuild import RUNS, cflags  # noqa: E402
 
 BUILD = ROOT / 'build/t'
 EXPECTED = ROOT / 'tests/expected'
@@ -114,8 +115,7 @@ class Test:
 
 def eh_without_exceptions(d):
     """runtime/eh.c with qbuild's flags but no -fexceptions: the build must stop with eh.c's #error."""
-    import qbuild
-    return [paths.clang(), *[f for f in qbuild.cflags() if f != '-fexceptions'], '-c', ROOT / 'runtime/eh.c', '-o',
+    return [paths.clang(), *[f for f in cflags() if f != '-fexceptions'], '-c', ROOT / 'runtime/eh.c', '-o',
             d / 'eh.o']
 
 
@@ -283,7 +283,6 @@ TESTS = [
                        same=('{dir}/gen/Regs.kt', 'examples/irq/Regs.kt'))]),
     Test('irq_an386', IRQ, ['examples/irq/main.c', 'support/hw.c'], target='an386'),
 ]
-M4F_MACHINE = ('cortex-m0', 'cortex-m0plus', 'cortex-m1', 'cortex-m3', 'cortex-m4', 'cortex-m4f')   # run on one
 PATH_OPTIONS = ('c_api', 'defs', 'libs', 'deps', 'include_dirs')
 QBUILD_SIZE = re.compile(r'^qbuild: .*  text (\d+)  data (\d+)  bss (\d+).*\n', re.M)
 QBUILD_STUBS = re.compile(r'^qbuild: warning: \d+ runtime symbols stubbed .*$', re.M)
@@ -517,9 +516,9 @@ def main():
     selected = [t for t in TESTS if not args.names or t.name in args.names]
     failed = skipped = 0
     for t in selected:
-        if t.target != 'l475' and cpu not in M4F_MACHINE:
+        if t.target != 'l475' and cpu not in RUNS[t.target]:
             skipped += 1
-            print(f'SKIP  {t.name:28s} runs on QEMU {t.target}, a Cortex-M4F, which does not run {cpu} code')
+            print(f'SKIP  {t.name:28s} runs on QEMU {t.target}, which does not run {cpu} code')
             continue
         try:
             print(f'PASS  {t.name:28s} {run_test(t, args)}')

@@ -50,7 +50,9 @@ of that core: the STM32L475 (`--target l475`) for the default core and the cores
 Cortex-M3, `mps2-an500` for the Cortex-M7 and `mps2-an505` for the cores of ARMv8-M (`--target an385`, `an500`,
 `an505`: the start code of `qemu-l475` with the linker script of the machine). `--target an386` links for QEMU's
 `mps2-an386` (4 MB of code, 16 MB of RAM) instead, for a program that needs more memory than a microcontroller
-has. `--run` runs the image and exits with its exit code, 124 after `--timeout` seconds (120
+has. qbuild stops when the `--target` does not run the code of the core: the machine lacks its FPU or its
+instructions, or has the other kind of MPU, and the guards of the start code, compiled for the core, would then
+do nothing. `--run` runs the image and exits with its exit code, 124 after `--timeout` seconds (120
 by default). With `--icount` the emulator's clock is the number of instructions the program has run, one nanosecond
 each, instead of the host's clock: a timer interrupt then lands on the same instruction in every run. qbuild prints
 a size line, `qbuild: app.elf  text N  data N  bss N  stack N`, where the stack is the RAM above `.bss`, without the

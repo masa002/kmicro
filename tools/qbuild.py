@@ -11,7 +11,8 @@ usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--
     -D, -I     a definition or include folder for every C file, e.g. -D KM_HEAP_BYTES=32768 (runtime/ and support/
                are always on the include path)
     --cpu      the core to compile for (toolchain/paths.py CORES; default cortex-m4f, or KMICRO_CPU). The objects
-               from kbuild must be built for the same core
+               from kbuild must be built for the same core, and the target must be one that runs its code:
+               qbuild stops when it is not
     --target   l475: QEMU b-l475e-iot01a, an STM32L475 (targets/qemu-l475), the layout programs run on; its
                Cortex-M4F also runs the code of the cores below it (cortex-m0 to cortex-m4). The default for those
                an386: QEMU mps2-an386 (targets/qemu-an386: 4 MB of code, 16 MB of RAM, newlib stdio over
@@ -62,6 +63,13 @@ TARGETS = {   # start code and linker script, QEMU machine, the newlib system-ca
 # Baseline, runs on the Cortex-M33.
 DEFAULT_TARGET = {'cortex-m3': 'an385', 'cortex-m7': 'an500', 'cortex-m7-sp': 'an500', 'cortex-m23': 'an505',
                   'cortex-m33': 'an505', 'cortex-m33f': 'an505'}
+# The cores whose code each machine runs. A machine does not run code for an FPU or for instructions its core lacks.
+# And the start code is compiled for the core: its stack and null guards are written for the MPU of ARMv8-M or for the
+# one of the older cores, and on a machine with the other MPU the program runs with no guard at all.
+_M3 = ('cortex-m0', 'cortex-m0plus', 'cortex-m1', 'cortex-m3')
+_M4F = (*_M3, 'cortex-m4', 'cortex-m4f')
+RUNS = {'l475': _M4F, 'an386': _M4F, 'an385': _M3, 'an500': (*_M4F, 'cortex-m7', 'cortex-m7-sp'),
+        'an505': ('cortex-m23', 'cortex-m33', 'cortex-m33f')}
 
 
 def cflags():
@@ -236,7 +244,11 @@ def main():
         if f.suffix not in (*C_SOURCES, '.o', '.a'):
             fail(f'qbuild: {f}: expected .c, .cpp, .s, .S, .o or .a')
     cpu = paths.select_cpu(args.cpu)
-    tdir, script, machine, syslibs = TARGETS[args.target or DEFAULT_TARGET.get(cpu, 'l475')]
+    target = args.target or DEFAULT_TARGET.get(cpu, 'l475')
+    tdir, script, machine, syslibs = TARGETS[target]
+    if cpu not in RUNS[target]:
+        fail(f'qbuild: --target {target} (QEMU {machine}) does not run {cpu} code: it runs ' + ', '.join(RUNS[target])
+             + f'. Without --target, {cpu} runs on {DEFAULT_TARGET.get(cpu, "l475")}')
     defs = [f'-D{d}' for d in args.defs]
     incs = [f'-I{i}' for i in args.incs]
     out = args.out
