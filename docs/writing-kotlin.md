@@ -80,7 +80,7 @@ compared with the same program without it.
    A local array of constant size that never leaves its function lives on the stack (Kotlin/Native, up to 64 KB per function). Keep a big buffer in a top-level val or a class field; --stack-array-limit sets the limit. tools/frames.py shows the frames after linking.
    build\buf\k.o
    $ python tools/qbuild.py build/buf/buf.elf targets/common/kotlin_main.c build/buf/k.o
-   qbuild: buf.elf  text 49636  data 80  bss 18724  stack 73728
+   qbuild: buf.elf  text 49948  data 80  bss 18732  stack 40960
    $ python tools/frames.py build/buf/buf.elf --top 3
    largest stack frames of buf.elf (bytes a call takes, LTO-merged):
        4160  run_main
@@ -97,7 +97,7 @@ compared with the same program without it.
    stack run into the heap. The guard is 4 KB, larger than any frame of the runtime's C code (1024 bytes at most)
    and of the standard library (2984 bytes, in `Regex`), so a call cannot step over it; only a function of your own
    with a larger frame could (rule 4, `tools/frames.py`). qbuild's size line shows the RAM above the guard
-   (`stack 73728` above); on `qemu-l475` the guard, the 256 unused bytes below it and its alignment take 4352 to
+   (`stack 40960` above); on `qemu-l475` the guard, the 256 unused bytes below it and its alignment take 4352 to
    8444 bytes, which the size line counts neither as `bss` nor as stack.
    Reading through null is not an exception either: a property read before its initializer ran (a constructor
    that calls an overridden function) or a null C pointer stops the program on `qemu-l475` with

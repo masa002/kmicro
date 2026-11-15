@@ -250,15 +250,15 @@ python tools/symbolize.py build/exc/exc.elf exc.log
 symbolize.py prints the log with the names added:
 
 ```
-qbuild: exc.elf  text 54332  data 80  bss 10532  stack 81920
+qbuild: exc.elf  text 54644  data 80  bss 10540  stack 49152
 exception checks failed mask = 0  OK   (gcs=6)
 now an uncaught one (expected to stop with a report):
 Uncaught Kotlin exception: PanelError: panel error -5
-    at 0x08009dfc  PanelError#<init>(kotlin.Int){}+0x1e4
-    at 0x08002978  run_main+0x8b4
+    at 0x08009f24  PanelError#<init>(kotlin.Int){}+0x1e4
+    at 0x08002984  run_main+0x8b4
         run_main (main.c:21)
     at 0x08001942  start_c+0xaa
-        start_c (start.c:71)
+        start_c (start.c:101)
 kmicro panic: uncaught Kotlin exception
 qemu: exit 98
 ```
@@ -280,19 +280,19 @@ python tools/symbolize.py build/exc/exc.elf exc.log
 symbolize.py prints the log with the names added:
 
 ```
-qbuild: exc.elf  text 56444  data 80  bss 10532  stack 81920
+qbuild: exc.elf  text 56756  data 80  bss 10540  stack 49152
 exception checks failed mask = 0  OK   (gcs=6)
 now an uncaught one (expected to stop with a report):
 Uncaught Kotlin exception: PanelError: panel error -5
-    at 0x0800a4cc  PanelError#<init>(kotlin.Int){}+0x1c0
-    at 0x08002a48  run_main+0x984
+    at 0x0800a5f8  PanelError#<init>(kotlin.Int){}+0x1c0
+    at 0x08002a54  run_main+0x984
         #check(kotlin.Int){} (exceptions.kt:6) [inlined]
         #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exceptions.kt:7) [inlined]
         #uncaught(kotlin.Int){}kotlin.Int (exceptions.kt:40) [inlined]
         main (main.c:21) [inlined]
-        run_main (start.c:61)
+        run_main (start.c:91)
     at 0x08001942  start_c+0xaa
-        start_c (start.c:71)
+        start_c (start.c:101)
 kmicro panic: uncaught Kotlin exception
 qemu: exit 98
 ```
@@ -309,16 +309,16 @@ symbolize.py also reads the log on stdin (`python tools/symbolize.py build/exc/e
 addresses given as arguments:
 
 ```
-python tools/symbolize.py build/exc/exc.elf 0x08002a48
+python tools/symbolize.py build/exc/exc.elf 0x08002a54
 ```
 
 ```
-0x08002a48  run_main+0x984
+0x08002a54  run_main+0x984
         #check(kotlin.Int){} (exceptions.kt:6) [inlined]
         #deep(kotlin.Int;kotlin.Int){}kotlin.Int (exceptions.kt:7) [inlined]
         #uncaught(kotlin.Int){}kotlin.Int (exceptions.kt:40) [inlined]
         main (main.c:21) [inlined]
-        run_main (start.c:61)
+        run_main (start.c:91)
 ```
 
 It reads the log as UTF-8: in Windows PowerShell, save the log with `| Out-File -Encoding utf8 exc.log` rather than
@@ -350,19 +350,19 @@ python tools/symbolize.py build/trace/trace.elf trace.log
 symbolize.py prints the log with the names added:
 
 ```
-qbuild: trace.elf  text 52692  data 80  bss 18724  stack 73728
+qbuild: trace.elf  text 53020  data 80  bss 18732  stack 40960
 Uncaught Kotlin exception: kotlin.IllegalStateException: boot failed at sensor 3
-    at 0x08009a2c  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x90
-    at 0x080099cc  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
-    at 0x080099cc  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
-    at 0x08002128  run_main+0x64
+    at 0x08009b5c  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x90
+    at 0x08009afc  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
+    at 0x08009afc  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
+    at 0x08002134  run_main+0x64
         run_main (trace.kt:10)
     at 0x08001942  start_c+0xaa
-        start_c (start.c:71)
+        start_c (start.c:101)
 Caused by: SensorMissing: sensor 3 not answering
-    at 0x08009986  SensorMissing#<init>(kotlin.Int){}+0x1ea
-    at 0x08009a22  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x86
-    at 0x080099cc  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
+    at 0x08009ab6  SensorMissing#<init>(kotlin.Int){}+0x1ea
+    at 0x08009b52  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x86
+    at 0x08009afc  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
     ... and 3 more common stack frames skipped
 kmicro panic: uncaught Kotlin exception
 qemu: exit 98
@@ -399,9 +399,9 @@ python tools/symbolize.py build/fault/fault.elf fault.log
 symbolize.py prints the log with the names added:
 
 ```
-qbuild: fault.elf  text 48316  data 80  bss 18724  stack 73728
-kmicro fault: null pointer access (MemManage) at 0x080091b2  Sub#describe(){}kotlin.String+0xfe
-    sp 0x20017ec8  lr 0x20000960  cfsr 0x00000082  hfsr 0x00000000  mmfar 0x0000000c  bfar 0x00000000
+qbuild: fault.elf  text 48644  data 80  bss 18732  stack 40960
+kmicro fault: null pointer access (MemManage) at 0x080092e6  Sub#describe(){}kotlin.String+0xfe
+    sp 0x2000fec8  lr 0x20000968  cfsr 0x00000082  hfsr 0x00000000  mmfar 0x0000000c  bfar 0x00000000
 qemu: exit 99
 ```
 
