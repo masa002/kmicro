@@ -15,7 +15,7 @@ globals and the wrappers come from the compiler's C stubs, linked in later toget
 copies exactly those pieces and the types they use into a small module, and declares what they reference: the C
 functions and globals, and every name Codegen knows (the Kotlin side of a callback comes from k.o, runtime functions
 from the kmicro runtime). Full LTO then folds each chain into a direct call. Attribute groups and metadata attachments
-are dropped (retarget.py gives the definitions the Cortex-M4 attributes); metadata used as an operand is copied, and
+are dropped (retarget.py gives the definitions the attributes of the core); metadata used as an operand is copied, and
 string constants and inline assembly keep their text.
 """
 import argparse

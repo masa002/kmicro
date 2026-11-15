@@ -114,16 +114,16 @@ text = re.sub(r'^target triple = "[^"]*"', f'target triple = "{paths.triple()}"'
 # The exact cpu/feature strings clang gives the C runtime (paths.target_flags()): Kotlin functions and the runtime then
 # carry identical attributes, so LTO may inline runtime hooks (UpdateHeapRef, EnterFrame...) into Kotlin code. Any
 # difference, from another LLVM version or another CPU, would silently stop that inlining.
-M4_CPU, M4_FEATURES = target_attributes(Path(dst).with_name('target_attributes.txt'))
-text = re.sub(r'"target-cpu"="[^"]*"', lambda m: M4_CPU, text)
-text = re.sub(r'"target-features"="[^"]*"', lambda m: M4_FEATURES, text)
+CPU_ATTR, FEATURES_ATTR = target_attributes(Path(dst).with_name('target_attributes.txt'))
+text = re.sub(r'"target-cpu"="[^"]*"', lambda m: CPU_ATTR, text)
+text = re.sub(r'"target-features"="[^"]*"', lambda m: FEATURES_ATTR, text)
 text = re.sub(r'^(attributes #\d+ = )\{ \}$', lambda m: m.group(1) + '{ "kmicro"="retargeted" }', text, flags=re.M)
 # Definitions with no attribute group at all (the cinterop bridges and wrappers that bridges.py copies) would carry
-# no cpu/features: the inliner then refuses to put a Cortex-M4 callee (hw.c's one-instruction helpers) into them.
+# no cpu/features: the inliner then refuses to put a callee that has them (hw.c's one-instruction helpers) into them.
 NOATTR = re.compile(r'^(define [^\n]*\))((?: !dbg ![0-9]+)?) \{$', re.M)
 if NOATTR.search(text):
     text = NOATTR.sub(r'\1 #9999\2 {', text)
-    text += f'\nattributes #9999 = {{ nounwind {M4_CPU} {M4_FEATURES} }}\n'
+    text += f'\nattributes #9999 = {{ nounwind {CPU_ATTR} {FEATURES_ATTR} }}\n'
 if '--hot' in args and '--size' not in args:
     sys.exit('retarget: --hot only applies with --size')
 if '--size' in args:  # optimize for size: LLVM's minsize/optsize on every Kotlin function (= clang -Oz)
@@ -162,7 +162,7 @@ if '--size' in args:  # optimize for size: LLVM's minsize/optsize on every Kotli
 if '--no-tls' in args:
     text = TLS_RE.sub(r'\1', text)
 if '--single-core' in args:
-    # Every access to a file's globals first checks its init state with an acquire load (a DMB on the M4, and LLVM
+    # Every access to a file's globals first checks its init state with an acquire load (a DMB, and LLVM
     # may not hoist it out of a loop). kmicro runs Kotlin on one core in one thread, and interrupt handlers never
     # initialise globals (the runtime stops if they try), so a plain load is exact: no barrier, hoistable.
     text, n = re.subn(r'load atomic (i32), ptr (@"state_global\$[^"]*") acquire, align 4', r'load \1, ptr \2, align 4', text)

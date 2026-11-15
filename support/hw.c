@@ -10,8 +10,9 @@ void     hw_wr16(uint32_t addr, uint16_t v) { *(volatile uint16_t *)addr = v; }
 uint8_t  hw_rd8(uint32_t addr) { return *(volatile uint8_t *)addr; }
 void     hw_wr8(uint32_t addr, uint8_t v) { *(volatile uint8_t *)addr = v; }
 
-/* Any alignment: the packed view makes clang emit plain LDR/STR (unaligned-capable on the Cortex-M4), never
- * LDRD/LDM, which would fault on an odd address. */
+/* Any alignment: the packed view makes clang emit an access that works at any address on the core it compiles for
+ * (a plain LDR/STR from ARMv7-M on; single bytes on ARMv6-M and ARMv8-M Baseline, where an unaligned LDR faults),
+ * never LDRD/LDM, which would fault on an odd address. */
 typedef struct __attribute__((packed)) { uint32_t v; } u32_any;
 typedef struct __attribute__((packed)) { uint16_t v; } u16_any;
 uint32_t mem_rd32(uint32_t addr) { return ((const u32_any *)addr)->v; }

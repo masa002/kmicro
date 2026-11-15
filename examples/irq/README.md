@@ -1,7 +1,7 @@
 # irq
 
-An interrupt handler written in Kotlin that touches hardware registers. SysTick, the Cortex-M4's own timer, interrupts
-at 1 kHz, and the vector table calls the Kotlin function `sysTickHandler()` directly.
+An interrupt handler written in Kotlin that touches hardware registers. SysTick, the timer of the Cortex-M core
+itself, interrupts at 1 kHz, and the vector table calls the Kotlin function `sysTickHandler()` directly.
 
 | File | |
 |---|---|

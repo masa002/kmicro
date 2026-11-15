@@ -361,7 +361,7 @@ def check_c_signature(cname, sym, kotlin_sig, c_sig=None, c_text=None):
 
 
 def c_signatures(headers, names, include_dirs=(), defines=(), work=None):
-    """C name -> ir_signature() of its prototype as clang lowers it for the Cortex-M4 (the ABI a C caller uses)."""
+    """C name -> ir_signature() of its prototype as clang lowers it for the core (the ABI a C caller uses)."""
     if not names:
         return {}
     headers = [Path(h).resolve() for h in headers]
@@ -586,7 +586,7 @@ def add_init_all(ll_text, package, name='kt_init_all'):
 
 
 def c_flags(header, include_dirs=(), defines=()):
-    """clang flags that read a C header as qbuild compiles C: Cortex-M4F, newlib, runtime/ and support/ on the include
+    """clang flags that read a C header as qbuild compiles C: the core, newlib, runtime/ and support/ on the include
     path, then the header's own folder and `include_dirs`; `defines` as NAME or NAME=VALUE."""
     root = HERE.parent
     return [*paths.target_flags(), '-isystem', paths.newlib_include(), '-I', root / 'runtime', '-I', root / 'support',

@@ -1,8 +1,8 @@
 /* Copyright 2026 the kmicro authors (NOTICE).
  * SPDX-License-Identifier: Apache-2.0 */
-/* The SysTick timer of the Cortex-M4, written the way CMSIS core_cm4.h describes it: a register struct, the base
- * address and an instance macro, and _Pos/_Msk bit macros. tools/gen_regs.py reads this layout; with a real device,
- * pass the vendor's core_cm4.h and device header instead. */
+/* The SysTick timer of a Cortex-M core, written the way a CMSIS core header (core_cm4.h for the Cortex-M4) describes
+ * it: a register struct, the base address and an instance macro, and _Pos/_Msk bit macros. tools/gen_regs.py reads
+ * this layout; with a real device, pass the vendor's core header and device header instead. */
 #ifndef SYSTICK_H
 #define SYSTICK_H
 #include <stdint.h>

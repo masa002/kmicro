@@ -223,7 +223,7 @@ def main():
         if not same:
             for line in list(difflib.unified_diff(golden.decode('utf-8', 'replace').splitlines(),
                                                   got.decode('utf-8', 'replace').splitlines(),
-                                                  'official runtime (host)', 'kmicro (Cortex-M4)', lineterm='',
+                                                  'official runtime (host)', f'kmicro ({paths.cpu()})', lineterm='',
                                                   n=0))[:30]:
                 print('      ' + line)
         (OUT / f'{name}.golden.txt').write_bytes(golden)
