@@ -180,7 +180,7 @@ catches now executes about 10,000 instructions: 7,200 to create the exception wi
 | [toolchain/](toolchain) | the build steps: `paths.py` finds the tools (tested versions in `versions.txt`), `kn.py` runs the pipeline, `retarget.py`, `aapcs.py` and `bridges.py` adapt the compiler's IR, `binutils.py` runs `nm`, `objdump` and the like on an image |
 | [support/](support) | `hw.h`, `hw.c`, `hw.def`: volatile register access, barriers, interrupt masks for Kotlin |
 | [targets/](targets) | startup code and linker scripts for QEMU (`qemu-l475` for programs, with a linker script for each machine the cores run on; `qemu-an386` through `qbuild --target an386` for programs that need more memory), and `common/kotlin_main.c` for `fun main()` |
-| [tools/](tools) | `kbuild.py`, `qbuild.py`, `gen_regs.py` (CMSIS to Kotlin), `isr_check.py`, `symbolize.py`, `frames.py`, `missing_natives.py`, `difftest.py`, `measure.py`, `irstat.py`, `port_dtoa.py` |
+| [tools/](tools) | `kbuild.py`, `qbuild.py`, `gen_regs.py` (CMSIS to Kotlin), `isr_check.py`, `symbolize.py`, `frames.py`, `insn_check.py`, `missing_natives.py`, `difftest.py`, `measure.py`, `irstat.py`, `port_dtoa.py` |
 | [examples/](examples) | `hello`, `irq` (a Kotlin SysTick handler on registers), `selftest` (with its STM32L431 board files) |
 | [tests/](tests) | `run_all.py` and one folder per feature, `expected/` (the outputs run_all compares), `diff/` (the differential tests), `unit/` for the tools |
 | [docs/](docs) | [Kotlin support](docs/kotlin-support.md), [how it works](docs/how-it-works.md), [writing Kotlin for a microcontroller](docs/writing-kotlin.md), [porting to a board](docs/porting.md), [roadmap](docs/roadmap.md), [design notes](docs/research) |
