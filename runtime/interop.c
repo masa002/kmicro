@@ -38,25 +38,6 @@ static inline void set_below(uint32_t end, uint32_t size)   /* the block startin
         s_last = size;
 }
 
-static inline uint32_t irq_save(void)
-{
-#if defined(__thumb__)
-    uint32_t pm;
-    __asm volatile("mrs %0, primask\n cpsid i" : "=r"(pm) : : "memory");
-    return pm;
-#else
-    return 0;
-#endif
-}
-static inline void irq_restore(uint32_t pm)
-{
-#if defined(__thumb__)
-    __asm volatile("msr primask, %0" : : "r"(pm) : "memory");
-#else
-    (void)pm;
-#endif
-}
-
 static uint8_t *take(uint32_t need)                 /* need: header included, a multiple of 8 */
 {
     for (uint32_t off = 0; s_holes != 0 && off < s_top; off += bsize(off)) {
@@ -91,9 +72,9 @@ void *Kotlin_interop_malloc(int64_t size, int32_t align)
     if (size < 0 || size > (int64_t)KM_INTEROP_BYTES - 8)   /* before any 32-bit arithmetic */
         return NULL;
     uint32_t need = 8u + (((uint32_t)size + 7u) & ~7u);
-    uint32_t pm = irq_save();
+    uint32_t pm = km_irq_save();
     uint8_t *b = take(need);
-    irq_restore(pm);
+    km_irq_restore(pm);
     if (b == NULL)
         return NULL;
     memset(b + 8, 0, need - 8u);                     /* calloc semantics, as the stock runtime */
@@ -105,7 +86,7 @@ void Kotlin_interop_free(void *ptr)
     if (ptr == NULL)
         return;
     uint32_t off = (uint32_t)((uint8_t *)ptr - s_arena) - 8u;
-    uint32_t pm = irq_save();
+    uint32_t pm = km_irq_save();
     if ((uint8_t *)ptr < s_arena + 8 || off >= s_top || (off & 7u) != 0 || !(hdr(off)[0] & USED))
         kmicro_panic("interop free: not an allocated native block (freed twice?)");
     uint32_t size = bsize(off);
@@ -128,7 +109,7 @@ void Kotlin_interop_free(void *ptr)
         set_below(off + size, size);
         s_holes++;
     }
-    irq_restore(pm);
+    km_irq_restore(pm);
 }
 
 /* Scratch memory for the floating-point parser (runtime/dtoa): the same arena, freed before the call returns. */

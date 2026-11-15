@@ -63,26 +63,6 @@ static ObjHeader *s_mark_stack[KM_MARK_STACK];
 static int s_msp;
 static bool s_mark_overflow;
 
-/* Short critical sections against interrupt handlers: PRIMASK is saved and restored, never just enabled. */
-static inline uint32_t irq_save(void)
-{
-#if defined(__thumb__)
-    uint32_t pm;
-    __asm volatile("mrs %0, primask\n cpsid i" : "=r"(pm) : : "memory");
-    return pm;
-#else
-    return 0;
-#endif
-}
-static inline void irq_restore(uint32_t pm)
-{
-#if defined(__thumb__)
-    __asm volatile("msr primask, %0" : : "r"(pm) : "memory");
-#else
-    (void)pm;
-#endif
-}
-
 /* ---------------------------------------------------------------------------------------------------------- */
 /* heap                                                                                                       */
 /* ---------------------------------------------------------------------------------------------------------- */
@@ -440,12 +420,12 @@ static void *stable_create(ObjHeader *obj, uint16_t rc)
 {
     if (obj == NULL)
         return NULL;
-    uint32_t pm = irq_save();
+    uint32_t pm = km_irq_save();
     for (int i = 0; i < KM_STABLE_REFS; i++)
         if (!s_stable[i].used) {
             s_stable[i] = (km_stable_ref_t){ obj, rc, true };
             km_ref_stored();                         /* a new root: a collection that is marking looks again */
-            irq_restore(pm);
+            km_irq_restore(pm);
             return &s_stable[i];
         }
     kmicro_panic("too many StableRefs (raise KM_STABLE_REFS, now " KM_STR(KM_STABLE_REFS) ")");
@@ -458,29 +438,29 @@ KM_NOTHROW void Kotlin_native_internal_ref_retainExternalRCRef(void *ref)
 {
     if (ref == NULL)
         return;
-    uint32_t pm = irq_save();
+    uint32_t pm = km_irq_save();
     stable_slot(ref)->rc++;
     km_ref_stored();                                 /* a weak slot may have become a root */
-    irq_restore(pm);
+    km_irq_restore(pm);
 }
 KM_NOTHROW void Kotlin_native_internal_ref_releaseExternalRCRef(void *ref)
 {
     if (ref == NULL)
         return;
-    uint32_t pm = irq_save();
+    uint32_t pm = km_irq_save();
     km_stable_ref_t *s = stable_slot(ref);
     if (s->rc == 0)
         kmicro_panic("StableRef released more often than retained");
     s->rc--;
-    irq_restore(pm);
+    km_irq_restore(pm);
 }
 KM_NOTHROW void Kotlin_native_internal_ref_disposeExternalRCRef(void *ref)
 {
     if (ref == NULL)
         return;
-    uint32_t pm = irq_save();
+    uint32_t pm = km_irq_save();
     *stable_slot(ref) = (km_stable_ref_t){ NULL, 0, false };
-    irq_restore(pm);
+    km_irq_restore(pm);
 }
 KM_NOTHROW ObjHeader *Kotlin_native_internal_ref_dereferenceExternalRCRef(void *ref, ObjHeader **result)
 {
@@ -653,12 +633,12 @@ static void mark(void)
     km_refs_stored = 0;                              /* only interrupt handlers store from here on */
     mark_roots();
     drain();
-    uint32_t pm = irq_save();
+    uint32_t pm = km_irq_save();
     for (int pass = 0; km_refs_stored && pass < KM_GC_REMARKS; pass++) {
         km_refs_stored = 0;
-        irq_restore(pm);
+        km_irq_restore(pm);
         remark();
-        pm = irq_save();
+        pm = km_irq_save();
     }
     if (km_refs_stored)
         remark();
@@ -667,7 +647,7 @@ static void mark(void)
         if (s_stable[i].rc == 0 && o != NULL && in_heap(o) && !(*(uint32_t *)o & MARK_BIT))
             s_stable[i].obj = NULL;
     }
-    irq_restore(pm);
+    km_irq_restore(pm);
 }
 
 static void collect(void)

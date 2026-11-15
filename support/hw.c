@@ -28,6 +28,7 @@ void hw_dmb(void) { __asm volatile("dmb" ::: "memory"); }
 void hw_wfi(void) { __asm volatile("wfi" ::: "memory"); }
 void hw_nop(void) { __asm volatile("nop"); }
 
+#if __ARM_ARCH_PROFILE == 'M'
 uint32_t hw_irq_save(void)
 {
     uint32_t m;
@@ -46,10 +47,26 @@ uint32_t hw_ipsr(void)
     __asm volatile("mrs %0, ipsr" : "=r"(r));
     return r;
 }
+#else
+/* A Cortex-A or Cortex-R core has no PRIMASK: the value is the CPSR, whose I and F bits mask IRQ and FIQ. It has no
+ * IPSR, BASEPRI or DWT either: hw_ipsr and the three hw_basepri functions are not defined there, so a program that
+ * calls them does not link, and hw_cycles_enable() returns false. */
+uint32_t hw_irq_save(void)
+{
+    uint32_t m;
+    __asm volatile("mrs %0, cpsr\n cpsid if" : "=r"(m) :: "memory");
+    return m;
+}
+
+void hw_irq_restore(uint32_t cpsr)
+{
+    __asm volatile("msr cpsr_c, %0" :: "r"(cpsr) : "memory");
+}
+#endif
 
 /* BASEPRI exists on ARMv7-M and ARMv8-M Mainline (Cortex-M3 and up, M33 and up). On ARMv6-M and ARMv8-M Baseline
  * (Cortex-M0, M0+, M1, M23) these three functions are not defined: a program that calls them does not link there. */
-#if __ARM_ARCH_ISA_THUMB == 2
+#if __ARM_ARCH_PROFILE == 'M' && __ARM_ARCH_ISA_THUMB == 2
 uint32_t hw_basepri(void)
 {
     uint32_t r;
@@ -67,7 +84,7 @@ void hw_basepri_max(uint32_t v) { __asm volatile("msr basepri_max, %0" :: "r"(v)
  * lock ignores that write. */
 bool hw_cycles_enable(void)
 {
-#if __ARM_ARCH_ISA_THUMB == 2
+#if __ARM_ARCH_PROFILE == 'M' && __ARM_ARCH_ISA_THUMB == 2
     *(volatile uint32_t *)0xE000EDFCu |= 1u << 24;    /* CoreDebug->DEMCR.TRCENA: the DWT unit on */
     *(volatile uint32_t *)0xE0001FB0u = 0xC5ACCE55u;  /* DWT->LAR: the key */
     *(volatile uint32_t *)0xE0001004u = 0;            /* DWT->CYCCNT */
@@ -79,4 +96,8 @@ bool hw_cycles_enable(void)
 #endif
 }
 
+#if __ARM_ARCH_PROFILE == 'M'
 uint32_t hw_cycles(void) { return *(volatile uint32_t *)0xE0001004u; }   /* DWT->CYCCNT */
+#else
+uint32_t hw_cycles(void) { return 0; }
+#endif

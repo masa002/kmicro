@@ -39,9 +39,10 @@ void     hw_isb(void);
 void     hw_dmb(void);
 void     hw_wfi(void);
 void     hw_nop(void);
-uint32_t hw_irq_save(void);               /* returns PRIMASK, then disables interrupts (CPSID i) */
+uint32_t hw_irq_save(void);               /* returns PRIMASK, then disables interrupts (CPSID i); on a Cortex-A or
+                                             Cortex-R core the CPSR, then masks IRQ and FIQ (CPSID if) */
 void     hw_irq_restore(uint32_t primask); /* re-enables interrupts only if they were enabled before */
-uint32_t hw_ipsr(void);                   /* 0 in thread mode, else the active exception number */
+uint32_t hw_ipsr(void);                   /* 0 in thread mode, else the active exception number; Cortex-M only */
 uint32_t hw_basepri(void);                /* BASEPRI: 0 = no masking by priority */
 void     hw_basepri_set(uint32_t v);
 void     hw_basepri_max(uint32_t v);      /* BASEPRI_MAX: only ever raises the mask */

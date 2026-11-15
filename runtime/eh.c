@@ -87,7 +87,7 @@ typedef struct {
     _Unwind_Control_Block ucb;                       /* first: r0 at the landing pad points here */
     ObjHeader *exception;                            /* from ThrowException to __cxa_begin_catch: a GC root */
     ObjHeader *caught;                               /* from __cxa_begin_catch to __cxa_end_catch: a GC root */
-    uint32_t context;                                /* who threw it: 0 the thread code, else the handler's number */
+    uint32_t context;                                /* who threw it: 0 the thread code, else km_handler() */
 } km_exception_t;
 
 static km_exception_t s_recs[KM_EH_DEPTH] __attribute__((aligned(8)));
@@ -113,18 +113,6 @@ static void pop_record(void)
     s_recs[n].exception = s_recs[n].caught = NULL;
     s_depth = n;
     km_eh_current = n > 0 ? &s_recs[n - 1] : NULL;
-}
-
-/* The Cortex-M exception number of the running code (IPSR): 0 in thread code. */
-static uint32_t running_context(void)
-{
-#if defined(__ARM_ARCH_PROFILE) && __ARM_ARCH_PROFILE == 'M'
-    uint32_t ipsr;
-    __asm volatile("mrs %0, ipsr" : "=r"(ipsr));
-    return ipsr & 0x1FFu;
-#else
-    return 0;
-#endif
 }
 
 void kmicro_eh_roots(void (*visit)(ObjHeader *))
@@ -471,7 +459,7 @@ __attribute__((noreturn)) static void terminate(ObjHeader *e, bool hook)
 
 __attribute__((noreturn)) void ThrowException(ObjHeader *exception)
 {
-    uint32_t context = running_context();
+    uint32_t context = km_handler();
     /* The same code throwing again before its own exception reached a catch: a cleanup pad that throws. */
     if (s_depth > 0 && s_recs[s_depth - 1].exception != NULL && s_recs[s_depth - 1].context == context)
         kmicro_panic("exception thrown while another one is being unwound");

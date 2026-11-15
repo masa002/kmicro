@@ -108,6 +108,7 @@ first comment.
 | `regex.c` | The natives of `RegexOption.CANON_EQ`, which throw `IllegalArgumentException`. |
 | `unsupported.c` | The standard-library functions that need threads or an OS (`Worker`, `WeakReference`, heap tuning, ...): each stops the program with `... is not supported on kmicro`. `python tools/missing_natives.py` lists them. |
 | `interop.c` | What cinterop needs: thread-state switches (nothing to do) and a small arena for `memScoped`, `cstr`, `nativeHeap` (`KM_INTEROP_BYTES`). |
+| `km_cpu.h` | The two things the runtime asks the core itself: mask interrupts for a few instructions (PRIMASK), and tell an interrupt handler from the thread code (IPSR). It also has the code for the cores of the A and R profiles, which have neither register; kmicro does not build for those cores yet. |
 | `atomic64.c` | 64-bit atomics (`AtomicLong`, `@Volatile` `Long` fields) on a CPU without 64-bit exclusive loads. |
 | `atomic32.c` | Atomics of 1, 2 and 4 bytes on a core without LDREX/STREX (ARMv6-M), with interrupts masked. On the other cores the file is empty: the compiler emits the exclusive load and store itself. |
 

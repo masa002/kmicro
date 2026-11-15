@@ -13,6 +13,7 @@
  * anything can allocate, and the caught exception is kept in a slot of our shadow-stack frame, never only in a C++
  * variable, while ThrowFileFailedToInitializeException allocates the wrapper. */
 #include <stdint.h>
+#include "km_cpu.h"
 
 extern "C" {
 struct ObjHeader;
@@ -28,16 +29,7 @@ void kmicro_panic(const char *what) __attribute__((noreturn));
 }
 
 /* kmicro.h's km_in_interrupt (that header is C) */
-static inline bool km_in_interrupt()
-{
-#if defined(__ARM_ARCH_PROFILE) && __ARM_ARCH_PROFILE == 'M'
-    unsigned ipsr;
-    __asm volatile("mrs %0, ipsr" : "=r"(ipsr));
-    return (ipsr & 0x1FFu) != 0u;
-#else
-    return false;
-#endif
-}
+static inline bool km_in_interrupt() { return km_handler() != 0u; }
 
 namespace {
 enum : uintptr_t { NOT_INITIALIZED = 0, BEING_INITIALIZED = 1, INITIALIZED = 2, FAILED_TO_INITIALIZE = 3 };

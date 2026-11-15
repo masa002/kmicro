@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "km_cpu.h"
 
 #ifdef __cplusplus
 extern "C" {                                         /* a C++ file may include this header */
@@ -139,17 +140,9 @@ __attribute__((noreturn)) void ThrowFileFailedToInitializeException(ObjHeader *c
 void checkRangeIndexes(int32_t from, int32_t to, int32_t size);
 extern const TypeInfo *theArrayTypeInfo, *theStringTypeInfo, *theCharArrayTypeInfo;
 
-/* True inside an exception/interrupt handler (Cortex-M IPSR != 0); always false where there is no IPSR. */
-static inline int km_in_interrupt(void)
-{
-#if defined(__ARM_ARCH_PROFILE) && __ARM_ARCH_PROFILE == 'M'
-    unsigned ipsr;
-    __asm volatile("mrs %0, ipsr" : "=r"(ipsr));
-    return (ipsr & 0x1FFu) != 0u;
-#else
-    return 0;
-#endif
-}
+/* True inside an exception/interrupt handler: IPSR != 0 on the M profile, the mode of the CPSR on A and R
+ * (km_cpu.h). */
+static inline int km_in_interrupt(void) { return km_handler() != 0u; }
 
 #ifdef __cplusplus
 }
