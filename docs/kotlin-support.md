@@ -77,8 +77,8 @@ from the Cortex-M0 to the Cortex-M33, and what was checked on each.
 | GC.collect / collectCyclic | works | not inside an interrupt handler |
 | GC.schedule, GC.lastGCInfo | partly | GC.schedule collects at once (and does nothing inside an interrupt handler); lastGCInfo is always null |
 | GC heap tuning (autotune, targetHeapBytes, ...), Debugging.dumpMemory, ImmutableBlob, MemoryUsageInfo.peakResidentSetSizeBytes, the settings of GC.MainThreadFinalizerProcessor | not supported | the program stops with '... is not supported on kmicro'; GC.MainThreadFinalizerProcessor.available is false |
-| WeakReference | not supported | the program stops with '... is not supported on kmicro' |
-| createCleaner | not supported | the program stops with 'finalizers (Cleaner, WeakReference) are not supported' |
+| WeakReference | works | `get()` is null from the collection that finds the object dead; each one takes 16 B of heap besides itself; an interrupt handler may call `get()` |
+| createCleaner | not supported | the program stops with 'finalizers (Cleaner) are not supported' |
 | @ThreadLocal objects and properties | works | |
 | dead objects referenced by frame slots | partly | stay alive until the function returns; matters on a small heap |
 | **Concurrency** | | |

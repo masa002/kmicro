@@ -103,7 +103,7 @@ Limits by design:
   have another start-up and interrupt model and are not supported. 64-bit ARM is out of reach: kmicro reads the IR
   of the compiler's 32-bit ARM target.
 - **One thread.** Interrupts are fine, with the rules in [docs/writing-kotlin.md](docs/writing-kotlin.md). There are
-  no threads: `Worker` and `WeakReference` are not supported.
+  no threads: `Worker` is not supported.
 - **The standard library only.** kotlinx libraries are untested.
 
 ## Getting started

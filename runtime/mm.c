@@ -251,8 +251,6 @@ static uint32_t *alloc_block(uint32_t object_bytes)
 
 static ObjHeader *alloc_object(const TypeInfo *type, ObjHeader **result)
 {
-    if (type->flags_ & KM_TF_HAS_FINALIZER)          /* CleanerImpl / RegularWeakReferenceImpl: not in v1 */
-        kmicro_panic("finalizers (Cleaner, WeakReference) are not supported");
     ObjHeader *o = (ObjHeader *)alloc_block((uint32_t)type->instanceSize_);
     o->typeInfoOrMeta_ = type;
     return km_return(result, o);
@@ -288,6 +286,8 @@ ObjHeader *kmicro_alloc_array(const TypeInfo *type, int32_t count, ObjHeader **r
 KM_NOTHROW ObjHeader *AllocInstance(const TypeInfo *type, ObjHeader **result)
 {
     isr_check(__builtin_return_address(0), KM_ISR_ALLOC);
+    if (type->flags_ & KM_TF_HAS_FINALIZER)          /* CleanerImpl (a RegularWeakReferenceImpl is made below) */
+        kmicro_panic("finalizers (Cleaner) are not supported");
     return alloc_object(type, result);
 }
 ObjHeader *AllocArrayInstance(const TypeInfo *type, int32_t elements, ObjHeader **result)
@@ -468,7 +468,35 @@ KM_NOTHROW ObjHeader *Kotlin_native_internal_ref_dereferenceExternalRCRef(void *
 }
 KM_NOTHROW ObjHeader *Kotlin_native_internal_ref_dereferenceExternalRCRefOrNull(void *ref, ObjHeader **result)
 {
-    return km_return(result, ref == NULL ? NULL : stable_slot(ref)->obj);   /* NULL once a weak slot was cleared */
+    km_stable_ref_t *s = ref;
+    if (s < s_stable || s >= s_stable + KM_STABLE_REFS)   /* WeakReference.get(): the object itself, or NULL (below) */
+        return km_return(result, ref);
+    return km_return(result, stable_slot(ref)->obj);     /* NULL once a weak slot was cleared */
+}
+
+/* ---------------------------------------------------------------------------------------------------------- */
+/* WeakReference (ref/Weak.kt, ref/WeakPrivate.kt; stock mm/cpp WeakRef.cpp)                                  */
+/* ---------------------------------------------------------------------------------------------------------- */
+
+/* WeakReference(obj) keeps what Konan_getWeakReferenceImpl returns, a RegularWeakReferenceImpl, and get() is
+ * dereferenceExternalRCRefOrNull(impl.weakRef). In the stock runtime weakRef is an entry of its reference registry,
+ * and the object's extra data remembers the impl. kmicro's objects have no extra data and its StableRef table is
+ * small, so here weakRef is the object itself: the field is a native pointer, which the collector does not trace.
+ * The other field, `referred`, which the Kotlin code never reads, chains the impls: after marking the collector
+ * walks the chain, drops the impls that are garbage themselves and clears weakRef where the object is (mark()).
+ * An object that is not on the heap (a constant, an `object`) is never cleared, so it needs no
+ * PermanentWeakReferenceImpl. Each WeakReference gets an impl of its own, 16 bytes of heap. */
+typedef struct km_weak { ObjHeader header; ObjHeader *object; struct km_weak *next; } km_weak_t;
+static km_weak_t *s_weak;
+extern const TypeInfo *theRegularWeakReferenceImplTypeInfo;
+
+ObjHeader *Konan_getWeakReferenceImpl(ObjHeader *referent, ObjHeader **result)
+{
+    km_weak_t *w = (km_weak_t *)kmicro_alloc_object(theRegularWeakReferenceImplTypeInfo, result);
+    w->object = referent;
+    w->next = s_weak;
+    s_weak = w;
+    return &w->header;
 }
 
 /* ---------------------------------------------------------------------------------------------------------- */
@@ -621,6 +649,9 @@ static void remark(void)                            /* the roots and every marke
     drain();
 }
 
+/* After marking: a heap object that nothing reached, which the sweep frees. */
+static inline bool dying(const ObjHeader *o) { return o != NULL && in_heap(o) && !(*(const uint32_t *)o & MARK_BIT); }
+
 /* Marking runs with interrupts enabled. A handler that moves a reference meanwhile, from a slot not scanned yet to
  * one already scanned (a buffer swap), would hide a live object, so km_ref_stored() records every reference store
  * made during marking, and marking repeats until a pass ends without one: then the reference graph did not change
@@ -642,10 +673,17 @@ static void mark(void)
     }
     if (km_refs_stored)
         remark();
-    for (int i = 0; i < KM_STABLE_REFS; i++) {      /* weak StableRef slots: forget objects about to be freed */
-        ObjHeader *o = s_stable[i].obj;
-        if (s_stable[i].rc == 0 && o != NULL && in_heap(o) && !(*(uint32_t *)o & MARK_BIT))
+    for (int i = 0; i < KM_STABLE_REFS; i++)        /* weak StableRef slots: forget objects about to be freed */
+        if (s_stable[i].rc == 0 && dying(s_stable[i].obj))
             s_stable[i].obj = NULL;
+    for (km_weak_t **link = &s_weak, *w; (w = *link) != NULL;) {   /* and so do the WeakReferences */
+        if (dying(&w->header)) {
+            *link = w->next;                         /* nothing holds this WeakReference any more */
+            continue;
+        }
+        if (dying(w->object))
+            w->object = NULL;
+        link = &w->next;
     }
     km_irq_restore(pm);
 }

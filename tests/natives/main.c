@@ -7,7 +7,6 @@
 void k_platform(void);
 void k_input(void);
 void k_canon_eq(void);
-void k_weak_reference(void);
 void k_worker(void);
 void k_gc_tuning(void);
 void k_uuid(void);
@@ -42,8 +41,6 @@ int main(void)
     k_input();
 #elif defined(TEST_CANON_EQ)
     k_canon_eq();
-#elif defined(TEST_WEAK_REFERENCE)
-    k_weak_reference();
 #elif defined(TEST_WORKER)
     k_worker();
 #elif defined(TEST_GC_TUNING)

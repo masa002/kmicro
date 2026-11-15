@@ -38,6 +38,8 @@ void SysTick_Handler(void)
     swap_slots();
 #elif defined(TEST_COPY)
     copy_read();
+#elif defined(TEST_WEAK)
+    weak_read();
 #endif
 }
 
@@ -136,6 +138,24 @@ int main(void)
     kmicro_put_int(torn);
     kmicro_puts(torn == 0 && s_ticks > 100 ? "  OK\n" : "  BROKEN\n");
     return torn != 0 || s_ticks <= 100;
+#elif defined(TEST_WEAK)
+    (void)b;
+    kt_init_all();
+    systick(RVR);
+    int32_t bad = weak_rounds(ROUNDS);
+    systick(0);
+    kmicro_stats(&a);
+    int ok = bad == 0 && s_ticks > 100 && weak_taken() > 100;
+    kmicro_puts("weak references read in ");
+    kmicro_put_int(s_ticks);
+    kmicro_puts(" handler calls, objects taken ");
+    kmicro_put_int(weak_taken());
+    kmicro_puts(", collections ");
+    kmicro_put_int((int32_t)a.gc_count);
+    kmicro_puts(", bad reads ");
+    kmicro_put_int(bad);
+    kmicro_puts(ok ? "  OK\n" : "  BROKEN\n");
+    return !ok;
 #else                                   /* the cases the runtime must stop */
     (void)a;
     (void)b;

@@ -159,6 +159,9 @@ What a handler may do:
   while the main code copies inside the array or fills it (`copyInto`, `fill`, `ArrayList.removeAt`) is the old
   value or the new one, never a part of each; an element of a `LongArray` or `DoubleArray` is two words, as any
   `Long` that is not atomic.
+- **Read a `WeakReference`**: `get()` does not allocate. It gives the object or null, never an object the collector
+  has freed, and an object the handler stores somewhere stays alive like any other. Creating a `WeakReference`
+  allocates.
 - **Use the atomics**: `AtomicInt`, `AtomicLong`, `AtomicReference`, the atomic arrays, and `@Volatile` fields of any
   type. They are atomic against handlers: 32-bit values and references with LDREX/STREX (an interrupt in between
   makes the update retry), 64-bit values with interrupts masked. ARMv6-M (Cortex-M0, M0+, M1) has no LDREX/STREX:

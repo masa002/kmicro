@@ -245,12 +245,12 @@ TESTS = [
     isr('isr_swap_slots', 'TEST_SWAP_SLOTS', exit=0, heap=32768, defs=['KM_GC_STRESS=1'],
         case={'RVR': '1000u', 'ROUNDS': 40000}),
     isr('isr_copy', 'TEST_COPY', exit=0, case={'RVR': '97u', 'ROUNDS': 20000}),
+    isr('isr_weak', 'TEST_WEAK', exit=0, defs=['KM_GC_STRESS=1'], case={'RVR': '1000u', 'ROUNDS': 20000}),
     # runtime natives: platform values, console input, entropy, and the APIs kmicro does not support
     native('natives_platform', 'TEST_PLATFORM', exit=3,
            checks=[Check('missing_natives', ['tools/missing_natives.py', '--check', '--ir', '{kotlin}/m4.ll'])]),
     native('natives_input', 'TEST_INPUT', exit=0),
     native('natives_canon_eq', 'TEST_CANON_EQ', exit=0, heap=32768, large=REGEX),
-    native('natives_weak_reference', 'TEST_WEAK_REFERENCE'),
     native('natives_worker', 'TEST_WORKER'),
     native('natives_gc_tuning', 'TEST_GC_TUNING'),
     native('natives_uuid', 'TEST_UUID'),
@@ -263,6 +263,9 @@ TESTS = [
     memory('globals_limit', 'TEST_GLOBALS', exit=98),
     memory('globals_raised', 'TEST_GLOBALS', defs=['KM_GLOBALS=300']),
     memory('unicode_tables', 'TEST_UNICODE_TABLES'),
+    # the output is the stock runtime's (tools/difftest.py d_weak_reference)
+    Test('weak_reference', Kotlin('weak_reference', ['tests/diff/d_weak_reference.kt'], dict(main=True)),
+         ['targets/common/kotlin_main.c']),
     Test('native_double_free', None, ['tests/memory/double_free.c'], exit=98),
     Test('native_arena_fuzz', None, ['tests/memory/arena_fuzz.c']),
     # faults the start code reports, and frames on the stack

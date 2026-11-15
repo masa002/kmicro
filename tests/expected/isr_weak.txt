@@ -1,0 +1,1 @@
+weak references read in {N} handler calls, objects taken {N}, collections {N}, bad reads 0  OK

@@ -96,7 +96,7 @@ first comment.
 | File | What it does |
 |---|---|
 | `kmicro.h` | The contract between the compiled code, the runtime and the board: object layouts, the board's functions and hooks, the runtime's C API. |
-| `mm.c` | Memory: a static arena (`KM_HEAP_BYTES`, default 16 KB), objects 8-byte aligned, no per-object header beyond the type pointer. Precise mark-sweep, stop-the-world, non-moving. Roots are the shadow-stack frames the compiled code pushes, the registered globals, the thread-local slots, `kmicro_root` slots, StableRefs and an exception in flight. The collector runs only inside an allocation or an explicit `kmicro_gc()`; an interrupt handler that stores a reference while it marks makes it mark again. |
+| `mm.c` | Memory: a static arena (`KM_HEAP_BYTES`, default 16 KB), objects 8-byte aligned, no per-object header beyond the type pointer. Precise mark-sweep, stop-the-world, non-moving. Roots are the shadow-stack frames the compiled code pushes, the registered globals, the thread-local slots, `kmicro_root` slots, StableRefs and an exception in flight. The collector runs only inside an allocation or an explicit `kmicro_gc()`; an interrupt handler that stores a reference while it marks makes it mark again. After marking it clears each `WeakReference` whose object nothing else holds. |
 | `eh.c` | Exceptions: libgcc's ARM EHABI unwinder with kmicro's own personality routine. `try`/`catch`/`finally` work as on the JVM. An uncaught exception prints its type, its whole message, its stack trace and every cause, as `printStackTrace()` does ([below](#reading-a-stack-trace)). |
 | `init.c`, `init_cxx.cpp` | Startup: the module initializers, the initialisation of file-level globals on first use (a failing initializer behaves as in the stock runtime), `kmicro_panic`. |
 | `strings.c` | `String` (UTF-16, and the compiler's Latin-1 option: `kbuild.py --kotlinc -Xbinary=latin1Strings=true`), `toString`, `println`. |
@@ -106,7 +106,7 @@ first comment.
 | `time.c` | `kotlin.time` and the seed of `Random.Default`, on the board's clock hooks. |
 | `system.c` | `Platform`, `exitProcess`, `readln`, `GC.schedule`, `Uuid.random`, on the board's input and entropy hooks. |
 | `regex.c` | The natives of `RegexOption.CANON_EQ`, which throw `IllegalArgumentException`. |
-| `unsupported.c` | The standard-library functions that need threads or an OS (`Worker`, `WeakReference`, heap tuning, ...): each stops the program with `... is not supported on kmicro`. `python tools/missing_natives.py` lists them. |
+| `unsupported.c` | The standard-library functions that need threads or an OS (`Worker`, heap tuning, ...): each stops the program with `... is not supported on kmicro`. `python tools/missing_natives.py` lists them. |
 | `interop.c` | What cinterop needs: thread-state switches (nothing to do) and a small arena for `memScoped`, `cstr`, `nativeHeap` (`KM_INTEROP_BYTES`). |
 | `km_cpu.h` | The two things the runtime asks the core itself: mask interrupts for a few instructions (PRIMASK), and tell an interrupt handler from the thread code (IPSR). It also has the code for the cores of the A and R profiles, which have neither register; kmicro does not build for those cores yet. |
 | `atomic64.c` | 64-bit atomics (`AtomicLong`, `@Volatile` `Long` fields) on a CPU without 64-bit exclusive loads. |

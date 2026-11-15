@@ -7,7 +7,6 @@
 import kotlin.native.CName
 import kotlin.native.Platform
 import kotlin.native.concurrent.Worker
-import kotlin.native.ref.WeakReference
 import kotlin.native.runtime.GC
 import kotlin.uuid.Uuid
 
@@ -60,11 +59,6 @@ fun canonEq() {
     }
     println("inline (?c): " + try { Regex("(?c)ex").find("ex")?.value } catch (e: IllegalArgumentException) { "IAE" })
     println("regex ${Regex("([0-9]+)-([0-9]+)").find("a 12-34 b")?.groupValues} after churn ${churn()}")
-}
-
-@CName("k_weak_reference")
-fun weakReference() {
-    println(WeakReference(Any()).get())
 }
 
 @CName("k_worker")

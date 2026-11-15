@@ -10,13 +10,6 @@
 
 #define UNSUPPORTED(api) kmicro_panic(api " is not supported on kmicro")
 
-/* ---- kotlin.native.ref.WeakReference: weak references need the collector to clear them (Memory.cpp) ---- */
-
-ObjHeader *Konan_getWeakReferenceImpl(ObjHeader *referent, ObjHeader **result)
-{
-    UNSUPPORTED("kotlin.native.ref.WeakReference");
-}
-
 /* ---- kotlin.native.concurrent.Worker and Future: one thread, no scheduler (Worker.cpp) ---- */
 
 #define WORKER UNSUPPORTED("kotlin.native.concurrent.Worker")

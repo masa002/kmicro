@@ -6,8 +6,9 @@
 > smaller ones from the bottom); the mark stack and the globals table are larger; there is no idle-time collection;
 > when an allocation fails even after a collection, the runtime reports the heap state and stops with a panic; and
 > `KM_GC_STRESS` collects before every allocation and fills freed blocks with a pattern instead of running a heap
-> walk. Coroutines work as §4.1-4.2 describe. The dispatcher of §4.3 and the sleep loop of §4.5 were not built: C
-> calls Kotlin functions directly (design-plan.md, D6), and examples/selftest resumes a coroutine from C.
+> walk. `WeakReference`, which decision 4 left out, works: mm.c clears it after marking. Coroutines work as
+> §4.1-4.2 describe. The dispatcher of §4.3 and the sleep loop of §4.5 were not built: C calls Kotlin functions
+> directly (design-plan.md, D6), and examples/selftest resumes a coroutine from C.
 
 Abbreviations: `K/` = `kotlin-native/` in the github.com/JetBrains/kotlin repository at tag v2.4.21, `BE/` = `K/backend.native/compiler/ir/backend.native/src/org/jetbrains/kotlin/backend/konan/`, `RT/` = `K/runtime/src/`, `ARC/` = the archived github.com/JetBrains/kotlin-native repository (tag v1.3.70), `DIST/` = the Kotlin/Native 2.4.21 prebuilt distribution for Windows. Files outside the checked-out folders were read with `git show` at v2.4.21.
 

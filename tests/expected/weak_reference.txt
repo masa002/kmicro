@@ -1,0 +1,12 @@
+after a collection: null, value null
+churn: 79800
+after reuse of the memory: null
+held object: 11 kept, same object: true, twice: true
+cleared: null, the other one: 11 kept
+constant: a constant, object: registry
+60 references: 20 alive, sum 570, held 20
+after dropping the objects: 0 alive
+parent seen from the child: 5
+parent after a collection: null
+300 short-lived references: 44850
+the first one again: null 11 kept

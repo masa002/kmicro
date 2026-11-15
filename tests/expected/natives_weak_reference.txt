@@ -1,1 +1,0 @@
-kmicro panic: kotlin.native.ref.WeakReference is not supported on kmicro
