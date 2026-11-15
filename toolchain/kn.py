@@ -569,8 +569,9 @@ def root_classes(ll_text):
 
 def add_init_all(ll_text, package, name='kt_init_all'):
     """`void <name>(void)`: the globals of `package` and its sub-packages created now, file-level ones and those of
-    object declarations (and companion objects). Kotlin initialises each on first use; called at boot (thread context,
-    before interrupts), no interrupt handler ever does that allocation. A package with no Kotlin code is an error."""
+    object declarations (and companion objects), @ThreadLocal ones included. Kotlin initialises each on first use;
+    called at boot (thread context, before interrupts), no interrupt handler ever does that allocation. A package with
+    no Kotlin code is an error."""
     if package:
         mine = re.escape(package) + r'[.$][^"]*'
     else:                                      # the root package: its files, and classes outside any package
@@ -578,10 +579,18 @@ def add_init_all(ll_text, package, name='kt_init_all'):
     pairs = sorted(set(re.findall(
         r'call void @CallInitGlobalPossiblyLock\(ptr noundef (@"state_global\$' + mine + r'"), '
         r'ptr noundef (@"kfun:[^"]*\$init_global[^"]*")\)', ll_text)))
-    if not pairs and not re.search(r'^define [^\n]*@"kfun:' + re.escape(package) + r'[#.]', ll_text, re.M):
+    # The @ThreadLocal globals of a file or an object have a state and an initializer of their own. The compiled code
+    # runs it after that of the file's other globals, whose state is the first argument (null when there are none).
+    local = sorted(set(re.findall(
+        r'call void @CallInitThreadLocal\(ptr noundef (null|@"state_global\$[^"]*"), '
+        r'ptr noundef (@"state_thread_local\$' + mine + r'"), '
+        r'ptr noundef (@"kfun:[^"]*\$init_thread_local[^"]*")\)', ll_text)), key=lambda t: t[1])
+    if not pairs and not local and not re.search(r'^define [^\n]*@"kfun:' + re.escape(package) + r'[#.]', ll_text,
+                                                 re.M):
         sys.exit(f'kmicro: init_all (--init-all): no Kotlin code in package {package or "<root>"} (--package)')
     return [f'define void @{name}() {{',
             *[f'  call void @CallInitGlobalPossiblyLock(ptr {st}, ptr {fn})' for st, fn in pairs],
+            *[f'  call void @CallInitThreadLocal(ptr {gl}, ptr {st}, ptr {fn})' for gl, st, fn in local],
             '  ret void', '}']
 
 

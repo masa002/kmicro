@@ -8,7 +8,7 @@ int32_t alloc_in_handler(int32_t n);    /* handlers.kt: builds a string */
 int32_t to_string_in_handler(int32_t n);/* handlers.kt: n.toString(), an allocation inside the runtime */
 int32_t collect_in_handler(void);       /* handlers.kt: GC.collect() */
 void schedule_gc(void);                 /* handlers.kt: GC.schedule() */
-int32_t read_settings(void);            /* settings.kt: reads its globals, an object and a sub-package object */
+int32_t read_settings(void);            /* settings.kt: reads its globals, its objects and a sub-package object */
 int32_t swap_setup(void);               /* swap.kt: creates the objects the handlers swap */
 int32_t swap_fields(void);              /* swap.kt: swaps two reference fields in each of 32 objects */
 int32_t check_fields(int32_t rounds);   /* swap.kt: allocates and checks those fields; returns the bad reads */

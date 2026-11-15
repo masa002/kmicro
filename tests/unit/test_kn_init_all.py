@@ -16,6 +16,13 @@ def init(state, fn):
     return f'  call void @CallInitGlobalPossiblyLock(ptr noundef @"state_global${state}", ptr noundef @"kfun:{fn}")\n'
 
 
+def init_local(state, fn, with_global=True):
+    """The call for @ThreadLocal globals: the state of the file's other globals comes first, null without any."""
+    first = f'@"state_global${state}"' if with_global else 'null'
+    return (f'  call void @CallInitThreadLocal(ptr noundef {first}, ptr noundef @"state_thread_local${state}", '
+            f'ptr noundef @"kfun:{fn}")\n')
+
+
 # the root package: a lower-case name, Écran as the IR writes it, a private object. The package cfg has no function.
 ROOT_OBJECTS = ['Registry', 'Registry.Companion', r'\C3\89cran', 'calibration', 'hidden']
 STRING = ('@%d = internal unnamed_addr constant { ptr, i32, i32, i16, [%d x i8] } { ptr getelementptr (i8, ptr '
@@ -39,17 +46,28 @@ IR = ('define void @"kfun:loop#step(){}"() {\n'
       + init('loop.io$C:/src/io.kt', 'loop.io.$init_global$io.kt#internal')
       + init('loop.io.Uart', 'loop.io.Uart.$init_global#internal')
       + init('loopy.Other', 'loopy.Other.$init_global#internal')
+      + init_local('loop$C:/src/loop.kt', 'loop.$init_thread_local$loop.kt#internal')
+      + init_local('loop.io.Cache', 'loop.io.Cache.$init_thread_local#internal', with_global=False)
+      + init_local('loopy.Scratch', 'loopy.Scratch.$init_thread_local#internal', with_global=False)
+      + init_local('tls$C:/src/tls.kt', 'tls.$init_thread_local$tls.kt#internal', with_global=False)
+      + init_local('kotlin.native.concurrent.CurrentThread',
+                   'kotlin.native.concurrent.CurrentThread.$init_thread_local#internal', with_global=False)
       + init('kotlin.collections.ArrayList', 'kotlin.collections.ArrayList.$init_global#internal')
       + init('cfg.Settings', 'cfg.Settings.$init_global#internal')
       + 'define void @"kfun:#main(){}"() {\n'
       + init('<root>$C:/src/main.kt', '$init_global$main.kt#internal')
+      + init_local('<root>$C:/src/main.kt', '$init_thread_local$main.kt#internal')
       + ''.join(init(n, n + '.$init_global#internal') for n in ROOT_OBJECTS)
       + STRING % (1, 0, 0, 1, 0, 'zeroinitializer') + STRING % (2, 6, 98404, 0, 6, r'c"c\00f\00g\00"')
       + ''.join(kclass(n, '@1', private=n == 'hidden') for n in ROOT_OBJECTS) + kclass('cfg.Settings', '@2'))
 
 
 def states(lines):
-    return [l.split('"state_global$')[1].split('"')[0] for l in lines if 'state_global' in l]
+    return [l.split('"state_global$')[1].split('"')[0] for l in lines if '@CallInitGlobalPossiblyLock(' in l]
+
+
+def local_states(lines):
+    return [l.split('"state_thread_local$')[1].split('"')[0] for l in lines if '@CallInitThreadLocal(' in l]
 
 
 class InitAll(unittest.TestCase):
@@ -63,6 +81,21 @@ class InitAll(unittest.TestCase):
 
     def test_root_package(self):
         self.assertEqual(states(kn.add_init_all(IR, '')), ['<root>$C:/src/main.kt', *sorted(ROOT_OBJECTS)])
+
+    def test_thread_local_globals(self):
+        lines = kn.add_init_all(IR, 'loop')
+        self.assertEqual(local_states(lines), ['loop$C:/src/loop.kt', 'loop.io.Cache'])
+        self.assertIn('  call void @CallInitThreadLocal(ptr @"state_global$loop$C:/src/loop.kt", '
+                      'ptr @"state_thread_local$loop$C:/src/loop.kt", '
+                      'ptr @"kfun:loop.$init_thread_local$loop.kt#internal")', lines)
+        self.assertIn('  call void @CallInitThreadLocal(ptr null, ptr @"state_thread_local$loop.io.Cache", '
+                      'ptr @"kfun:loop.io.Cache.$init_thread_local#internal")', lines)
+        self.assertLess(max(i for i, l in enumerate(lines) if '@CallInitGlobalPossiblyLock(' in l),
+                        min(i for i, l in enumerate(lines) if '@CallInitThreadLocal(' in l))
+        self.assertEqual(local_states(kn.add_init_all(IR, '')), ['<root>$C:/src/main.kt'])
+
+    def test_package_with_thread_local_globals_only(self):
+        self.assertEqual(local_states(kn.add_init_all(IR, 'tls')), ['tls$C:/src/tls.kt'])
 
     def test_function_shape(self):
         lines = kn.add_init_all(IR, 'loop', 'boot_init')

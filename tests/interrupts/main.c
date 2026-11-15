@@ -73,7 +73,7 @@ int main(void)
     kmicro_puts("\n");
     return 0;
 #elif defined(TEST_INIT_ALL)
-    kt_init_all();                      /* every global of package isr, objects and sub-packages included */
+    kt_init_all();                      /* every global of package isr: objects, sub-packages, @ThreadLocal */
     kmicro_stats(&a);
     systick(RVR);
     wait_for_handler();
@@ -84,7 +84,7 @@ int main(void)
     kmicro_puts(" after 5 handler calls; allocations after kt_init_all: ");
     kmicro_put_int((int32_t)(b.alloc_count - a.alloc_count));
     kmicro_puts("\n");
-    return settings == 48 && b.alloc_count == a.alloc_count ? 0 : 1;
+    return settings == 258 && b.alloc_count == a.alloc_count ? 0 : 1;
 #elif defined(TEST_THROW)
     kt_init_all();                      /* creates the exception the handler throws */
     systick(RVR);

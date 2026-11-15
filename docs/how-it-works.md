@@ -197,7 +197,7 @@ implementation moves to Kotlin one module at a time.
 - `@CName("name")` on a Kotlin function gives it a C name the same way, with the same rule; a string or an object
   parameter is an error.
 - `--init-all NAME` generates `void NAME(void)`, which initialises the globals of the package and its sub-packages:
-  file-level ones, objects and companions. The header may declare it.
+  file-level ones, objects and companions, `@ThreadLocal` ones included. The header may declare it.
 - **C holding a Kotlin object:** `StableRef.create(obj).asCPointer()` gives C a `void *` (callback user data, for
   example), `asStableRef<T>().get()` turns it back, and `dispose()` releases it. At most `KM_STABLE_REFS` (16) are
   alive at once. Using a reference after `dispose()` stops the program, as long as no later `StableRef.create` has

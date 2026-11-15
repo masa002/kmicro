@@ -3,6 +3,7 @@
 package isr
 
 import isr.sub.Registry
+import kotlin.native.concurrent.ThreadLocal
 
 // Globals that allocate when they are created, the first time code uses this file, an object or the sub-package's
 // object. Inside an interrupt handler that creation is refused ("Kotlin globals first used inside an interrupt
@@ -11,8 +12,18 @@ import isr.sub.Registry
 val limits = intArrayOf(5, 10, 20)
 val names = listOf("low", "mid", "high")
 
+// @ThreadLocal globals and objects are created through another runtime function than the ones above.
+@ThreadLocal
+val scratch = IntArray(4) { it + 1 }
+
 object Calibration {
     val offsets = IntArray(3) { it * 2 }
 }
 
-fun readSettings(): Int = limits.sum() + names.size + Calibration.offsets.sum() + Registry.slots.size
+@ThreadLocal
+object Counters {
+    val perSource = IntArray(2) { 100 }
+}
+
+fun readSettings(): Int = limits.sum() + names.size + Calibration.offsets.sum() + Registry.slots.size +
+    scratch.sum() + Counters.perSource.sum()
