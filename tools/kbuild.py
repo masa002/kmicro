@@ -21,6 +21,12 @@ import kn  # noqa: E402
 import paths  # noqa: E402
 
 VALUE_OPTIONS = ('--kotlinc',)            # their value starts with '-': `--kotlinc -ea` is read as `--kotlinc=-ea`
+# The kotlinc-native options whose value is the next word (kotlinc-native -help). Typed as for kotlinc-native they are
+# misread: the value is taken for a Kotlin source, and argparse reads `-language-version` as `-l anguage-version`.
+KOTLINC_VALUE_OPTIONS = ('-api-version', '-e', '-entry', '-friend-modules', '-ib', '-include-binary', '-kotlin-home',
+                         '-l', '-language-version', '-library', '-linker-option', '-linker-options', '-manifest',
+                         '-memory-model', '-module-name', '-native-library', '-nl', '-o', '-opt-in', '-output', '-p',
+                         '-P', '-produce', '-target')
 
 
 class Parser(argparse.ArgumentParser):
@@ -59,7 +65,8 @@ def parser():
                                                   'matches REGEX')
     p.add_argument('--kotlinc', dest='kotlinc_args', action='append', default=[], metavar='ARG',
                    help='pass ARG to kotlinc-native, e.g. --kotlinc -Xbinary=latin1Strings=true or --kotlinc '
-                        '-opt-in=kotlin.ExperimentalUnsignedTypes; repeatable')
+                        '-opt-in=kotlin.ExperimentalUnsignedTypes; repeatable, and an option with a value of its '
+                        'own takes two: --kotlinc -language-version --kotlinc 2.3')
     p.add_argument('--main', action='store_true',
                    help='require a `fun main()` (an error when there is none); one is found without this flag too '
                         'and gets the C name kmicro_kotlin_main, which targets/common/kotlin_main.c calls')
@@ -72,7 +79,39 @@ def parser():
     return p
 
 
+def check_kotlinc_values(p, argv):
+    """An error for a kotlinc-native option that is typed with its value as for kotlinc-native: without --kotlinc, or
+    with one --kotlinc for the two words."""
+    i = 0
+    while i < len(argv):
+        opt, through = argv[i], False
+        if opt == '--kotlinc' and i + 1 < len(argv):
+            opt, through, i = argv[i + 1], True, i + 1
+        elif opt.startswith('--kotlinc='):
+            opt, through = opt[len('--kotlinc='):], True
+        i += 1
+        if opt not in KOTLINC_VALUE_OPTIONS or (opt == '-l' and not through):       # -l alone is kbuild's own
+            continue
+        value = [w for w in argv[i:i + 1] if not w.startswith('-')]
+        right = ' '.join(f'--kotlinc {w}' for w in [opt, *value])
+        if opt in ('-l', '-library') and (value or not through):
+            p.error(f'{"--kotlinc " if through else "unknown option "}{opt}: kbuild takes a klib with its own -l: '
+                    + ' '.join(['-l', *(value or ['LIB.klib'])]))
+        if not through:
+            p.error(f'unknown option {opt} (a kotlinc-native option goes through --kotlinc'
+                    f'{", each word through its own" if value else ""}: {right})')
+        if value:
+            p.error(f'--kotlinc {opt} {value[0]}: each word of a kotlinc-native option goes through its own '
+                    f'--kotlinc: {right}')
+        if argv[i:i + 1] == ['--kotlinc']:      # the value, passed through its own --kotlinc: it is no option
+            i += 2
+        elif i < len(argv) and argv[i].startswith('--kotlinc='):
+            i += 1
+
+
 def parse(argv):
+    p = parser()
+    check_kotlinc_values(p, argv)
     joined, i = [], 0
     while i < len(argv):
         if argv[i] in VALUE_OPTIONS and i + 1 < len(argv):
@@ -81,7 +120,6 @@ def parse(argv):
         else:
             joined.append(argv[i])
             i += 1
-    p = parser()
     args, rest = p.parse_known_intermixed_args(joined)
     for r in rest:
         if r.startswith('--'):

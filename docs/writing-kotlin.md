@@ -247,7 +247,8 @@ Allocations hide in these places:
 - kbuild shows the compiler's warnings and errors on stderr.
 - A public top-level function whose backtick name contains a space breaks the C export of Kotlin/Native
   (`-p static`); kbuild shows the error with a hint. Make such a function `internal` or `private`.
-- `kbuild.py --kotlinc ARG` passes an option to kotlinc-native, for example `--kotlinc -opt-in=...`.
+- `kbuild.py --kotlinc ARG` passes an option to kotlinc-native, for example `--kotlinc -opt-in=...`. An option
+  whose value is a word of its own takes two: `--kotlinc -language-version --kotlinc 2.3`.
 - An API that needs threads or an operating system stops the program with
   `kmicro panic: <API> is not supported on kmicro` (exit 98). `RegexOption.CANON_EQ` is the exception: it throws an
   `IllegalArgumentException` that can be caught.

@@ -36,6 +36,31 @@ class Args(unittest.TestCase):
         a = parse('--kotlinc', '-Xbinary=latin1Strings=true', '--kotlinc', '-ea', '--kotlinc=-opt-in=x.Y')
         self.assertEqual(a.kotlinc_args, ['-Xbinary=latin1Strings=true', '-ea', '-opt-in=x.Y'])
 
+    def test_kotlinc_option_with_a_separate_value(self):
+        a = parse('--kotlinc', '-language-version', '--kotlinc', '2.3', '--kotlinc=-module-name', '--kotlinc=app')
+        self.assertEqual(a.kotlinc_args, ['-language-version', '2.3', '-module-name', 'app'])
+        a = parse('--kotlinc', '-linker-option', '--kotlinc', '-o', HELLO)      # a value that is an option's name
+        self.assertEqual((a.kotlinc_args, len(a.sources)), (['-linker-option', '-o'], 2))
+        self.assertEqual(parse('--kotlinc', '-module-name').kotlinc_args, ['-module-name'])
+
+    def test_kotlinc_option_typed_as_for_kotlinc(self):
+        right = '--kotlinc -language-version --kotlinc 2.3'
+        self.assertIn('unknown option -language-version (a kotlinc-native option goes through --kotlinc, each word '
+                      f'through its own: {right})', error('-language-version', '2.3'))
+        self.assertIn('--kotlinc -language-version 2.3: each word of a kotlinc-native option goes through its own '
+                      f'--kotlinc: {right}', error('--kotlinc', '-language-version', '2.3'))
+        # the value is no Kotlin source, although a folder of that name exists
+        tests = str(ROOT / 'tests')
+        self.assertIn(f'--kotlinc -module-name --kotlinc {tests}', error('--kotlinc', '-module-name', tests))
+        self.assertIn(f'--kotlinc -module-name --kotlinc {tests}', error('--kotlinc=-module-name', tests))
+        self.assertIn('unknown option -module-name (a kotlinc-native option goes through --kotlinc: --kotlinc '
+                      '-module-name)', error('-module-name', '--size'))
+        self.assertIn('unknown option -linker-options', error('-linker-options', 'x'))
+        self.assertIn('unknown option -library: kbuild takes a klib with its own -l: -l x.klib',
+                      error('-library', 'x.klib'))
+        self.assertIn('--kotlinc -l: kbuild takes a klib with its own -l: -l x.klib',
+                      error('--kotlinc', '-l', 'x.klib'))
+
     def test_options_between_sources(self):
         a = kbuild.parse(['build/x', HELLO, '--package', 'hello', '--c-api', HEADER, HELLO])
         self.assertEqual(len(a.sources), 2)
