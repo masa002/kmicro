@@ -5,7 +5,7 @@
 
 extern uint32_t _sbss, _ebss;
 
-__attribute__((noinline)) uint32_t probe_bad_read(void) { return *(volatile uint32_t *)0x70000000u; }
+__attribute__((noinline)) uint32_t probe_bad_read(void) { return *(volatile uint32_t *)0xF0000000u; }
 
 const uint32_t *volatile probe_null;
 __attribute__((noinline)) uint32_t probe_null_read(void) { return probe_null[3]; }

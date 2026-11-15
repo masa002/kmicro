@@ -23,9 +23,13 @@ usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--
                an505: the same on QEMU mps2-an505, a Cortex-M33 with an FPU (the default for cortex-m33, cortex-m33f
                and cortex-m23, whose ARMv8-M Baseline code it runs too). The program runs in the Secure state, in
                which that core starts
-    --large    l475, an385, an500 and an505 give a program the memory of the STM32L431 kmicro aims at, 256 KB of
-               flash and 64 KB of RAM: one that does not fit fails to link, and the stack ends where it would end on
-               that chip. With --large the program gets the memory of the STM32L475: 1 MB of flash and 96 KB of RAM
+               an547: the same on QEMU mps3-an547, a Cortex-M55 with an FPU and MVE, in the Secure state too. It
+               runs the code of the three ARMv8-M cores as well. QEMU gives this machine 2 GB of memory, which a
+               Windows host commits when the machine starts
+    --large    l475, an385, an500, an505 and an547 give a program the memory of the STM32L431 kmicro aims at, 256 KB
+               of flash and 64 KB of RAM: one that does not fit fails to link, and the stack ends where it would end
+               on that chip. With --large the program gets the memory of the STM32L475: 1 MB of flash and 96 KB of
+               RAM
     --run      run the image on QEMU and exit with the program's exit code (124 when it runs out of time)
     --icount   with --run: QEMU's clock is the number of instructions the program has run, one nanosecond each
                (-icount shift=0,sleep=off), not the host's clock. A timer interrupt then lands on the same
@@ -57,6 +61,7 @@ TARGETS = {   # start code and linker script, QEMU machine, the newlib system-ca
     'an385': (ROOT / 'targets/qemu-l475', 'mps2.ld', 'mps2-an385', ['-lnosys']),
     'an500': (ROOT / 'targets/qemu-l475', 'mps2.ld', 'mps2-an500', ['-lnosys']),
     'an505': (ROOT / 'targets/qemu-l475', 'an505.ld', 'mps2-an505', ['-lnosys']),
+    'an547': (ROOT / 'targets/qemu-l475', 'an547.ld', 'mps3-an547', ['-lnosys']),
 }
 # The machine a core's programs run on when --target is not given: its own where QEMU has one with this start code,
 # else the STM32L475, whose Cortex-M4F runs the code of every core below it. QEMU has no Cortex-M23: its code, ARMv8-M
@@ -68,8 +73,9 @@ DEFAULT_TARGET = {'cortex-m3': 'an385', 'cortex-m7': 'an500', 'cortex-m7-sp': 'a
 # one of the older cores, and on a machine with the other MPU the program runs with no guard at all.
 _M3 = ('cortex-m0', 'cortex-m0plus', 'cortex-m1', 'cortex-m3')
 _M4F = (*_M3, 'cortex-m4', 'cortex-m4f')
-RUNS = {'l475': _M4F, 'an386': _M4F, 'an385': _M3, 'an500': (*_M4F, 'cortex-m7', 'cortex-m7-sp'),
-        'an505': ('cortex-m23', 'cortex-m33', 'cortex-m33f')}
+_M33F = ('cortex-m23', 'cortex-m33', 'cortex-m33f')
+RUNS = {'l475': _M4F, 'an386': _M4F, 'an385': _M3, 'an500': (*_M4F, 'cortex-m7', 'cortex-m7-sp'), 'an505': _M33F,
+        'an547': _M33F}
 
 
 def cflags():
