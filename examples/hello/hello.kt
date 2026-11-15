@@ -6,6 +6,6 @@ package hello
 // Kotlin function hello.hello that C name.
 fun hello(times: Int): Int {
     val names = List(times) { "Kotlin #${it + 1}" }
-    println("Hello from ${names.joinToString()} on a bare Cortex-M4")
+    println("Hello from ${names.joinToString()} on a bare Cortex-M")
     return names.size
 }

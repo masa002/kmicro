@@ -20,7 +20,7 @@ kilobytes: a precise garbage collector, exceptions, coroutines, strings, and cin
 // hello.kt
 fun main() {
     val names = List(3) { "Kotlin #${it + 1}" }
-    println("Hello from ${names.joinToString()} on a bare Cortex-M4")
+    println("Hello from ${names.joinToString()} on a bare Cortex-M")
 }
 ```
 
@@ -30,8 +30,8 @@ kotlinc-native: compiling 1 file...
 single-core: 113 init-state loads made plain
 build\hello\k.o
 $ python tools/qbuild.py build/hello/hello.elf targets/common/kotlin_main.c build/hello/k.o --run
-qbuild: hello.elf  text 72076  data 80  bss 18740  stack 40960
-Hello from Kotlin #1, Kotlin #2, Kotlin #3 on a bare Cortex-M4
+qbuild: hello.elf  text 72092  data 80  bss 18740  stack 40960
+Hello from Kotlin #1, Kotlin #2, Kotlin #3 on a bare Cortex-M
 qemu: exit 0
 ```
 

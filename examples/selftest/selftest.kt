@@ -118,6 +118,6 @@ fun coroEvent(t: Int): Int {
 }
 
 fun hello(): Int {
-    println("Hello from Kotlin/Native 2.4.21 on a bare Cortex-M4 (no OS, kmicro runtime)")
+    println("Hello from Kotlin/Native 2.4.21 on a bare Cortex-M (no OS, kmicro runtime)")
     return 0
 }

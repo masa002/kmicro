@@ -1,7 +1,7 @@
 
-=== kmicro self-test: official Kotlin/Native 2.4.21 output on a Cortex-M4 ===
+=== kmicro self-test: official Kotlin/Native 2.4.21 output on a Cortex-M ===
   PASS  runtime init (module initializers)
-Hello from Kotlin/Native 2.4.21 on a bare Cortex-M4 (no OS, kmicro runtime)
+Hello from Kotlin/Native 2.4.21 on a bare Cortex-M (no OS, kmicro runtime)
   PASS  println from Kotlin
   PASS  classes, interface, virtual calls (= 45)
   PASS  garbage collection, 6000+ objects

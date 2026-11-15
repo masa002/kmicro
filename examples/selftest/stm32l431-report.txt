@@ -7,7 +7,7 @@ Program    selftest.kt, called by the checks of main.c, with the start-up, clock
 Times      The DWT cycle counter around each check, divided by 16: microseconds at 16 MHz. A time includes sending
            what the check itself printed (87 us per character at 115200 baud), but not its PASS line.
 Recorded   2026-10-16, with earlier versions of board.c, of the runtime and of the build steps. That version printed
-           "STM32L431" in the Kotlin greeting, where selftest.kt now says "a Cortex-M4"; its checks and their labels
+           "STM32L431" in the Kotlin greeting, where selftest.kt now says "a Cortex-M"; its checks and their labels
            are the ones shown below.
            When that runtime captured a stack trace inside a try block, it walked the same frame again and again,
            up to 12 times. Every throw captures a stack trace, so the two exception times include that extra work.

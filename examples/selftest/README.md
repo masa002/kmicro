@@ -14,9 +14,9 @@ After the lines of the build, ending with `qbuild: selftest.elf  text 133268  da
 program prints this, and qbuild ends with `qemu: exit 0`:
 
 ```
-=== kmicro self-test: official Kotlin/Native 2.4.21 output on a Cortex-M4 ===
+=== kmicro self-test: official Kotlin/Native 2.4.21 output on a Cortex-M ===
   PASS  runtime init (module initializers)
-Hello from Kotlin/Native 2.4.21 on a bare Cortex-M4 (no OS, kmicro runtime)
+Hello from Kotlin/Native 2.4.21 on a bare Cortex-M (no OS, kmicro runtime)
   PASS  println from Kotlin
   PASS  classes, interface, virtual calls (= 45)
   PASS  garbage collection, 6000+ objects

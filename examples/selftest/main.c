@@ -43,7 +43,7 @@ static bool full_gc(void)
 
 int main(void)
 {
-    kmicro_puts("\n=== kmicro self-test: official Kotlin/Native 2.4.21 output on a Cortex-M4 ===\n");
+    kmicro_puts("\n=== kmicro self-test: official Kotlin/Native 2.4.21 output on a Cortex-M ===\n");
     report("runtime init (module initializers)", runtime_init());
     report("println from Kotlin", hello() == 0);
     report("classes, interface, virtual calls (= 45)", shapes(5) == 45);

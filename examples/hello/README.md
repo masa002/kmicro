@@ -24,7 +24,7 @@ python tools/qbuild.py build/t/hello/hello.elf examples/hello/main.c build/t/hel
 The program prints, after the lines of the build:
 
 ```
-Hello from Kotlin #1, Kotlin #2, Kotlin #3 on a bare Cortex-M4
+Hello from Kotlin #1, Kotlin #2, Kotlin #3 on a bare Cortex-M
 ```
 
 `--c-api hello.h --package hello` gives the Kotlin function `hello.hello` the C name `hello`. Prototypes in
