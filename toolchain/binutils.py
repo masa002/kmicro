@@ -14,12 +14,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import paths  # noqa: E402
 
 
+def machine(tool, options):
+    """The options that tell objdump the architecture, for an ARMv8.1-M core (KMICRO_CPU). objdump takes it from the
+    build attributes of the image, and ld.lld gives an image the attributes of the first object that has any: a
+    member of newlib, which the xPack GCC builds for ARMv8-M Mainline also for these cores. Left alone, objdump
+    shows an MVE instruction as a coprocessor instruction (ldc2) or as undefined."""
+    if tool == 'objdump' and '-m' not in options and paths.arch() == 'thumbv8.1m.main':
+        return ['-m', 'armv8.1-m.main']
+    return []
+
+
 def run(tool, file, *options, after=()):
     """arm-none-eabi-TOOL OPTIONS FILE AFTER, run in FILE's folder: the finished process, its output as text. A file
     named in AFTER (objcopy's output) is given by its name in that folder."""
     file = Path(file)
-    return subprocess.run([str(paths.gcc_bin(tool).resolve()), *options, file.name, *after], cwd=file.parent,
-                          capture_output=True, text=True, errors='replace')
+    return subprocess.run([str(paths.gcc_bin(tool).resolve()), *machine(tool, options), *options, file.name, *after],
+                          cwd=file.parent, capture_output=True, text=True, errors='replace')
 
 
 def output(tool, file, *options, after=()):
