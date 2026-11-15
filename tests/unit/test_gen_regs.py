@@ -154,6 +154,60 @@ typedef struct
         for name in ('HSE_VALUE', 'RATIO', 'NO_OCTAL', 'NO_VALUE'):        # no integers: left out
             self.assertFalse(any(name in line for line in lines), name)
 
+    def test_constants_are_computed_as_c_computes_them(self):
+        r, lines = self.gen('--all', *self.more('''#define FILT_Msk   (~0UL >> 4)
+#define SIGNED_ALL (~0 >> 4)
+#define LOW_BYTE   ((uint8_t)0x1FF)
+#define MINUS_ONE  ((int8_t)0xFF)
+#define TOWARDS_0  (-7 / 2)
+#define REST       (-7 % 2)
+#define WIDE       (0x80000000 / 2)
+#define TOO_WIDE   0x100000000ULL
+#define TOO_FAR    (1 << 32)
+'''))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for line in ['FILT_Msk: UInt = 0xFFFFFFFu', 'SIGNED_ALL: UInt = 0xFFFFFFFFu', 'LOW_BYTE: UInt = 0xFFu',
+                     'MINUS_ONE: UInt = 0xFFFFFFFFu', 'TOWARDS_0: UInt = 0xFFFFFFFDu', 'REST: UInt = 0xFFFFFFFFu',
+                     'WIDE: UInt = 0x40000000u']:
+            self.assertIn('internal const val ' + line, lines)
+        for name in ('TOO_WIDE', 'TOO_FAR'):                              # no 32-bit values: left out
+            self.assertFalse(any(name in line for line in lines), name)
+
+    def test_interrupt_numbers_in_every_spelling(self):
+        (self.d / 'src/sub/irq.kt').write_text('val n = HEX_IRQn + NEXT_IRQn + IF_IRQn + TERNARY_IRQn + AFTER_IRQn',
+                                               encoding='utf-8')
+        more = self.more("""#define FIRST 5
+typedef enum {
+  Fault_IRQn  = -3,
+  HEX_IRQn    = 0x1C,
+  OCTAL_IRQn  = 010,
+  NEXT_IRQn,
+  SUM_IRQn    = (FIRST + 2),
+  SAME_IRQn   = SUM_IRQn,
+#if defined(MORE)
+  IF_IRQn,
+#endif
+  TERNARY_IRQn = (1 ? 2 : 3),
+  AFTER_IRQn,
+  LAST_IRQn   = 40
+} More_IRQn_Type;
+""")
+        r, lines = self.gen('--all', *more)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for line in ['Fault_IRQn: Int = -3', 'HEX_IRQn: Int = 28', 'OCTAL_IRQn: Int = 8', 'NEXT_IRQn: Int = 9',
+                     'SUM_IRQn: Int = 7', 'SAME_IRQn: Int = 7', 'LAST_IRQn: Int = 40', 'EXTI0_IRQn: Int = 6']:
+            self.assertIn('internal const val ' + line, lines)
+        for name in ('IF_IRQn', 'TERNARY_IRQn', 'AFTER_IRQn'):            # no value known: never a wrong one
+            self.assertFalse(any(name in line for line in lines), name)
+        r, lines = self.gen('--sources', self.d / 'src', *more)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual([w for w in r.stderr.splitlines() if '_IRQn' in w], [
+            'gen_regs: warning: AFTER_IRQn left out: its value follows from an enumerator that is not understood, '
+            'at more.h line 13',
+            'gen_regs: warning: IF_IRQn left out: a preprocessor condition inside the enum decides its value, '
+            'at more.h line 10',
+            'gen_regs: warning: TERNARY_IRQn left out: (1 ? 2 : 3) is no integer constant, at more.h line 12'])
+
     def test_pin_map_ports_and_pin_expressions(self):
         more = self.more('#define GPIOI_BASE (AHB2PERIPH_BASE + 0x2000UL)\n'
                          '#define GPIOI      ((GPIO_TypeDef *) GPIOI_BASE)\n')

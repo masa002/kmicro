@@ -12,7 +12,8 @@ Registers are `object RCC { const val CR: UInt = 0x40021000u ... }`: reading RCC
 (the object is never created). Kotlin reads and writes them through hw_rd32 / hw_wr32 (support/hw.h). With
 --sources only the names the Kotlin files in that folder and its subfolders use are emitted (the full set is 13,000
 lines and slow to compile), and a warning names each of them that the headers define but that is left out, with the
-reason: a struct with a union or a bit field, a macro that is no integer constant. examples/irq shows the whole flow.
+reason: a struct with a union or a bit field, a macro or an interrupt number that is no integer constant.
+examples/irq shows the whole flow.
 """
 import re
 import sys
@@ -50,9 +51,10 @@ def layout(body, defines, types):
     return fields, (off + 3) // 4 * 4
 
 
-def parse(text, header, defines, types, instances, irqs, where):
-    """Adds what the header defines to the tables. where: a macro or a struct -> 'header line N', and for a struct
-    that is not understood also the declaration that is the reason."""
+def parse(text, header, defines, types, instances, irqs, where, unknown):
+    """Adds what the header defines to the tables. where: a macro, a struct or an interrupt number -> 'header line N',
+    and for a struct that is not understood also the declaration that is the reason. unknown: an interrupt number
+    without a value -> the reason."""
     for n, line in enumerate(text.splitlines(), 1):     # the macros first: a struct may size an array with one
         d = re.match(r'\s*#define\s+(\w+)\s+(.+?)\s*$', line)
         if not d:
@@ -64,8 +66,7 @@ def parse(text, header, defines, types, instances, irqs, where):
             instances[name] = (inst.group(1), inst.group(2))
         elif '(' not in name:
             defines[name] = val
-    for m in re.finditer(r'^\s*(\w+_IRQn)\s*=\s*(-?\d+)', text, re.M):
-        irqs[m.group(1)] = int(m.group(2))
+    enumerators(text, header, defines, irqs, where, unknown)
     # A body may hold a union or a struct in braces. It is not understood then, but reported under its own name.
     for m in re.finditer(r'typedef\s+struct\s*\w*\s*\{((?:[^{}]|\{[^{}]*\})*)\}\s*(\w+)\s*;', text):
         n = text.count('\n', 0, m.start()) + 1
@@ -76,30 +77,145 @@ def parse(text, header, defines, types, instances, irqs, where):
             where[m.group(2)] += ': ' + ' '.join(str(e).split())
 
 
-def evaluate(expr, defines, depth=0):
-    """The value of a C integer constant expression, in 32 bits. Raises ValueError for anything else: an unknown
-    name, a floating-point number, an operator other than + - * / % << >> | & ^ ~."""
+CASTS = {'uint32_t': (32, False), 'int32_t': (32, True), 'uint16_t': (16, False), 'int16_t': (16, True),
+         'uint8_t': (8, False), 'int8_t': (8, True)}
+TOKEN = re.compile(r'\s*(?:(0[xX][0-9A-Fa-f]+|\d+)([uUlL]*)(?![\w.])|([A-Za-z_]\w*)|(<<|>>|[()+\-*/%|&^~]))')
+LEVELS = [('|',), ('^',), ('&',), ('<<', '>>'), ('+', '-'), ('*', '/', '%')]      # loosest first
+
+
+def wrap(v, unsigned):
+    """v in 32 bits: 0 .. 2^32-1 when unsigned, -2^31 .. 2^31-1 otherwise."""
+    v &= 0xFFFFFFFF
+    return v if unsigned or v < 0x80000000 else v - 0x100000000
+
+
+def value(expr, defines, depth=0):
+    """(the value, whether its type is unsigned) of a C integer constant expression, computed as a compiler with a
+    32-bit int and long does: `~0UL >> 4` is 0x0FFFFFFF, `-7 / 2` is -3, `(uint8_t)0x1FF` is 255. Raises ValueError
+    for anything else: an unknown name, a floating-point number, a number that needs more than 32 bits, an operator
+    other than + - * / % << >> | & ^ ~."""
     if depth > 40:
         raise ValueError(expr)
-    e = re.sub(r'\b(0x[0-9A-Fa-f]+|\d+)[uUlL]+\b', r'\1', expr)
-    e = re.sub(r'\(\s*(uint32_t|int32_t|uint16_t|uint8_t)\s*\)', '', e)
+    tokens, pos = [], 0
+    while expr[pos:].strip():
+        m = TOKEN.match(expr, pos)
+        if not m:
+            raise ValueError(expr)
+        tokens.append(m.groups())
+        pos = m.end()
+    at = 0
 
-    def sub(m):
-        n = m.group(0)
-        if n in defines:
-            return '(' + str(evaluate(defines[n], defines, depth + 1)) + ')'
-        raise ValueError(n)
-    e = re.sub(r'\b[A-Za-z_]\w*\b', sub, e)
-    e = re.sub(r'\b0+(?=[0-7]+\b)', '0o', e)            # C's octal: 017
-    if not re.fullmatch(r'[\s0-9xXoA-Fa-f()+\-*/%<>|&~^]+', e):
+    def peek():
+        return tokens[at][3] if at < len(tokens) else None
+
+    def unary():
+        nonlocal at
+        if at >= len(tokens):
+            raise ValueError(expr)
+        number, suffix, name, op = tokens[at]
+        at += 1
+        if number:
+            octal = number[0] == '0' and number[1:].isdigit()                  # C's octal: 017 (08 is no number)
+            v = int(number, 8 if octal else 0)
+            if v > 0xFFFFFFFF:
+                raise ValueError(expr)
+            return v, 'u' in suffix.lower() or v >= 0x80000000
+        if name:
+            if name not in defines:
+                raise ValueError(name)
+            return value(defines[name], defines, depth + 1)
+        if op in ('+', '-', '~'):
+            v, unsigned = unary()
+            return wrap({'+': v, '-': -v, '~': ~v}[op], unsigned), unsigned
+        if op != '(':
+            raise ValueError(expr)
+        cast = at + 1 < len(tokens) and tokens[at][2] in CASTS and tokens[at + 1][3] == ')' and CASTS[tokens[at][2]]
+        if cast:
+            at += 2
+            bits, signed = cast
+            v = unary()[0] & ((1 << bits) - 1)
+            if signed and v >> (bits - 1):
+                v -= 1 << bits
+            return v, bits == 32 and not signed         # a narrower type is promoted to int
+        r = binary(0)
+        if peek() != ')':
+            raise ValueError(expr)
+        at += 1
+        return r
+
+    def binary(level):
+        nonlocal at
+        if level == len(LEVELS):
+            return unary()
+        x, xu = binary(level + 1)
+        while peek() in LEVELS[level]:
+            op = peek()
+            at += 1
+            y, yu = binary(level + 1)
+            if op in ('<<', '>>'):
+                if not 0 <= y < 32:
+                    raise ValueError(expr)
+                x = wrap(x << y if op == '<<' else x >> y, xu)
+                continue
+            xu = xu or yu                               # one unsigned operand makes both unsigned
+            x, y = wrap(x, xu), wrap(y, xu)
+            if op in ('/', '%'):
+                if y == 0:
+                    raise ValueError(expr)
+                q = abs(x) // abs(y) * (-1 if (x < 0) != (y < 0) else 1)       # C rounds towards zero
+                x = q if op == '/' else x - q * y
+            else:
+                x = {'|': x | y, '^': x ^ y, '&': x & y, '+': x + y, '-': x - y, '*': x * y}[op]
+            x = wrap(x, xu)
+        return x, xu
+
+    r = binary(0)
+    if at != len(tokens):
         raise ValueError(expr)
-    try:
-        v = eval(e.replace('/', '//'))                  # // and %: as in C while no operand is negative
-    except (SyntaxError, ArithmeticError, TypeError):
-        raise ValueError(expr) from None
-    if type(v) is not int:                              # 8e6 is a floating-point number
-        raise ValueError(expr)
-    return v & 0xFFFFFFFF
+    return r
+
+
+def evaluate(expr, defines, depth=0):
+    """The value of a C integer constant expression as 32 bits (see value())."""
+    return value(expr, defines, depth)[0] & 0xFFFFFFFF
+
+
+def enumerators(text, header, defines, irqs, where, unknown):
+    """The `NAME_IRQn` enumerators of the header's enums -> irqs, with the values C gives them: the constant after
+    `=`, or one more than the enumerator before. unknown: an enumerator without a value here -> the reason."""
+    for m in re.finditer(r'\benum\b\s*\w*\s*\{([^{}]*)\}', text):
+        known, nxt, gap = {}, 0, ''                     # known: this enum's names so far, for `B = A + 1`
+        for item in re.finditer(r'[^,]+', m.group(1)):
+            body = item.group(0)
+            if re.search(r'^\s*#', body, re.M):         # `#if` inside the enum: which enumerators exist is not known
+                body, nxt = re.sub(r'^\s*#[^\n]*', lambda d: ' ' * len(d.group(0)), body, flags=re.M), None
+                gap = 'a preprocessor condition inside the enum decides its value'
+            e = re.fullmatch(r'\s*(\w+)\s*(?:=(.+))?\s*', body, re.S)
+            if not e:
+                nxt, gap = None, 'its value follows from an enumerator that is not understood'
+                continue
+            name, why = e.group(1), None
+            line = text.count('\n', 0, m.start(1) + item.start() + e.start(1)) + 1
+            if e.group(2):
+                try:
+                    nxt = value(e.group(2), {**defines, **known})[0]
+                    nxt = wrap(nxt, False)              # an enumerator is an int
+                except ValueError:
+                    nxt, why = None, f'{" ".join(e.group(2).split())} is no integer constant'
+                    gap = 'its value follows from an enumerator that is not understood'
+            elif nxt is None:
+                why = gap
+            if name.endswith('_IRQn'):
+                where[name] = f'{header} line {line}'
+                irqs.pop(name, None)
+                unknown.pop(name, None)
+                if nxt is None:
+                    unknown[name] = why
+                else:
+                    irqs[name] = nxt
+            if nxt is not None:
+                known[name] = str(nxt)
+                nxt += 1
 
 
 def used_names(sources, out):
@@ -131,11 +247,12 @@ def main():
     if a.sources and not a.sources.is_dir():
         ap.error(f'--sources {a.sources}: no such folder')
     used = None if a.all or not a.sources else used_names(a.sources, a.out)
-    defines, types, instances, irqs, where = {}, {}, {}, {}, {}
+    defines, types, instances, irqs, where, unknown = {}, {}, {}, {}, {}, {}
     for h in a.header:
         parse(strip_comments(h.read_text(encoding='utf-8', errors='replace')), h.name, defines, types, instances, irqs,
-              where)
-    left_out = {}                                       # a name that is wanted -> why it is not in the file
+              where, unknown)
+    # a name that is wanted -> why it is not in the file
+    left_out = {name: f'{why}, at {where[name]}' for name, why in unknown.items() if used is None or name in used}
     srcs = ', '.join(h.name for h in a.header) + (f' and {a.pins.name}' if a.pins else '')
     out = [f'// Generated by kmicro tools/gen_regs.py from {srcs}. Do not edit.',
            '@file:Suppress("unused", "ObjectPropertyName", "ClassName", "SpellCheckingInspection")',
