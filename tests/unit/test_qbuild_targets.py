@@ -42,6 +42,32 @@ class Stubs(unittest.TestCase):
                 self.assertTrue((Path(d) / 'autostubs.o').is_file(), cpu)
 
 
+class OtherCore(unittest.TestCase):
+    def link(self, core_txt, *options):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / 'k.o').write_bytes(b'')
+            if core_txt is not None:
+                (Path(d) / 'core.txt').write_text(core_txt, encoding='utf-8')
+            return subprocess.run([sys.executable, ROOT / 'tools/qbuild.py', Path(d) / 'app.elf', Path(d) / 'k.o',
+                                   '--target', 'an505', *options], capture_output=True, text=True,
+                                  encoding='utf-8')
+
+    def test_an_object_kbuild_built_for_another_core_is_refused(self):
+        r = self.link('cortex-m4\n')
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn('k.o was built for cortex-m4, and this link is for cortex-m4f', r.stderr)
+        r = self.link('cortex-m4f\n', '--cpu', 'cortex-m7')
+        self.assertIn('k.o was built for cortex-m4f, and this link is for cortex-m7', r.stderr)
+
+    def test_the_same_core_and_an_object_from_elsewhere_pass_the_check(self):
+        # the run then stops at the target (an505 runs none of these cores), which is checked after the objects
+        for core_txt, options in (('cortex-m4f\n', ()), ('cortex-m3\n', ('--cpu', 'cortex-m3')), (None, ()),
+                                  ('not a core\n', ())):
+            r = self.link(core_txt, *options)
+            self.assertNotIn('was built for', r.stderr, core_txt)
+            self.assertIn('--target an505 (QEMU mps2-an505) does not run', r.stderr, core_txt)
+
+
 class Targets(unittest.TestCase):
     def test_every_target_lists_cores_that_exist(self):
         self.assertEqual(set(qbuild.RUNS), set(qbuild.TARGETS))

@@ -224,7 +224,10 @@ Cortex-M4F, these parts of a board build change:
 
 - **The name of the core.** `python tools/kbuild.py build/app app.kt --cpu cortex-m0plus` builds `k.o` and
   `bridges.o` for that core; the environment variable `KMICRO_CPU` does the same. Every object of the link is
-  built for the same core.
+  built for the same core. qbuild refuses a `k.o` that kbuild built for another core (kbuild leaves the core's name
+  in `core.txt` next to it). A board link has no such check: ld.lld only warns
+  (`Linking two modules of different target triples`), and that only when the two cores differ in more than the
+  name, so treat that warning as an error.
 - **The flags and the multilib.** The runtime and the C code are compiled with the clang target and the flags of
   the core's entry in `CORES` ([toolchain/paths.py](../toolchain/paths.py)), in place of the first row of
   [the table of flags](#compiling-the-runtime), and newlib and libgcc come from the multilib folder of that entry.

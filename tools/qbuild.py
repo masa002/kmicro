@@ -138,6 +138,15 @@ def runtime_objects(defs):
     return objs
 
 
+def built_for(obj):
+    """The core kbuild built the object for (it leaves core.txt next to k.o and bridges.o); None when nothing says."""
+    try:
+        core = (obj.parent / 'core.txt').read_text(encoding='utf-8').strip()
+    except OSError:
+        return None
+    return core if core in paths.CORES else None
+
+
 def object_name(bdir, src):
     """One object per source path: main.c and a runtime file of the same name never overwrite each other."""
     return bdir / f'{src.stem}-{hashlib.sha1(str(src.resolve()).encode()).hexdigest()[:8]}.o'
@@ -245,6 +254,10 @@ def main():
         if f.suffix not in (*C_SOURCES, '.o', '.a'):
             fail(f'qbuild: {f}: expected .c, .cpp, .s, .S, .o or .a')
     cpu = paths.select_cpu(args.cpu)
+    for f in args.files:                          # before anything is compiled: the mistake costs no build
+        if f.suffix in ('.o', '.a') and built_for(f) not in (None, cpu):
+            fail(f'qbuild: {f} was built for {built_for(f)}, and this link is for {cpu}. Give kbuild and qbuild the '
+                 'same core (--cpu or KMICRO_CPU)')
     target = args.target or DEFAULT_TARGET.get(cpu, 'l475')
     tdir, script, machine, syslibs = TARGETS[target]
     if cpu not in RUNS[target]:
@@ -288,6 +301,14 @@ def main():
         compile_one(stubs_s, stubs_o, [])
     else:
         fail(f'qbuild: link failed\n{r.stderr[-4000:]}')
+    # The warnings of a link that succeeded. One comes with every Kotlin object and means nothing here: its IR says
+    # DWARF 2 and clang's C objects say DWARF 5.
+    warnings = '\n'.join(line for line in r.stderr.splitlines()
+                         if line.strip() and "linking module flags 'Dwarf Version'" not in line)
+    if 'different target triples' in warnings:       # ld.lld only warns, and the image mixes two calling conventions
+        fail(f'qbuild: link failed: an object is built for another core than this link ({cpu})\n{warnings[-4000:]}')
+    if warnings:
+        print(warnings, flush=True)
     if stubbed:
         print(f'qbuild: warning: {len(stubbed)} runtime symbols stubbed (kmicro does not implement them: a call stops '
               f'the program with "unimplemented runtime symbol", and a board link fails): {" ".join(stubbed)}',

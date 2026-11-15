@@ -716,4 +716,6 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
         lines += [line for line in cname_lines if line.split(' ', 1)[0] not in have]   # (also a --c-api name)
     if lines:
         ll.write_text(text + '\n' + '\n'.join(lines) + '\n', encoding='utf-8', newline='\n')
-    return [lto_object(ll, out / 'k.o'), *bridges(out)]
+    objects = [lto_object(ll, out / 'k.o'), *bridges(out)]
+    (out / 'core.txt').write_text(paths.cpu() + '\n', encoding='utf-8')     # qbuild refuses them for another core
+    return objects
