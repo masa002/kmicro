@@ -91,6 +91,11 @@ return a struct of floats on a core without an FPU.
 - The board times in the README are from a runtime older than 0.1.0; the run has not been repeated (#111).
 - Kotlin 2.5.0-RC: programs do not link, because its standard library no longer has a function that the runtime
   calls (#149). The supported version is 2.4.21.
+- A second check, made after these fixes, found more problems; they are open at this release as #213 to #238. Two
+  of them can stop a correct program: `--init-all` leaves out `@ThreadLocal` globals and objects, so an interrupt
+  handler's first use of one still stops the program (#216), and a member function named `main()` is taken for the
+  program's `fun main()` (#220). The others are in the tools and their messages: gen_regs, frames, symbolize,
+  isr_check, difftest, missing_natives, irstat, kbuild's option parsing and the search for the installed tools.
 
 ## 0.2.0 (2026-11-15)
 
