@@ -17,14 +17,20 @@ import kn  # noqa: E402
 STDLIB = 'define void @"kfun:kotlin.io#println(kotlin.Any?){}"(ptr %0) {\n'
 
 
-def main_ir(package='', args=False):
+def ptrs(n):
+    return ', '.join(f'ptr %{i}' for i in range(n))
+
+
+def main_ir(package='', args=False, member=False):
+    """`member`: a function of the class or object `package`, which takes `this` before its parameters."""
     a = 'kotlin.Array<kotlin.String>' if args else ''
-    return STDLIB + f'define void @"kfun:{package}#main({a}){{}}"({"ptr %0" if args else ""}) {{\n'
+    return STDLIB + f'define void @"kfun:{package}#main({a}){{}}"({ptrs(args + member)}) {{\n'
 
 
-def suspend_main_ir(package='', params=''):
+def suspend_main_ir(package='', params='', member=False):
+    """The continuation and the slot for the result follow the parameters (`params`, each ended by a semicolon)."""
     return (f'define ptr @"kfun:{package}#main#suspend({params}kotlin.coroutines.Continuation<kotlin.Unit>){{}}'
-            'kotlin.Any"(ptr %0, ptr %1) #9 {\n')
+            f'kotlin.Any"({ptrs(member + params.count(";") + 2)}) #9 {{\n')
 
 
 class KotlinMain(unittest.TestCase):
@@ -54,6 +60,19 @@ class KotlinMain(unittest.TestCase):
         with self.assertRaises(SystemExit):
             kn.add_kotlin_main(ir, required=True)
 
+    def test_member_function_named_main_is_no_entry_point(self):
+        for args in (False, True):
+            top = main_ir('app', args=args)
+            for owner in ('app.Menu', 'Menu', 'app.Shell.Companion'):
+                member = main_ir(owner, args=args, member=True)
+                with contextlib.redirect_stderr(io.StringIO()) as err:
+                    self.assertEqual(kn.add_kotlin_main(top + member, required=True), kn.add_kotlin_main(top))
+                    self.assertEqual(kn.add_kotlin_main(member), [])
+                self.assertEqual(err.getvalue(), '')
+                with self.assertRaises(SystemExit) as e:
+                    kn.add_kotlin_main(member, required=True)
+                self.assertIn('no `fun main()`', str(e.exception))
+
     def test_suspend_main_is_refused(self):
         ir = STDLIB + suspend_main_ir()
         with contextlib.redirect_stderr(io.StringIO()) as err:
@@ -74,6 +93,8 @@ class KotlinMain(unittest.TestCase):
     def test_suspend_function_that_is_no_entry_point(self):
         with contextlib.redirect_stderr(io.StringIO()) as err:
             self.assertEqual(kn.add_kotlin_main(STDLIB + suspend_main_ir(params='kotlin.Int;')), [])
+            for params in ('', 'kotlin.Array<kotlin.String>;'):
+                self.assertEqual(kn.add_kotlin_main(STDLIB + suspend_main_ir('app.Job', params, member=True)), [])
         self.assertEqual(err.getvalue(), '')
 
 

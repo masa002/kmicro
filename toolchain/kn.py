@@ -514,9 +514,15 @@ def check_regex(ll_text):
           'docs/writing-kotlin.md lists what features cost.', file=sys.stderr)
 
 
-MAIN = re.compile(r'^define [^@\n]*@"(kfun:([\w.]*)#main\((kotlin\.Array<kotlin\.String>)?\)\{\})"\(', re.M)
-SUSPEND_MAIN = re.compile(r'^define [^@\n]*@"kfun:([\w.]*)#main#suspend\((?:kotlin\.Array<kotlin\.String>;)?'
-                          r'kotlin\.coroutines\.Continuation<kotlin\.Unit>\)', re.M)
+# Only a top-level function is an entry point. A member function `main` of a class or an object has the same symbol
+# with the class where the package is; it takes `this` before its other parameters, so the IR parameter list tells
+# them apart: nothing or the args array for a main, the continuation and the result slot after it for a suspend one.
+_PTR = r'ptr [^,)\n]*'
+MAIN = re.compile(r'^define [^@\n]*@"(kfun:([\w.]*)#main\((kotlin\.Array<kotlin\.String>)?\)\{\})"\((?(3)' + _PTR
+                  + r')\)', re.M)
+SUSPEND_MAIN = re.compile(r'^define [^@\n]*@"kfun:([\w.]*)#main#suspend\((kotlin\.Array<kotlin\.String>;)?'
+                          r'kotlin\.coroutines\.Continuation<kotlin\.Unit>\)[^"\n]*"\((?(2)' + _PTR + ', )' + _PTR
+                          + ', ' + _PTR + r'\)', re.M)
 
 
 def kotlin_mains(ll_text):

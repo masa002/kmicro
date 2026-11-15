@@ -1,3 +1,4 @@
 main in package app
+main of Menu
 parsed 3.14, twice 6.28
 measureTime positive: true
