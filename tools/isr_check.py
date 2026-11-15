@@ -3,10 +3,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """Static check of a firmware image: no interrupt handler can reach a Kotlin allocation.
 
-    python tools/isr_check.py firmware.elf [--vectors SECTION] [--callback NAME ...] [--boxing]
+    python tools/isr_check.py firmware.elf [--vectors SECTION] [--handlers SECTION] [--callback NAME ...] [--boxing]
 
-    --vectors   the section that holds the vector table, when the linker script does not call it .isr_vector
-                (.vectors, .intvec, .vector_table ...)
+    --vectors   the section that holds the vector table of a Cortex-M, when the linker script does not call it
+                .isr_vector (.vectors, .intvec, .vector_table ...)
+    --handlers  the section that holds a table of handler addresses and nothing else, when it is not called
+                .irq_handlers
     --callback  a function handlers reach only through a pointer (a callback registered with a driver): C functions
                 by name, Kotlin ones by their mangled name, e.g. 'kfun:app#onTimer(){}' (an alias is no label)
     --boxing    also list every call outside the standard library that boxes an Int, Long, Short or Byte, in any
@@ -14,10 +16,12 @@
 
 The handlers are the entries of the vector table (.isr_vector, without the initial stack pointer and the reset
 handler), whatever their names: under LTO the C name kbuild --c-api gives a Kotlin handler (SysTick_Handler) is
-folded into the Kotlin function, so only the table still shows it. Functions named like handlers (C names ending in
-_Handler or _IRQHandler, Kotlin functions ending in Handler) are checked too, for handlers installed at run time.
-An image without the section is checked by those names alone, and the report says so: a handler that only the table
-shows was not looked at then.
+folded into the Kotlin function, so only the table still shows it. A Cortex-A or Cortex-R core has no such table:
+its IRQ vector is one instruction, and the board's interrupt entry finds the handler. Where that entry calls the
+handlers through a table of their addresses in a section of its own (.irq_handlers), every entry of that table is a
+handler too. Functions named like handlers (C names ending in _Handler or _IRQHandler, Kotlin functions ending in
+Handler) are checked as well, for handlers installed at run time. An image with neither section is checked by those
+names alone, and the report says so: a handler that only a table shows was not looked at then.
 
 Walks the machine code (arm-none-eabi-objdump -d) from every handler along direct calls and tail branches, and
 reports each path that ends in the Kotlin allocator (AllocInstance, AllocArrayInstance and kmicro's allocation
@@ -91,7 +95,7 @@ def parse_disassembly(text):
 
 
 def vector_words(text):
-    """objdump -s -j .isr_vector output -> the table's 32-bit words, in order."""
+    """objdump -s -j SECTION output -> the section's 32-bit words, in order."""
     data = bytearray()
     for line in text.splitlines():
         if not re.match(r'^ [0-9a-f]+ [0-9a-f]', line):
@@ -101,14 +105,16 @@ def vector_words(text):
     return [int.from_bytes(data[i:i + 4], 'little') for i in range(0, len(data) - 3, 4)]
 
 
-def handler_roots(words, calls, start, callbacks=()):
-    """The functions to check: every vector table entry (without the stack pointer and the reset handler), the
-    functions named like handlers, the callbacks. Returns (roots, notes)."""
+def handler_roots(words, calls, start, callbacks=(), table=()):
+    """The functions to check: every vector table entry (without the stack pointer and the reset handler), every
+    entry of a table of handlers, the functions named like handlers, the callbacks. Returns (roots, notes)."""
     roots, notes = [], []
-    for i, w in enumerate(words[2:], 2):
+    entries = [(f'vector {i}', w) for i, w in enumerate(words[2:], 2)]
+    entries += [(f'handler table entry {i}', w) for i, w in enumerate(table)]
+    for what, w in entries:
         f = start.get(w & ~1)
         if w and f is None:
-            notes.append(f'note   vector {i} (0x{w:08x}) is not the start of a function')
+            notes.append(f'note   {what} (0x{w:08x}) is not the start of a function')
         elif f and f not in roots:
             roots.append(f)
     reset = start.get(words[1] & ~1) if len(words) > 1 else None
@@ -147,20 +153,21 @@ def walk(root, calls, indirect):
     return hits, lazies, ind
 
 
-def analyse(disasm, vectors, callbacks=(), boxing=False, section='.isr_vector'):
+def analyse(disasm, vectors, callbacks=(), boxing=False, section='.isr_vector', handlers=''):
     """The report: (lines, number of failures, number of handlers). vectors: the dump of the vector table's section,
-    empty when the image has no section of that name. Raises ValueError when there is nothing to check."""
+    empty when the image has no section of that name; handlers: the same for a table of handler addresses. Raises
+    ValueError when there is nothing to check."""
     calls, indirect, start = parse_disassembly(disasm)
     if not calls:
         raise ValueError('no functions in the disassembly')
     unknown = [c for c in callbacks if c not in calls]
     if unknown:
         raise ValueError('no such function: ' + ', '.join(unknown))
-    words = vector_words(vectors)
-    roots, lines = handler_roots(words, calls, start, callbacks)
+    words, table = vector_words(vectors), vector_words(handlers)
+    roots, lines = handler_roots(words, calls, start, callbacks, table)
     if not roots:
         raise ValueError('no interrupt handler found (no vector table, no function named like a handler)')
-    if not words:
+    if not words and not table:
         lines.append(f'note   no vector table: the image has no section {section}. Only the functions named like '
                      'handlers were checked; --vectors SECTION names the section that holds the table')
     bad = 0
@@ -194,10 +201,11 @@ def objdump(elf, *args):
 
 def main():
     ap = argparse.ArgumentParser(usage='python tools/isr_check.py firmware.elf [--vectors SECTION] '
-                                 '[--callback NAME ...] [--boxing]',
+                                 '[--handlers SECTION] [--callback NAME ...] [--boxing]',
                                  description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('elf', type=Path, help=argparse.SUPPRESS)
     ap.add_argument('--vectors', metavar='SECTION', help=argparse.SUPPRESS)
+    ap.add_argument('--handlers', metavar='SECTION', help=argparse.SUPPRESS)
     ap.add_argument('--callback', action='append', default=[], help=argparse.SUPPRESS)
     ap.add_argument('--boxing', action='store_true', help=argparse.SUPPRESS)
     args = ap.parse_args()
@@ -213,8 +221,15 @@ def main():
               file=sys.stderr)
         sys.exit(2)
     vectors = objdump(args.elf, '-s', '-j', section) if found else ''
+    table = args.handlers or '.irq_handlers'
+    has_table = re.search(rf'\s{re.escape(table)}\s', sections)
+    if args.handlers and not has_table:
+        print(f'isr_check: {args.elf}: no section {table} (--handlers); arm-none-eabi-objdump -h lists the sections',
+              file=sys.stderr)
+        sys.exit(2)
+    handlers = objdump(args.elf, '-s', '-j', table) if has_table else ''
     try:
-        lines, bad, _ = analyse(disasm, vectors, args.callback, args.boxing, section)
+        lines, bad, _ = analyse(disasm, vectors, args.callback, args.boxing, section, handlers)
     except ValueError as e:
         print(f'isr_check: {args.elf}: {e}', file=sys.stderr)
         sys.exit(2)

@@ -148,7 +148,9 @@ kmicro panic: garbage collection inside an interrupt handler at 0x0800....
 follows every entry of the vector table, so handlers aliased with `--c-api` are found too; `--callback NAME` adds a
 function that handlers reach only through a pointer ([how-it-works.md](how-it-works.md#interrupts)). It reads the
 table from the section `.isr_vector`; when the linker script of the board gives it another name, pass
-`--vectors SECTION`, or only the functions named like handlers are checked (the report says so).
+`--vectors SECTION`, or only the functions named like handlers are checked (the report says so). It also takes
+every entry of a section `.irq_handlers` (`--handlers SECTION` for another name) as a handler: a plain table of
+handler addresses, for start code that calls its handlers through one and has no Cortex-M vector table.
 
 What a handler may do:
 

@@ -168,6 +168,43 @@ class IsrCheck(unittest.TestCase):
         self.assertEqual(code, 2, out)
         self.assertIn('no section .intvec (--vectors)', out)
 
+    def test_every_entry_of_a_handler_table_is_a_handler(self):
+        # no vector table: a plain table has no stack pointer and no reset handler to leave out, so its first two
+        # entries are handlers too. kfun:irq#record(){} allocates and has no handler-like name
+        handlers = vector_table([0x08000280, 0x08000201, 0, 0x08000181]).replace('.isr_vector', '.irq_handlers')
+        lines, bad, n = isr_check.analyse(disassembly(FUNCS), '', handlers=handlers)
+        self.assertEqual((bad, n), (1, 3), lines)
+        self.assertIn('ALLOC  kfun:irq#record(){}: kfun:irq#record(){} -> alloc_block', lines)
+        self.assertFalse(any('no vector table' in l for l in lines), lines)
+        lines, _, _ = isr_check.analyse(disassembly(FUNCS), '', handlers=handlers.replace('81010008', '85010008'))
+        self.assertIn('note   handler table entry 3 (0x08000185) is not the start of a function', lines)
+
+    def test_the_handler_table_is_found_by_its_section(self):
+        def objdump(elf, *args):
+            if args == ('-h',):
+                return 'Idx Name          Size\n  0 .vectors      00000020\n  1 .irq_table    00000010\n'
+            if args == ('-s', '-j', '.irq_table'):
+                return vector_table([0x08000280, 0x08000201]).replace('.isr_vector', '.irq_table')
+            return disassembly(FUNCS) if args[0] == '-d' else self.fail(args)
+
+        def run(*argv):
+            out = io.StringIO()
+            with mock.patch.object(sys, 'argv', ['isr_check.py', __file__, *argv]), \
+                    mock.patch.object(isr_check, 'objdump', objdump), mock.patch.object(sys, 'stdout', out), \
+                    mock.patch.object(sys, 'stderr', out), self.assertRaises(SystemExit) as e:
+                isr_check.main()
+            return e.exception.code, out.getvalue()
+
+        code, out = run('--handlers', '.irq_table')
+        self.assertEqual(code, 1, out)
+        self.assertIn('ALLOC  kfun:irq#record(){}: kfun:irq#record(){} -> alloc_block', out)
+        code, out = run()                                              # the default name: not in this image
+        self.assertEqual(code, 2, out)
+        self.assertIn('no interrupt handler found', out)
+        code, out = run('--handlers', '.nope')
+        self.assertEqual(code, 2, out)
+        self.assertIn('no section .nope (--handlers)', out)
+
     def test_nothing_to_check_is_an_error(self):
         with self.assertRaises(ValueError):
             isr_check.analyse('', '')
