@@ -13,6 +13,7 @@
 #ifndef KT_HW_H
 #define KT_HW_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 uint32_t hw_rd32(uint32_t addr);
@@ -40,7 +41,8 @@ uint32_t hw_ipsr(void);                   /* 0 in thread mode, else the active e
 uint32_t hw_basepri(void);                /* BASEPRI: 0 = no masking by priority */
 void     hw_basepri_set(uint32_t v);
 void     hw_basepri_max(uint32_t v);      /* BASEPRI_MAX: only ever raises the mask */
-void     hw_cycles_enable(void);          /* starts the DWT cycle counter at 0 (DEMCR.TRCENA, DWT_CTRL.CYCCNTENA) */
-uint32_t hw_cycles(void);                 /* DWT->CYCCNT: core clock cycles, counted once hw_cycles_enable() ran */
+bool     hw_cycles_enable(void);          /* starts the DWT cycle counter at 0; false: this core or chip has none */
+uint32_t hw_cycles(void);                 /* DWT->CYCCNT: core clock cycles, counted once hw_cycles_enable() ran;
+                                             0 for ever where hw_cycles_enable() returns false */
 
 #endif /* KT_HW_H */

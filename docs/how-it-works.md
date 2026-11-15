@@ -205,9 +205,11 @@ implementation moves to Kotlin one module at a time.
 Kotlin has no volatile memory access (`@Volatile` applies to properties only) and no inline assembly.
 [support/hw.h](../support/hw.h) provides what is missing, one instruction each after LTO: `hw_rd32` / `hw_wr32`
 (volatile register access), `mem_*` (plain memory shared with C), barriers, `WFI`, `PRIMASK` / `BASEPRI`, and the DWT
-cycle counter (`hw_cycles_enable()`, `hw_cycles()`; QEMU does not model the DWT, so `hw_cycles()` stays 0 there).
-ARMv6-M and ARMv8-M Baseline (Cortex-M0, M0+, M1, M23) have no `BASEPRI`: the three `hw_basepri` functions are not
-defined there, and a program that calls them does not link.
+cycle counter (`hw_cycles_enable()`, `hw_cycles()`). `hw_cycles_enable()` returns false where there is no counter
+and `hw_cycles()` stays 0, so check it before a loop that waits for cycles: on QEMU, which does not model the DWT, on
+ARMv6-M and ARMv8-M Baseline (Cortex-M0, M0+, M1, M23), whose DWT has no cycle counter, and on a chip built without
+one. Those four cores have no `BASEPRI` either: the three `hw_basepri` functions are not defined there, and a
+program that calls them does not link.
 Kotlin reaches them through cinterop: `kbuild.py --def support/hw.def` makes them the package `c` (`import c.*`).
 `support/hw.c` is linked with the program: on QEMU it is one of qbuild's C files, on a board it is compiled with the
 runtime's flags ([porting.md](porting.md#compiling-the-runtime)). A call such as `hw_wr32(RCC.CR, v)` becomes a single

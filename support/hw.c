@@ -61,12 +61,22 @@ void hw_basepri_set(uint32_t v) { __asm volatile("msr basepri, %0" :: "r"(v) : "
 void hw_basepri_max(uint32_t v) { __asm volatile("msr basepri_max, %0" :: "r"(v) : "memory"); }
 #endif
 
-/* QEMU does not model the DWT: there the writes are ignored and hw_cycles() stays 0. */
-void hw_cycles_enable(void)
+/* False where hw_cycles() stays 0. The DWT of ARMv6-M and ARMv8-M Baseline (Cortex-M0, M0+, M1, M23) has no cycle
+ * counter, a chip can be built without one (DWT_CTRL.NOCYCCNT), and QEMU does not model the DWT: it ignores the
+ * writes. Some Cortex-M7 chips keep the DWT locked until its lock access register gets the key; a core without the
+ * lock ignores that write. */
+bool hw_cycles_enable(void)
 {
+#if __ARM_ARCH_ISA_THUMB == 2
     *(volatile uint32_t *)0xE000EDFCu |= 1u << 24;    /* CoreDebug->DEMCR.TRCENA: the DWT unit on */
+    *(volatile uint32_t *)0xE0001FB0u = 0xC5ACCE55u;  /* DWT->LAR: the key */
     *(volatile uint32_t *)0xE0001004u = 0;            /* DWT->CYCCNT */
     *(volatile uint32_t *)0xE0001000u |= 1u;          /* DWT->CTRL.CYCCNTENA */
+    uint32_t ctrl = *(volatile uint32_t *)0xE0001000u;
+    return (ctrl & 1u) != 0 && (ctrl & (1u << 25)) == 0;   /* it took the enable bit, and NOCYCCNT is clear */
+#else
+    return false;
+#endif
 }
 
 uint32_t hw_cycles(void) { return *(volatile uint32_t *)0xE0001004u; }   /* DWT->CYCCNT */

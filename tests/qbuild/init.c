@@ -15,5 +15,8 @@ int main(void)
     kmicro_puts("word = ");
     kmicro_put_int((int32_t)got);
     kmicro_puts("\n");
-    return got == 1234u ? 0 : 1;
+    /* QEMU does not model the DWT: no cycle counter, and hw_cycles_enable() says so (as on a core without one) */
+    bool counter = hw_cycles_enable();
+    kmicro_puts(counter || hw_cycles() != 0 ? "cycle counter: yes\n" : "cycle counter: none here\n");
+    return got == 1234u && !counter ? 0 : 1;
 }
