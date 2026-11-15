@@ -36,8 +36,12 @@ fun copyRead(): Int {
     return torn
 }
 
-// in main; n is the arrays' size, given by C so that no copy has a constant length
+// in main; n is the arrays' size, given by C so that no copy has a constant length. The arrays are read into
+// locals once: the compiler then knows that source and destination of a copy are one array, which is when it would
+// turn a plain element loop of the runtime back into memmove.
 fun copyRotate(rounds: Int, n: Int): Int {
+    val ring = ring
+    val numbers = numbers
     repeat(rounds) { round ->
         if (round % 2 == 0) {                   // down: the destination is below the source
             val box = ring[0]

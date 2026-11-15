@@ -78,11 +78,13 @@ static inline void copy_check(const ArrayHeader *src, int32_t from, const ArrayH
  * not turn the loop into memmove or memset, which newlib-nano does byte by byte. An interrupt handler that reads an
  * element in the middle of a copy then gets the old value or the new one, never bytes of both: for a reference, a
  * valid pointer and not a wild one. (An element of 8 bytes, a Long or a Double, is two words here as in any store
- * of one.) The direction is memmove's: backwards when the destination overlaps the source from above. */
+ * of one.) The direction is memmove's: backwards when the destination overlaps the source from above.
+ * `T volatile *`, the qualifier after the type: with T a pointer type, `volatile T *` would make the objects the
+ * slots point to volatile and leave the slots plain. */
 #define KM_COPY(T, dst, src, n)                                                                                \
     do {                                                                                                       \
-        volatile T *d_ = (dst);                                                                                \
-        const volatile T *s_ = (src);                                                                          \
+        T volatile *d_ = (dst);                                                                                \
+        T const volatile *s_ = (src);                                                                          \
         if ((uintptr_t)d_ <= (uintptr_t)s_)                                                                    \
             for (int32_t i_ = 0; i_ < (n); i_++)                                                               \
                 d_[i_] = s_[i_];                                                                               \
@@ -121,7 +123,7 @@ static inline void copy_check(const ArrayHeader *src, int32_t from, const ArrayH
     {                                                                                                          \
         ArrayHeader *h = (ArrayHeader *)a;                                                                     \
         checkRangeIndexes(from, to, (int32_t)h->count_);                                                       \
-        volatile T *p = (T *)km_array_data(h);                  /* (volatile: see KM_COPY) */                  \
+        T volatile *p = (T *)km_array_data(h);                  /* (volatile: see KM_COPY) */                  \
         for (int32_t i = from; i < to; i++)                                                                    \
             p[i] = v;                                                                                          \
     }                                                                                                          \
