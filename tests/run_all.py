@@ -31,8 +31,8 @@ mps2-an505, mps3-an547, virt or mps3-an536; or on mps2-an386, for a test that sa
   a size the function computes (a variable-length array, alloca), which such a frame could step over without a fault
   (tools/frames.py), unless the test says why it has one;
 - the checks the test adds: a tool run on the image or on the output (isr_check, symbolize, frames, gen_regs,
-  missing_natives), its exit code and its output against tests/expected/<name>.<check>.txt (not with --stress,
-  which builds another runtime than users get).
+  missing_natives, insn_check), its exit code and its output against tests/expected/<name>.<check>.txt (not with
+  --stress, which builds another runtime than users get).
 
 The programs run with qbuild --icount: QEMU's clock is the number of instructions run, so a timer interrupt lands on
 the same instruction in every run. One test (host_clock) keeps the host's clock, which is qbuild's default: one whose
@@ -94,6 +94,7 @@ class Check:
     args: list
     exit: int = 0
     same: tuple = None
+    m_profile: bool = False             # the check is for the image of a Cortex-M core only
 
 
 @dataclass
@@ -136,6 +137,10 @@ def board_build(d):
     return [sys.executable, ROOT / 'examples/selftest/stm32l431/build.py', '--kotlin-dir', BUILD / SELFTEST.folder]
 
 
+# Every instruction of the image is one that the core has (--cpu). Some cores are tested on a QEMU machine with a
+# larger core, which runs an instruction the smaller one lacks without a fault. On three images: the selftest, one
+# with floating point in C and in Kotlin, and one with an interrupt handler and support/hw.c.
+INSN_CHECK = Check('insn_check', ['tools/insn_check.py', '{elf}'], m_profile=True)
 ADD = Kotlin('add', ['tests/add/add.kt'])
 GC = Kotlin('gc', ['tests/gc/gc.kt'])
 STRINGS = Kotlin('strings', ['tests/strings/strings.kt'])
@@ -225,7 +230,8 @@ TESTS = [
          case={'TEST_CALLBACK_THROWS': 1}),
     Test('no_init', Kotlin('no_init', ['tests/no_init/local.kt']), ['tests/no_init/main.c'], exit=98),
     Test('stdio', Kotlin('stdio', ['tests/stdio/stdio.kt']), ['tests/stdio/main.c']),
-    Test('stdio_float', Kotlin('stdio', ['tests/stdio/stdio.kt']), ['tests/stdio/main.c', 'tests/stdio/float.c']),
+    Test('stdio_float', Kotlin('stdio', ['tests/stdio/stdio.kt']), ['tests/stdio/main.c', 'tests/stdio/float.c'],
+         checks=[INSN_CHECK]),
     Test('qbuild_c_files', None, ['tests/qbuild/init.c', 'support/hw.c']),
     Test('qbuild_cxx', None, ['tests/qbuild/cxx.cpp', 'support/hw.c']),
     Test('qbuild_irq', None, ['tests/qbuild/irq.c'], exit=99),
@@ -296,7 +302,7 @@ TESTS = [
     Test('hello', HELLO, ['examples/hello/main.c'], host_clock=True),
     Test('selftest', SELFTEST, ['examples/selftest/main.c'],
          checks=[Check('isr_check', ['tools/isr_check.py', '{elf}']),
-                 Check('isr_check_boxing', ['tools/isr_check.py', '{elf}', '--boxing'], exit=1)]),
+                 Check('isr_check_boxing', ['tools/isr_check.py', '{elf}', '--boxing'], exit=1), INSN_CHECK]),
     Test('selftest_an386', SELFTEST, ['examples/selftest/main.c'], heap=1024 * 1024, target='an386',
          large='mps2-an386, with a 1 MB heap'),
     Test('selftest_size', Kotlin('selftest', SELFTEST.srcs, dict(SELFTEST_API, size=True, init_all='kt_init_all',
@@ -309,7 +315,7 @@ TESTS = [
          checks=[Check('isr_check', ['tools/isr_check.py', '{elf}']),
                  Check('gen_regs', ['tools/gen_regs.py', '--header', 'examples/irq/systick.h', '--sources',
                                     'examples/irq', '--out', '{dir}/gen/Regs.kt', '--package', 'irq'],
-                       same=('{dir}/gen/Regs.kt', 'examples/irq/Regs.kt'))]),
+                       same=('{dir}/gen/Regs.kt', 'examples/irq/Regs.kt')), INSN_CHECK]),
     Test('irq_an386', IRQ, ['examples/irq/main.c', 'support/hw.c'], target='an386'),
 ]
 PATH_OPTIONS = ('c_api', 'defs', 'libs', 'deps', 'include_dirs')
@@ -513,6 +519,7 @@ def run_test(t, args):
         raise Failed(f'exit {rc}, expected {t.exit}\n' + '\n'.join(got.splitlines()[-15:]))
     compare(t.name, got, log_name)
     checks = [] if args.stress else t.checks       # they look at the image users get, not the stress build
+    checks = [c for c in checks if not c.m_profile or paths.profile() == 'M']
     for c in checks:
         run_check(t, c, d, args)
     return note + ''.join(f', {c.name}' for c in checks)

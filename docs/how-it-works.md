@@ -451,7 +451,9 @@ call.
   (`b-l475e-iot01a`, an emulated STM32L475; two tests on `mps2-an386`; with `--cpu CORE`, for that core on the
   machine qbuild chooses for it, in `build/t-<core>`) and compares each program's whole output with
   its file in `tests/expected/`. It also fails a program that does not fit the STM32L431 unless the test is marked
-  large, and runs the tools (isr_check, symbolize, frames, gen_regs, missing_natives) on some of them. The programs
+  large, and runs the tools (isr_check, symbolize, frames, gen_regs, missing_natives, insn_check) on some of them:
+  [tools/insn_check.py](../tools/insn_check.py), for one, fails an image with an instruction that the core it was
+  built for does not have, which a QEMU machine with a larger core would run without a fault. The programs
   run with `qbuild --icount`, so an interrupt test takes its ticks at the same instructions in every run; the `hello`
   example, which takes no interrupt, runs on the host's clock, as a user runs it.
 - [tools/difftest.py](../tools/difftest.py) runs the programs in `tests/diff/` on the stock Kotlin/Native runtime

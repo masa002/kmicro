@@ -1,0 +1,1 @@
+insn_check: selftest.elf: {N} instructions, each of them one that {*}

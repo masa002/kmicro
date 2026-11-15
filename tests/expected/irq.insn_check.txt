@@ -1,0 +1,1 @@
+insn_check: irq.elf: {N} instructions, each of them one that {*}

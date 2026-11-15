@@ -1,0 +1,1 @@
+insn_check: stdio_float.elf: {N} instructions, each of them one that {*}

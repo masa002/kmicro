@@ -72,12 +72,16 @@ each. A core without an FPU uses the soft-float calling convention.
   the globals), without the stack.
 - **ARMv6-M and ARMv8-M Baseline code is tested on a larger core,** not on a model of the core itself. The
   Cortex-M4F of QEMU's STM32L475 runs the code built for the Cortex-M0, M0+ and M1, and QEMU has no Cortex-M23, so
-  its code runs on the Cortex-M33. The compiler's flags keep such an image to the instructions of its core: the
-  build attributes of the `cortex-m0plus` selftest say ARMv6S-M and Thumb-1, those of `cortex-m23` ARMv8-M Baseline
-  (`arm-none-eabi-readelf -A`). Those cores fault on an unaligned LDR or STR and the larger ones do not, so the
-  QEMU start code asks the larger core to fault too (CCR.UNALIGN_TRP); run_all passes with it for `cortex-m0plus`
-  and `cortex-m23`, and difftest for `cortex-m0plus`. What else belongs to the core and not to the code was not
-  tested there: its reset state, its MPU and its fault registers are those of the larger core.
+  its code runs on the Cortex-M33. The compiler's flags keep such an image to the instructions of its core, and
+  [tools/insn_check.py](../tools/insn_check.py) checks that they did: it reads the disassembly of an image and
+  fails for an instruction that the core does not have (on ARMv6-M, any 32-bit instruction but `bl`, `msr`, `mrs`,
+  `dsb`, `dmb` and `isb`). run_all runs it on the images of three tests (selftest, irq, stdio_float) for the core
+  it builds for, so CI runs it for `cortex-m0plus`, `cortex-m23` and every other core of its matrix. (The build
+  attributes of an image, `arm-none-eabi-readelf -A`, do not show this: ld.lld keeps those of the first object
+  that has any, which is a member of newlib.) Those cores fault on an unaligned LDR or STR and the larger ones do
+  not, so the QEMU start code asks the larger core to fault too (CCR.UNALIGN_TRP); run_all passes with it for
+  `cortex-m0plus` and `cortex-m23`, and difftest for `cortex-m0plus`. What else belongs to the core and not to the
+  code was not tested there: its reset state, its MPU and its fault registers are those of the larger core.
 - **The ARMv8-M and ARMv8.1-M cores run in the Secure state,** in which the Cortex-M33 and the Cortex-M55 of
   these machines start. The program never leaves it and does not use the Security Extension.
 - **The Cortex-M55 and the Cortex-M85 have three entries each.** A chip maker builds these cores with or without
@@ -94,11 +98,10 @@ each. A core without an FPU uses the soft-float calling convention.
   and `cortex-m85`.
 - **Cortex-M85 code is tested on the Cortex-M55,** because QEMU 9.2.4 has no model of the Cortex-M85. For the
   compiler the Cortex-M85 is the Cortex-M55 with PACBTI (pointer authentication and branch target identification)
-  and another tuning. kmicro builds nothing with `-mbranch-protection`, and the disassembly of the three
-  `cortex-m85` selftest images shows none of the PACBTI instructions: these images hold only instructions that the
-  Cortex-M55 has too, and its model runs them. (The build attributes of an image do not show this: ld.lld keeps
-  those of the first object that has any, which is a member of newlib.) Nothing that belongs to the Cortex-M85
-  itself was tested: its reset state, its MPU and its fault registers.
+  and another tuning. kmicro builds nothing with `-mbranch-protection`, and
+  `python tools/insn_check.py --cpu cortex-m55` passes on the three `cortex-m85` selftest images: they hold only
+  instructions that the Cortex-M55 has too, and its model runs them. Nothing that belongs to the Cortex-M85 itself
+  was tested: its reset state, its MPU and its fault registers.
 - **The Cortex-A7 is a core of another profile.** It has no vector table of handler addresses, no NVIC and no
   SysTick, and an MMU where a Cortex-M has an MPU, so it has start code of its own
   ([targets/qemu-virt](../targets/qemu-virt)): the program runs in Supervisor mode with the MMU on and a flat map,

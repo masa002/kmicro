@@ -239,6 +239,9 @@ Cortex-M4F, these parts of a board build change:
   For the Cortex-M0+ they are `--target=thumbv6m-none-eabi -mcpu=cortex-m0plus -mfpu=none -mfloat-abi=soft` and
   `thumb/v6-m/nofp`. [The check on QEMU](#a-check-on-qemu) below passes with these in `CFLAGS` and `ML` and with
   `--cpu cortex-m0plus` on its kbuild line: the Cortex-M4F of that machine runs the code of an ARMv6-M core.
+  It would also run an instruction that the smaller core lacks, from a wrong flag or a library of another
+  multilib. `python tools/insn_check.py app.elf --cpu cortex-m0plus` reads the linked image and fails for such an
+  instruction, before a board faults on it.
 - **A core without an FPU** uses the soft-float calling convention (`-mfpu=none -mfloat-abi=soft`, a `nofp`
   multilib) in every object of the link: C compiled with arm-none-eabi-gcc needs the same options. The reset
   entry does not touch CPACR there (step 1 of [Start-up](#start-up)).
