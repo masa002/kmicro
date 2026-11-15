@@ -184,12 +184,13 @@ def missing_symbols(link, stderr, labels, kotlin):
 
 def write_stubs(path, names):
     """Each name: a function that panics with its name. Assembly, so no optimiser sees a signature it could
-    disagree with (LTO deletes the paths that call a C stub with another prototype), and any spelling assembles."""
+    disagree with (LTO deletes the paths that call a C stub with another prototype), and any spelling assembles.
+    The branch is a `bl`, which every core has (ARMv6-M has no `b.w`); kmicro_panic does not return."""
     text = ['\t.syntax unified', '\t.thumb', '\t.section .text.kmicro_autostubs,"ax",%progbits']
     for i, n in enumerate(names):
         q = '"' + n + '"'
         text += ['\t.p2align 1', f'\t.globl {q}', f'\t.type {q}, %function', '\t.thumb_func', f'{q}:',
-                 f'\tldr r0, =.Lkm_autostub{i}', '\tb.w kmicro_panic', '\t.ltorg']
+                 f'\tldr r0, =.Lkm_autostub{i}', '\tbl kmicro_panic', '\t.ltorg']
     text.append('\t.section .rodata.kmicro_autostubs,"a",%progbits')
     for i, n in enumerate(names):
         text += [f'.Lkm_autostub{i}:', f'\t.asciz "unimplemented runtime symbol: {n}"']

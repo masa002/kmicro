@@ -1,9 +1,11 @@
 # Copyright 2026 the kmicro authors (NOTICE).
 # SPDX-License-Identifier: Apache-2.0
-"""tools/qbuild.py: which core runs on which QEMU target (no compiler needed).
+"""tools/qbuild.py: which core runs on which QEMU target (no compiler needed), and the stubs of missing runtime
+natives, assembled for every core (skipped when LLVM is not installed).
 
 python -m unittest discover -s tests/unit
 """
+import os
 import subprocess
 import sys
 import tempfile
@@ -22,6 +24,22 @@ def run(*options):
         return subprocess.run([sys.executable, ROOT / 'tools/qbuild.py', Path(d) / 'probe.elf',
                                Path(__file__).parent / 'startup_probe.c', *options], capture_output=True, text=True,
                               encoding='utf-8')
+
+
+@unittest.skipUnless(paths._find(paths.llvm.env, paths.llvm.patterns, paths.llvm.what), 'needs LLVM')
+class Stubs(unittest.TestCase):
+    def test_the_stubs_assemble_for_every_core(self):
+        code = ('import sys, pathlib; sys.path[:0] = [sys.argv[1] + "/toolchain", sys.argv[1] + "/tools"]\n'
+                'import qbuild\n'
+                's = pathlib.Path(sys.argv[2], "autostubs.s")\n'
+                'qbuild.write_stubs(s, ["Kotlin_Example_missing", "Kotlin_Example_other"])\n'
+                'qbuild.compile_one(s, s.with_suffix(".o"), [])\n')
+        for cpu in paths.CORES:                 # a process each: the tools read the core from KMICRO_CPU
+            with tempfile.TemporaryDirectory() as d:
+                r = subprocess.run([sys.executable, '-c', code, str(ROOT), d], capture_output=True, text=True,
+                                   encoding='utf-8', errors='replace', env={**os.environ, 'KMICRO_CPU': cpu})
+                self.assertEqual(r.returncode, 0, f'{cpu}\n{r.stdout}{r.stderr}')
+                self.assertTrue((Path(d) / 'autostubs.o').is_file(), cpu)
 
 
 class Targets(unittest.TestCase):
