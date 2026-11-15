@@ -105,10 +105,14 @@ __attribute__((used, noreturn)) void start_fault(const uint32_t *frame)
     uintptr_t f = (uintptr_t)frame;
     int readable = f % 4u == 0u && f >= (uintptr_t)&_sdata && f <= (uintptr_t)&_estack - 32u;
     fault_puts("kmicro fault: ");
-    if (ipsr >= 2u && ipsr <= 6u)
+    if (ipsr >= 2u && ipsr <= 6u) {
         fault_puts(names[ipsr]);
-    else
+    } else if (ipsr >= 16u) {                                      /* IRQn_Handler is not defined */
+        put_hex("interrupt ", ipsr - 16u);
+        fault_puts(" without a handler");
+    } else {
         put_hex("exception ", ipsr);
+    }
     if (readable)
         put_hex(" at ", frame[6]);                                 /* the stacked PC */
     else
@@ -143,9 +147,21 @@ __attribute__((naked)) static void fault(void)
 static void no_tick(void) {}
 void SysTick_Handler(void) __attribute__((weak, alias("no_tick")));
 
+/* The external interrupts: IRQ0_Handler to IRQ99_Handler, numbered as the NVIC numbers them (vector 16 + n; more
+ * than any of the QEMU machines has). A program defines the ones it uses, in C or in Kotlin (--c-api). One that is
+ * enabled without a handler ends in the fault report, which names its number: without these entries the core would
+ * take its vector from the code that follows the table. */
+#define IRQ(n) void IRQ##n##_Handler(void) __attribute__((weak, alias("fault")));
+#define IRQ10(t) IRQ(t##0) IRQ(t##1) IRQ(t##2) IRQ(t##3) IRQ(t##4) IRQ(t##5) IRQ(t##6) IRQ(t##7) IRQ(t##8) IRQ(t##9)
+#define IRQS IRQ(0) IRQ(1) IRQ(2) IRQ(3) IRQ(4) IRQ(5) IRQ(6) IRQ(7) IRQ(8) IRQ(9) \
+             IRQ10(1) IRQ10(2) IRQ10(3) IRQ10(4) IRQ10(5) IRQ10(6) IRQ10(7) IRQ10(8) IRQ10(9)
+IRQS
+#undef IRQ
+#define IRQ(n) IRQ##n##_Handler,
+
 __attribute__((section(".isr_vector"), used))
-const void *const vectors[16] = { &_estack, Reset_Handler, fault, fault, fault, fault, fault,
-                                   0, 0, 0, 0, fault, fault, 0, fault, SysTick_Handler };
+const void *const vectors[16 + 100] = { &_estack, Reset_Handler, fault, fault, fault, fault, fault,
+                                         0, 0, 0, 0, fault, fault, 0, fault, SysTick_Handler, IRQS };
 
 /* Not through stdout: newlib's streams write through the runtime's _write, which calls this function. */
 void kmicro_puts(const char *s) { semi(0x04, (void *)s); }     /* SYS_WRITE0 */

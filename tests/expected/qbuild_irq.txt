@@ -1,0 +1,3 @@
+IRQ5_Handler ran
+kmicro fault: interrupt 6 without a handler at 0x{X}
+    sp {*}

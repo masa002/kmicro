@@ -10,7 +10,7 @@ extern uint32_t _estack, _sidata, _sdata, _edata, _sbss, _ebss, _sguard, _eguard
 extern void (*__init_array_start[])(void), (*__init_array_end[])(void);
 int main(void);
 void kmicro_exit(int code);
-extern const void *const vectors[16];
+extern const void *const vectors[16 + 100];
 
 #define SCB_VTOR  (*(volatile uint32_t *)0xE000ED08)
 #define SCB_CCR   (*(volatile uint32_t *)0xE000ED14)
@@ -154,6 +154,10 @@ __attribute__((used, noreturn)) void start_fault(const uint32_t *frame)
     }
     if (ipsr >= 2u && ipsr <= 6u) {
         kmicro_puts(names[ipsr]);
+    } else if (ipsr >= 16u) {                                      /* IRQn_Handler is not defined */
+        kmicro_puts("interrupt ");
+        kmicro_put_int((int32_t)ipsr - 16);
+        kmicro_puts(" without a handler");
     } else {
         kmicro_puts("exception ");
         kmicro_put_int((int32_t)ipsr);
@@ -198,9 +202,21 @@ void HardFault_Handler(void) __attribute__((alias("fault")));
 static void no_tick(void) {}
 void SysTick_Handler(void) __attribute__((weak, alias("no_tick")));
 
+/* The external interrupts: IRQ0_Handler to IRQ99_Handler, numbered as the NVIC numbers them (vector 16 + n; more
+ * than any of the QEMU machines has). A program defines the ones it uses, in C or in Kotlin (--c-api). One that is
+ * enabled without a handler ends in the fault report, which names its number: without these entries the core would
+ * take its vector from the code that follows the table. */
+#define IRQ(n) void IRQ##n##_Handler(void) __attribute__((weak, alias("fault")));
+#define IRQ10(t) IRQ(t##0) IRQ(t##1) IRQ(t##2) IRQ(t##3) IRQ(t##4) IRQ(t##5) IRQ(t##6) IRQ(t##7) IRQ(t##8) IRQ(t##9)
+#define IRQS IRQ(0) IRQ(1) IRQ(2) IRQ(3) IRQ(4) IRQ(5) IRQ(6) IRQ(7) IRQ(8) IRQ(9) \
+             IRQ10(1) IRQ10(2) IRQ10(3) IRQ10(4) IRQ10(5) IRQ10(6) IRQ10(7) IRQ10(8) IRQ10(9)
+IRQS
+#undef IRQ
+#define IRQ(n) IRQ##n##_Handler,
+
 __attribute__((section(".isr_vector"), used))
-const void *const vectors[16] = { &_estack, Reset_Handler, fault, HardFault_Handler, fault, fault, fault,
-                                   0, 0, 0, 0, fault, fault, 0, fault, SysTick_Handler };
+const void *const vectors[16 + 100] = { &_estack, Reset_Handler, fault, HardFault_Handler, fault, fault, fault,
+                                         0, 0, 0, 0, fault, fault, 0, fault, SysTick_Handler, IRQS };
 
 /* ARM semihosting (QEMU -semihosting). */
 static int semi(int op, void *arg)

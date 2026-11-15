@@ -318,7 +318,8 @@ purpose. For a board, replace `start.c` and `l475.ld` with its own and write the
       sp 0x...  lr 0x...  cfsr 0x...  hfsr 0x...  mmfar 0x...  bfar 0x...
   ```
 
-  The other exceptions that the vector table sends there (SVCall, DebugMonitor, PendSV) are named `exception N`.
+  The other exceptions that the vector table sends there (SVCall, DebugMonitor, PendSV) are named `exception N`,
+  and an external interrupt whose `IRQn_Handler` the program does not define is `interrupt n without a handler`.
   When the stacked frame cannot be read, `, no stacked frame` replaces ` at 0x<PC>` and the `lr` field is left out.
   [how-it-works.md](how-it-works.md#reading-a-stack-trace) shows a report and how `tools/symbolize.py` names its
   address.
