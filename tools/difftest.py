@@ -26,6 +26,12 @@ A program can declare, each on a comment line of its own:
                                           ("${sin(x)}f"), of a Double elsewhere. Integers must be equal
     // difftest: frame -- reason          allowed to have a stack frame larger than the 4 KB stack guard, or of a
                                           size the function computes
+    // difftest: uncaught -- reason       ends with an uncaught exception: the report that the runtime prints is
+                                          compared too (the host's standard error after its standard output), without
+                                          the lines of stack frames ("at ...", "... and N more common stack frames
+                                          skipped"), which differ between the targets. The host program must not exit
+                                          with 0 and the kmicro program must stop with "kmicro panic: uncaught Kotlin
+                                          exception" (exit 98); that line is taken off
 
 Each line of the report shows SAME, DIFF, OVER (same output, but the image does not fit the STM32L431), FRAME (same
 output, but a function of the image has a stack frame larger than the stack guard, which it could step over without a
@@ -57,7 +63,9 @@ STATS = re.compile(rb'kmicro-difftest: heap (\d+) peak (\d+) live (\d+)\n\Z')   
 NUMBER = re.compile(r'-?(?:\d+(?:\.\d+)?(?:E-?\d+)?|Infinity)|NaN')
 INTEGER = re.compile(r'-?\d+')
 FLOAT_MARK = re.compile(r'f(?!\w)')                # after a number: the program says that it printed a Float
-VALUE, FLAG = {'heap', 'ulp'}, {'large', 'frame'}   # the directives with a number and those without
+FRAME = re.compile(rb'^[ \t]*(?:at .*|\.\.\. and \d+ more common stack frames skipped)\r?\n', re.M)
+PANIC = b'kmicro panic: uncaught Kotlin exception\n'    # eh.c's last line after the report
+VALUE, FLAG = {'heap', 'ulp'}, {'large', 'frame', 'uncaught'}   # the directives with a number and those without
 
 
 class Failure(Exception):
@@ -74,7 +82,8 @@ def host_target():
 
 
 def directives(src):
-    """The `// difftest: ...` lines of a program: {'heap': 32768, 'large': True, 'ulp': 2, 'frame': True}."""
+    """The `// difftest: ...` lines of a program: {'heap': 32768, 'large': True, 'ulp': 2, 'frame': True}; also
+    'uncaught': True."""
     d = {}
     for line in src.read_text(encoding='utf-8').splitlines():
         m = re.match(r'\s*//\s*difftest:\s*(\w+)\s*(\d*)', line)
@@ -99,12 +108,22 @@ def exit_code(rc):
     return f'0x{rc & 0xffffffff:08X}' if rc < 0 or rc > 255 else str(rc)
 
 
-def host(name, src):
+def frameless(out):
+    """A report of an exception without its stack frame lines."""
+    return FRAME.sub(b'', out)
+
+
+def host(name, src, uncaught=False):
     d = OUT / 'host' / name
     exe = d / (name + ('.exe' if paths.WINDOWS else '.kexe'))   # what kotlinc-native -p program writes
     if not exe.exists() or exe.stat().st_mtime < src.stat().st_mtime:
         kotlinc([src.as_posix(), '-target', host_target(), '-p', 'program', '-opt', '-o', (d / name).as_posix()], d)
     r = subprocess.run([str(exe)], capture_output=True, timeout=300)  # the runtime writes UTF-8 bytes (::write)
+    if uncaught:
+        if r.returncode == 0:
+            raise Failure('host program exited with 0, and `// difftest: uncaught` says that it ends with an '
+                          'uncaught exception')
+        return frameless((r.stdout + r.stderr).replace(b'\r\n', b'\n'))
     if r.returncode != 0:
         raise Failure(f'host program exited with {exit_code(r.returncode)} (the reference output would be cut '
                       f'short); its output ends with: {r.stdout[-200:].decode("utf-8", "replace")!r}')
@@ -140,6 +159,8 @@ def kmicro(name, src, opts, stress, size):
     stats = STATS.search(out)
     if stats:
         out = out[:stats.start()]
+    if opts.get('uncaught') and out.endswith(PANIC):
+        out = frameless(out[:-len(PANIC)])
     return out, q.returncode, notes, (text + data, data + bss), frame, stats and tuple(map(int, stats.groups()))
 
 
@@ -204,7 +225,7 @@ def main():
         src = DIFF / (name + '.kt')
         try:
             opts = directives(src)
-            golden = host(name, src)
+            golden = host(name, src, opts.get('uncaught'))
             got, rc, notes, (flash, ram), frame, stats = kmicro(name, src, opts, args.stress, args.size)
         except (Exception, SystemExit) as e:          # noqa: BLE001 - kn.py stops with SystemExit; report, go on
             first, *rest = str(e).strip().splitlines() or ['']
@@ -213,7 +234,8 @@ def main():
                 print('      ' + line)
             bad += 1
             continue
-        same = rc == 0 and (got == golden or 'ulp' in opts and close(golden, got, opts['ulp']))
+        same = rc == (98 if opts.get('uncaught') else 0) and (
+            got == golden or 'ulp' in opts and close(golden, got, opts['ulp']))
         fits = flash <= FLASH and ram <= RAM
         status = 'DIFF' if not same else 'OVER' if not (fits or opts.get('large')) else 'FRAME' if frame else 'SAME'
         heap = f'  heap {stats[0]}: peak {stats[1]} live {stats[2]}' if stats else ''

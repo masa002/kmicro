@@ -66,7 +66,10 @@ line of its own, with the reason:
 // difftest: heap 32768 -- main keeps every object of the test alive until it returns
 // difftest: large -- most of the String API in one program
 // difftest: ulp 2 -- kotlin.math is newlib's libm on kmicro and another libm on the host
+// difftest: uncaught -- the program ends with the report of an uncaught exception, which is what it tests
 ```
+
+With `uncaught`, the report that each runtime prints at the end is compared too, without its lines of stack frames.
 
 A program that shows a feature that does not work is named `d_known_<topic>.kt`; it runs only when named.
 

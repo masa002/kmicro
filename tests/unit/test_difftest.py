@@ -25,6 +25,7 @@ class Directives(unittest.TestCase):
         self.assertEqual(directives('// difftest: heap 32768 -- why\n// difftest: ulp 2 -- why\n'
                                     '// difftest: large -- why\n// difftest: frame -- why\nfun main() {}\n'),
                          {'heap': 32768, 'ulp': 2, 'large': True, 'frame': True})
+        self.assertEqual(directives('// difftest: uncaught -- why\nfun main() {}\n'), {'uncaught': True})
 
     def test_a_program_without_directives(self):
         self.assertEqual(directives('fun main() {}\n'), {})
@@ -34,6 +35,22 @@ class Directives(unittest.TestCase):
                      '// difftest: heap -- no number', '// difftest: stack 4096 -- no such directive'):
             with self.assertRaises(difftest.Failure, msg=line):
                 directives(line + '\n')
+
+
+class Frameless(unittest.TestCase):
+    def test_frame_lines_go_and_the_rest_stays(self):
+        host = (b'before\nUncaught Kotlin exception: kotlin.Error: top\n'
+                b'    at 0   d_x.kexe    0x41a3f1    kfun:kotlin.Throwable#<init>(kotlin.String?){} + 97 \n'
+                b'    Suppressed: kotlin.Error: at sea\n        at 1   d_x.kexe    0x41a400    kfun:#main(){} + 5 \n'
+                b'        ... and 3 more common stack frames skipped\nCaused by: kotlin.Error: ... and more\n')
+        kmicro = (b'before\nUncaught Kotlin exception: kotlin.Error: top\n    at 0x08001234\n'
+                  b'    Suppressed: kotlin.Error: at sea\n        at 0x08001240\n'
+                  b'        ... and 3 more common stack frames skipped\nCaused by: kotlin.Error: ... and more\n')
+        text = (b'before\nUncaught Kotlin exception: kotlin.Error: top\n    Suppressed: kotlin.Error: at sea\n'
+                b'Caused by: kotlin.Error: ... and more\n')
+        self.assertEqual(difftest.frameless(host), text)
+        self.assertEqual(difftest.frameless(kmicro), text)
+        self.assertEqual(difftest.frameless(host.replace(b'\n', b'\r\n')), text.replace(b'\n', b'\r\n'))
 
 
 class UlpTolerance(unittest.TestCase):
