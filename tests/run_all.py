@@ -276,6 +276,8 @@ TESTS = [
     Test('selftest_size', Kotlin('selftest', SELFTEST.srcs, dict(SELFTEST_API, size=True, init_all='kt_init_all',
                                                                     hot=r'^kfun:selftest#(gcChains|coroEvent)\(')),
          ['examples/selftest/main.c']),
+    Test('size_throw', Kotlin('size_throw', ['tests/size_throw/throw.kt'], dict(size=True)),
+         ['targets/common/kotlin_main.c']),
     Test('selftest_stm32l431', command=board_build),
     Test('irq', IRQ, ['examples/irq/main.c', 'support/hw.c'],
          checks=[Check('isr_check', ['tools/isr_check.py', '{elf}']),

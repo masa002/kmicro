@@ -1,0 +1,15 @@
+fold0: caught: input ended after 3 values
+fold1: caught: input ended after 4 values
+fold2: caught: input ended after 5 values
+fold3: caught: input ended after 6 values
+fold4: caught: input ended after 7 values
+fold5: caught: input ended after 8 values
+fold6: caught: input ended after 9 values
+fold7: caught: input ended after 10 values
+fold8: caught: input ended after 11 values
+fold9: caught: input ended after 12 values
+fold10: caught: input ended after 13 values
+fold11: caught: input ended after 14 values
+fold12: caught: input ended after 15 values
+fold13: caught: input ended after 16 values
+done

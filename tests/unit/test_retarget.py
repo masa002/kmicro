@@ -267,6 +267,16 @@ class RetargetTest(unittest.TestCase):
         self.assertRegex(text, r'define ptr @"kfun:demo#first\(\)[^\n]*#90000 \{')
         self.assertNotIn('minsize', re.search(r'^attributes #90000 = .*$', text, re.M).group(0))
 
+    def test_size_keeps_the_outliner_away(self):
+        r, text = self.retarget('--size')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        groups = re.findall(r'^attributes #\d+ = .*$', text, re.M)
+        self.assertTrue(groups)
+        for g in groups:                        # an outlined call sequence gets a wrong unwind entry on Thumb-2
+            self.assertEqual('minsize' in g, '"nooutline"' in g, g)
+        self.assertTrue(any('minsize' in g for g in groups))
+        self.assertNotIn('"nooutline"', self.retarget()[1])
+
     def test_hot_errors(self):
         for opts, message in ((('--size', '--hot', '^nothing'), 'matches no function'),
                               (('--size', '--hot', '(unclosed'), 'is not a valid regular expression'),

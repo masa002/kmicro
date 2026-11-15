@@ -127,6 +127,10 @@ if NOATTR.search(text):
 if '--hot' in args and '--size' not in args:
     sys.exit('retarget: --hot only applies with --size')
 if '--size' in args:  # optimize for size: LLVM's minsize/optsize on every Kotlin function (= clang -Oz)
+    # "nooutline" with them: minsize turns on the machine outliner at the LTO link, and on a Thumb-2 core the unwind
+    # entry LLVM writes for an outlined sequence that holds a call pops 4 bytes of its 8-byte frame. An exception
+    # thrown below that call is then unwound with a wrong stack pointer and no catch is found. The attribute is in
+    # the object, so a board link needs no option. (About 1 % of the text; nothing is outlined on a Thumb-1 core.)
     # --hot REGEX: functions whose name matches keep full speed optimisation (their attribute group is cloned
     # without minsize/optsize), e.g. code that runs in a real-time interrupt.
     hot = None
@@ -150,7 +154,7 @@ if '--size' in args:  # optimize for size: LLVM's minsize/optsize on every Kotli
             return m.group(1) + m.group(2) + m.group(3) + '#' + clones[grp] + m.group(5)
         # (anything may follow the group: most Kotlin functions carry "personality ptr @__gxx_personality_v0")
         text = re.sub(r'^(define [^@\n]*@)("[^"]+"|[\w.$]+)(\([^\n]*?\) )#(\d+)( [^\n]*\{)$', retag, text, flags=re.M)
-    text = re.sub(r'^(attributes #\d+ = \{ )', r'\1minsize optsize ', text, flags=re.M)
+    text = re.sub(r'^(attributes #\d+ = \{ )', r'\1minsize optsize "nooutline" ', text, flags=re.M)
     for grp, new_id in clones.items():
         text += f'\nattributes #{new_id} = {{ {groups[grp]} }}\n'
     if hot:
