@@ -105,6 +105,11 @@ def arch():
     return CORES[cpu()][0].split('-')[0]
 
 
+def profile():
+    """The architecture profile of the core, the letter in its name: 'M', 'A' or 'R'."""
+    return cpu().split('-')[1][0].upper()
+
+
 def target_flags():
     """The clang flags that choose the core: target, CPU, FPU and calling convention."""
     t, flags, _ = CORES[cpu()]
