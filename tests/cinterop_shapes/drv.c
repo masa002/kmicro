@@ -10,6 +10,14 @@
 int32_t drv_counter = 10;
 pt_t pt_make(int32_t x, int32_t y) { pt_t p = { x, y }; return p; }
 int32_t pt_sum(pt_t p) { return p.x + p.y; }
+vec2_t vec_scale(vec2_t v, float k) { vec2_t r = { v.x * k, v.y * k }; return r; }
+cplx_t cplx_conj(cplx_t z) { cplx_t r = { z.re, -z.im }; return r; }
+int32_t vec_apply(vec_cb_t cb)
+{
+    vec2_t v = { 1.5f, -2.5f };
+    vec2_t r = cb(v, 2.0f);
+    return (int32_t)(r.x * 100.0f + r.y);
+}
 
 static drv_cb_t s_cb;
 void drv_set_cb(drv_cb_t cb) { s_cb = cb; }
@@ -35,6 +43,9 @@ uint32_t plain_fn(uint32_t v) { return v; }
 int32_t kt_global(void);
 int32_t kt_struct_return(void);
 int32_t kt_struct_arg(void);
+int32_t kt_float_struct_return(void);
+int32_t kt_double_struct_return(void);
+int32_t kt_float_struct_callback(void);
 int32_t kt_callback(void);
 int32_t kt_sort_descending(void);
 int32_t kt_varargs(void);
@@ -63,6 +74,9 @@ int main(void)
     check("global() = ", kt_global(), 15);
     check("structReturn() = ", kt_struct_return(), 34);
     check("structArg() = ", kt_struct_arg(), 42);
+    check("floatStructReturn() = ", kt_float_struct_return(), 407);
+    check("doubleStructReturn() = ", kt_double_struct_return(), 1225);
+    check("floatStructCallback() = ", kt_float_struct_callback(), 295);
     check("callback() = ", kt_callback(), 42);
     check("sortDescending() = ", kt_sort_descending(), 97531);
     check("varargs() = ", kt_varargs(), 6);

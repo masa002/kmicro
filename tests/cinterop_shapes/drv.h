@@ -12,6 +12,15 @@ typedef struct { int32_t x, y; } pt_t;
 pt_t pt_make(int32_t x, int32_t y);             /* a struct returned by value */
 int32_t pt_sum(pt_t p);                         /* a struct passed by value */
 
+/* Structs of floating-point numbers returned by value: in registers on a core with an FPU, in memory on one
+ * without (there kbuild rewrites the bridges: toolchain/aapcs.py). To Kotlin, and from a Kotlin callback to C. */
+typedef struct { float x, y; } vec2_t;
+typedef struct { double re, im; } cplx_t;
+vec2_t vec_scale(vec2_t v, float k);
+cplx_t cplx_conj(cplx_t z);
+typedef vec2_t (*vec_cb_t)(vec2_t, float);
+int32_t vec_apply(vec_cb_t cb);                 /* calls cb({ 1.5, -2.5 }, 2) and returns x * 100 + y */
+
 typedef int32_t (*drv_cb_t)(int32_t);
 void drv_set_cb(drv_cb_t cb);                   /* the driver keeps a callback ... */
 int32_t drv_fire(int32_t v);                    /* ... and calls it later */

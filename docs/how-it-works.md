@@ -8,7 +8,9 @@ one of every Cortex-M target, from `thumbv6m-none-eabi` (Cortex-M0) to `thumbv8m
 
 So the IR that the official compiler produces for `linux_arm32_hfp` is already laid out the way a Cortex-M
 program must be: the same sizes and alignments. The IR names no calling convention: the code generator takes it
-from the target, hard-float for a core with an FPU and soft-float for one without. kmicro takes that IR before the
+from the target, hard-float for a core with an FPU and soft-float for one without. (One thing the C front end has
+already decided: how a C function returns a struct of floating-point numbers. retarget.py changes that for a core
+without an FPU, below.) kmicro takes that IR before the
 compiler links its own runtime, which needs Linux, threads and about 184 KB of code, and links it with a small
 runtime written for one thread and no OS. The compiler itself is not modified.
 
@@ -77,6 +79,7 @@ What retarget.py changes:
 | `thread_local` removed (`--no-tls`) | one thread; no `__aeabi_read_tp` on bare metal |
 | init-state loads made plain (`--single-core`) | each access to a file's globals checks its init state with an acquire load (a `DMB`); with one core and one thread a plain load is exact and can leave the loop |
 | `minsize` everywhere except `--hot` functions (`--size`) | a firmware keeps real-time code fast and the rest small |
+| on a core without an FPU: a struct result of a C function, or of a callback given to C, is passed in memory ([toolchain/aapcs.py](../toolchain/aapcs.py)) | cinterop writes those calls for the hard-float ABI, which returns a struct of floats in registers; C compiled for the core returns it through a pointer |
 | `Random.Default` seeded from `kmicro_random_seed()` | `kotlin.random` needs no clock |
 | the hexadecimal branch of `toDouble()` / `toFloat()` calls `runtime/hexfloat.c` | number parsing does not link the Regex engine |
 | the Unicode tables stay in flash | the standard library would copy them to the heap on first use |

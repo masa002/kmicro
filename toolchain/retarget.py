@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import aapcs  # noqa: E402
 import paths  # noqa: E402
 
 EXPECT_DL = 'e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64'
@@ -111,6 +112,11 @@ dl = dl.group(1)
 if dl != EXPECT_DL:
     sys.exit(f'unexpected data layout {dl}')
 text = re.sub(r'^target triple = "[^"]*"', f'target triple = "{paths.triple()}"', text, count=1, flags=re.M)
+if '-mfloat-abi=soft' in paths.target_flags():      # struct results between Kotlin and C, as this core's C passes them
+    try:
+        text = aapcs.in_memory(text)
+    except ValueError as e:
+        sys.exit(f'retarget: {src}: {e}')
 # The exact cpu/feature strings clang gives the C runtime (paths.target_flags()): Kotlin functions and the runtime then
 # carry identical attributes, so LTO may inline runtime hooks (UpdateHeapRef, EnterFrame...) into Kotlin code. Any
 # difference, from another LLVM version or another CPU, would silently stop that inlining.

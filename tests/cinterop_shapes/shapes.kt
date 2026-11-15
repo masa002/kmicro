@@ -20,6 +20,23 @@ fun structReturn(): Int = pt_make(3, 4).useContents { x * 10 + y }
 @CName("kt_struct_arg")
 fun structArg(): Int = pt_sum(cValue<pt_t> { x = 30; y = 12 })
 
+// 2.0f as the first member: its bits are an address in RAM, so a result written through it would go unnoticed
+@CName("kt_float_struct_return")
+fun floatStructReturn(): Int = vec_scale(cValue<vec2_t> { x = 2.0f; y = 3.5f }, 2.0f).useContents {
+    (x * 100 + y).toInt()                                   // 4.0, 7.0
+}
+
+@CName("kt_double_struct_return")
+fun doubleStructReturn(): Int = cplx_conj(cValue<cplx_t> { re = 12.0; im = -25.0 }).useContents {
+    (re * 100 + im).toInt()                                 // 12.0, 25.0
+}
+
+@CName("kt_float_struct_callback")
+fun floatStructCallback(): Int =                            // C calls Kotlin, which returns the struct to C
+    vec_apply(staticCFunction { v: CValue<vec2_t>, k: Float ->
+        v.useContents { cValue<vec2_t> { x = this@useContents.x * k; y = this@useContents.y * k } }
+    })                                                      // 3.0, -5.0
+
 fun twice(x: Int): Int = x * 2
 
 @CName("kt_callback")
