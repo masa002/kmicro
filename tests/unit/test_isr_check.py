@@ -4,6 +4,7 @@
 
 usage: python tests/unit/test_isr_check.py      (or python -m unittest discover tests/unit)
 """
+import io
 import sys
 import unittest
 from pathlib import Path
@@ -129,6 +130,43 @@ class IsrCheck(unittest.TestCase):
         text = disassembly(FUNCS).replace('<fault>:\n', '<fault>:\n' + ''.join(f' 8000180:\t{i}\n' for i in returns))
         lines, _, _ = isr_check.analyse(text, vector_table(table(0x08000200)))
         self.assertEqual(lines, ['2 interrupt handler(s) checked: no path to an allocation'])
+
+    def test_an_image_without_the_table_says_so(self):
+        # kfun:irq#record(){} allocates and is a handler only by the table: without the table nobody looks at it
+        lines, bad, n = isr_check.analyse(disassembly(FUNCS + [(0x08000400, 'HardFault_Handler', [])]), '')
+        self.assertEqual((bad, n), (0, 1), lines)
+        self.assertEqual(lines[-1], '1 interrupt handler(s) checked: no path to an allocation')
+        self.assertEqual(lines[0], 'note   no vector table: the image has no section .isr_vector. Only the functions '
+                         'named like handlers were checked; --vectors SECTION names the section that holds the table')
+        lines, bad, _ = self.run_check(0x08000280)                     # the same image with its table
+        self.assertEqual(bad, 1, lines)
+        self.assertFalse(any('no vector table' in l for l in lines), lines)
+
+    def test_the_table_in_a_section_of_another_name(self):
+        def objdump(elf, *args):
+            if args == ('-h',):
+                return 'Idx Name          Size\n  0 .vectors      00000040\n  1 .text         00000400\n'
+            if args == ('-s', '-j', '.vectors'):
+                return vector_table(table(0x08000280)).replace('.isr_vector', '.vectors')
+            return disassembly(FUNCS) if args[0] == '-d' else self.fail(args)
+
+        def run(*argv):
+            out = io.StringIO()
+            with mock.patch.object(sys, 'argv', ['isr_check.py', __file__, *argv]), \
+                    mock.patch.object(isr_check, 'objdump', objdump), mock.patch.object(sys, 'stdout', out), \
+                    mock.patch.object(sys, 'stderr', out), self.assertRaises(SystemExit) as e:
+                isr_check.main()
+            return e.exception.code, out.getvalue()
+
+        code, out = run('--vectors', '.vectors')
+        self.assertEqual(code, 1, out)
+        self.assertIn('ALLOC  kfun:irq#record(){}: kfun:irq#record(){} -> alloc_block', out)
+        code, out = run()                                              # the default name: not in this image
+        self.assertEqual(code, 0, out)
+        self.assertIn('note   no vector table: the image has no section .isr_vector.', out)
+        code, out = run('--vectors', '.intvec')
+        self.assertEqual(code, 2, out)
+        self.assertIn('no section .intvec (--vectors)', out)
 
     def test_nothing_to_check_is_an_error(self):
         with self.assertRaises(ValueError):

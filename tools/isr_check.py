@@ -3,8 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """Static check of a firmware image: no interrupt handler can reach a Kotlin allocation.
 
-    python tools/isr_check.py firmware.elf [--callback NAME ...] [--boxing]
+    python tools/isr_check.py firmware.elf [--vectors SECTION] [--callback NAME ...] [--boxing]
 
+    --vectors   the section that holds the vector table, when the linker script does not call it .isr_vector
+                (.vectors, .intvec, .vector_table ...)
     --callback  a function handlers reach only through a pointer (a callback registered with a driver): C functions
                 by name, Kotlin ones by their mangled name, e.g. 'kfun:app#onTimer(){}' (an alias is no label)
     --boxing    also list every call outside the standard library that boxes an Int, Long, Short or Byte, in any
@@ -14,6 +16,8 @@ The handlers are the entries of the vector table (.isr_vector, without the initi
 handler), whatever their names: under LTO the C name kbuild --c-api gives a Kotlin handler (SysTick_Handler) is
 folded into the Kotlin function, so only the table still shows it. Functions named like handlers (C names ending in
 _Handler or _IRQHandler, Kotlin functions ending in Handler) are checked too, for handlers installed at run time.
+An image without the section is checked by those names alone, and the report says so: a handler that only the table
+shows was not looked at then.
 
 Walks the machine code (arm-none-eabi-objdump -d) from every handler along direct calls and tail branches, and
 reports each path that ends in the Kotlin allocator (AllocInstance, AllocArrayInstance and kmicro's allocation
@@ -143,18 +147,22 @@ def walk(root, calls, indirect):
     return hits, lazies, ind
 
 
-def analyse(disasm, vectors, callbacks=(), boxing=False):
-    """The report: (lines, number of failures, number of handlers). Raises ValueError when there is nothing to
-    check."""
+def analyse(disasm, vectors, callbacks=(), boxing=False, section='.isr_vector'):
+    """The report: (lines, number of failures, number of handlers). vectors: the dump of the vector table's section,
+    empty when the image has no section of that name. Raises ValueError when there is nothing to check."""
     calls, indirect, start = parse_disassembly(disasm)
     if not calls:
         raise ValueError('no functions in the disassembly')
     unknown = [c for c in callbacks if c not in calls]
     if unknown:
         raise ValueError('no such function: ' + ', '.join(unknown))
-    roots, lines = handler_roots(vector_words(vectors), calls, start, callbacks)
+    words = vector_words(vectors)
+    roots, lines = handler_roots(words, calls, start, callbacks)
     if not roots:
         raise ValueError('no interrupt handler found (no vector table, no function named like a handler)')
+    if not words:
+        lines.append(f'note   no vector table: the image has no section {section}. Only the functions named like '
+                     'handlers were checked; --vectors SECTION names the section that holds the table')
     bad = 0
     for root in roots:
         hits, lazies, ind = walk(root, calls, indirect)
@@ -185,9 +193,11 @@ def objdump(elf, *args):
 
 
 def main():
-    ap = argparse.ArgumentParser(usage='python tools/isr_check.py firmware.elf [--callback NAME ...] [--boxing]',
+    ap = argparse.ArgumentParser(usage='python tools/isr_check.py firmware.elf [--vectors SECTION] '
+                                 '[--callback NAME ...] [--boxing]',
                                  description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('elf', type=Path, help=argparse.SUPPRESS)
+    ap.add_argument('--vectors', metavar='SECTION', help=argparse.SUPPRESS)
     ap.add_argument('--callback', action='append', default=[], help=argparse.SUPPRESS)
     ap.add_argument('--boxing', action='store_true', help=argparse.SUPPRESS)
     args = ap.parse_args()
@@ -196,9 +206,15 @@ def main():
         sys.exit(2)
     disasm = objdump(args.elf, '-d', '--no-show-raw-insn')
     sections = objdump(args.elf, '-h')
-    vectors = objdump(args.elf, '-s', '-j', '.isr_vector') if re.search(r'\s\.isr_vector\s', sections) else ''
+    section = args.vectors or '.isr_vector'
+    found = re.search(rf'\s{re.escape(section)}\s', sections)
+    if args.vectors and not found:                      # the default name may be absent, a name that was given may not
+        print(f'isr_check: {args.elf}: no section {section} (--vectors); arm-none-eabi-objdump -h lists the sections',
+              file=sys.stderr)
+        sys.exit(2)
+    vectors = objdump(args.elf, '-s', '-j', section) if found else ''
     try:
-        lines, bad, _ = analyse(disasm, vectors, args.callback, args.boxing)
+        lines, bad, _ = analyse(disasm, vectors, args.callback, args.boxing, section)
     except ValueError as e:
         print(f'isr_check: {args.elf}: {e}', file=sys.stderr)
         sys.exit(2)

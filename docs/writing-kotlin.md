@@ -144,7 +144,9 @@ kmicro panic: garbage collection inside an interrupt handler at 0x0800....
 `python tools/symbolize.py app.elf log.txt` names the function at that address. Before the program runs,
 [tools/isr_check.py](../tools/isr_check.py) finds such paths in the machine code: `python tools/isr_check.py app.elf`
 follows every entry of the vector table, so handlers aliased with `--c-api` are found too; `--callback NAME` adds a
-function that handlers reach only through a pointer ([how-it-works.md](how-it-works.md#interrupts)).
+function that handlers reach only through a pointer ([how-it-works.md](how-it-works.md#interrupts)). It reads the
+table from the section `.isr_vector`; when the linker script of the board gives it another name, pass
+`--vectors SECTION`, or only the functions named like handlers are checked (the report says so).
 
 What a handler may do:
 
