@@ -11,7 +11,9 @@ Every replacement is literal and checked:
 
     dblparse.cpp, fltparse.cpp  the Kotlin/Native runtime headers are replaced by km_dtoa_shim.h; std::calloc and
                                 std::free by km_dtoa_calloc and km_dtoa_free; the Kotlin string is converted to UTF-8
-                                in a fixed buffer (km_dtoa_utf8) instead of a std::string, without C++ exceptions
+                                in a fixed buffer (km_dtoa_utf8) instead of a std::string, without C++ exceptions;
+                                release() clears the pointer it frees (the out-of-memory exit, which the stock
+                                runtime never takes, would free the blocks of the round before a second time)
     cbigint.h                   #include "../Types.h" is replaced by #include "km_dtoa_shim.h"
 
 Each changed file gets a notice below its license header that says what changed.
@@ -36,6 +38,9 @@ PARSE_NEW = """  char utf8[KM_DTOA_BUF];                       /* kmicro: no std
     ThrowNumberFormatException();
   const char *str = utf8;"""
 
+RELEASE_OLD = '#define release(r) if ((r)) std::free((r));'
+RELEASE_NEW = '#define release(r) if ((r)) { km_dtoa_free((r)); (r) = 0; }'
+
 INCLUDES = ['#include <string>\n', '#include "../Exceptions.h"\n', '#include "../KString.h"\n',
             '#include "../Natives.h"\n', '#include "../Porting.h"\n', '#include "utf8.h"\n',
             '#include "../DoubleConversions.h"\n', '#include "../Types.h"\n']
@@ -47,7 +52,9 @@ NOTICE_PARSE = """
  *   - the Kotlin/Native runtime headers are replaced by km_dtoa_shim.h;
  *   - std::calloc and std::free are replaced by km_dtoa_calloc and km_dtoa_free;
  *   - the Kotlin string is converted to UTF-8 in a fixed buffer (km_dtoa_utf8) instead of a std::string,
- *     without C++ exceptions.
+ *     without C++ exceptions;
+ *   - release() clears the pointer it frees: when memory runs out in a later round, the exit would otherwise
+ *     free the blocks of the round before a second time.
  */
 """
 NOTICE_CBIGINT = """
@@ -72,6 +79,8 @@ def port_parser(s, name):
             first = False
     assert s.count(PARSE_OLD) == 1, name
     s = s.replace(PARSE_OLD, PARSE_NEW)
+    assert s.count(RELEASE_OLD) == 1, name
+    s = s.replace(RELEASE_OLD, RELEASE_NEW)
     s = s.replace('std::calloc(', 'km_dtoa_calloc(').replace('std::free(', 'km_dtoa_free(')
     return add_notice(s, NOTICE_PARSE.format(name=name), name)
 

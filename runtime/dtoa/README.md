@@ -9,7 +9,7 @@ them says so below its license header:
 
 | File | Change |
 |---|---|
-| `dblparse.cpp`, `fltparse.cpp` | The Kotlin/Native runtime headers are replaced by `km_dtoa_shim.h`; `std::calloc` and `std::free` by `km_dtoa_calloc` and `km_dtoa_free`. The Kotlin string is converted to UTF-8 in a fixed buffer (`km_dtoa_utf8`) instead of a `std::string`, without C++ exceptions. |
+| `dblparse.cpp`, `fltparse.cpp` | The Kotlin/Native runtime headers are replaced by `km_dtoa_shim.h`; `std::calloc` and `std::free` by `km_dtoa_calloc` and `km_dtoa_free`. `release()` clears the pointer it frees, so that the out-of-memory exit frees no block twice. The Kotlin string is converted to UTF-8 in a fixed buffer (`km_dtoa_utf8`) instead of a `std::string`, without C++ exceptions. |
 | `cbigint.h` | `#include "../Types.h"` is replaced by `#include "km_dtoa_shim.h"`. |
 
 `km_dtoa_shim.h` is kmicro's own file: the few definitions from the Kotlin/Native runtime headers that the code uses.

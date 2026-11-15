@@ -21,7 +21,9 @@
  *   - the Kotlin/Native runtime headers are replaced by km_dtoa_shim.h;
  *   - std::calloc and std::free are replaced by km_dtoa_calloc and km_dtoa_free;
  *   - the Kotlin string is converted to UTF-8 in a fixed buffer (km_dtoa_utf8) instead of a std::string,
- *     without C++ exceptions.
+ *     without C++ exceptions;
+ *   - release() clears the pointer it frees: when memory runs out in a later round, the exit would otherwise
+ *     free the blocks of the round before a second time.
  */
 
 #include <string.h>
@@ -125,7 +127,7 @@ static const U_32 tens[] = {
     }
 
 #define allocateU64(x, n) if (!((x) = (U_64*) km_dtoa_calloc(1, (n) * sizeof(U_64)))) goto OutOfMemory;
-#define release(r) if ((r)) km_dtoa_free((r));
+#define release(r) if ((r)) { km_dtoa_free((r)); (r) = 0; }
 
 KFloat createFloat(const char *s, KInt e) {
   /* assumes s is a null terminated string with at least one
