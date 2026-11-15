@@ -12,7 +12,8 @@
     --callback  a function handlers reach only through a pointer (a callback registered with a driver): C functions
                 by name, Kotlin ones by their mangled name, e.g. 'kfun:app#onTimer(){}' (an alias is no label)
     --boxing    also list every call outside the standard library that boxes an Int, Long, Short or Byte, in any
-                code (an unsigned == / != or a generic container of a primitive), and fail on them
+                code (an unsigned == / != or a generic container of a primitive), and fail on them. kbuild keeps the
+                box functions out of line, so the call is there to find
 
 The handlers are the entries of the vector table (.isr_vector, without the initial stack pointer and the reset
 handler), whatever their names: under LTO the C name kbuild --c-api gives a Kotlin handler (SysTick_Handler) is

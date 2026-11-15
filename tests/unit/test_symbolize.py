@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """tools/symbolize.py: names for trace addresses from a synthetic nm listing (no tools needed), then, with the xPack
 GCC, on an image built here from symbolize_probe.c: the call before a return address, the inlined levels, a log file,
-UTF-8 text, the exit codes, and the image in a folder that the host's ANSI code page cannot name (tools/frames.py
-too).
+UTF-8 text, a function without a size, the exit codes, and the image in a folder that the host's ANSI code page
+cannot name (tools/frames.py too).
 
 python -m unittest discover -s tests/unit
 """
+import io
 import shutil
 import subprocess
 import sys
@@ -23,14 +24,19 @@ import symbolize  # noqa: E402
 
 HAVE_GCC = paths._find(paths.arm_gcc.env, paths.arm_gcc.patterns, paths.arm_gcc.what) is not None
 
-NM = '\n'.join([        # nm -n -S: address, size, type, name
-    '08000000 00000010 T Reset_Handler',
-    '08000010 00000020 T kfun:app#top(kotlin.Int){}kotlin.Int',
-    '08000030 00000004 T kfun:app#next(){}',
-    '08000034 00000008 W weak_one',
-    '08000040 00000004 D some_data',
-    '08000100 00000000 T no_size',
-    '08000200 T no_size_column',
+NM = '\n'.join([        # nm -n -S --format=sysv
+    '', '', 'Symbols from image.elf:', '',
+    'Name                  Value   Class        Type         Size     Line  Section', '',
+    '__sf                |        |   w  |            NOTYPE|        |     |*UND*',
+    'Reset_Handler       |08000000|   T  |              FUNC|00000010|     |.text',
+    'kfun:app#top(kotlin.Int){}kotlin.Int|08000010|   T  |              FUNC|00000020|     |.text',
+    'kfun:app#next(){}   |08000030|   T  |              FUNC|00000004|     |.text',
+    'weak_one            |08000034|   W  |              FUNC|00000008|     |.text',
+    'some_data           |08000040|   D  |            OBJECT|00000004|     |.data',
+    'kfun:app#of(kotlin.Array<out|0:0>){}|08000080|   t  |              FUNC|00000010|     |.text',
+    'kclass:app.Box      |08000090|   t  |            OBJECT|00000048|     |.text',
+    'no_size             |08000100|   t  |              FUNC|        |     |.text',
+    '_etext              |08000200|   T  |            NOTYPE|        |     |.text',
 ]) + '\n'
 
 
@@ -45,7 +51,7 @@ class Lookup(unittest.TestCase):
     def test_functions_only(self):
         self.assertEqual([n for n, _ in self.names],
                          ['Reset_Handler', 'kfun:app#top(kotlin.Int){}kotlin.Int', 'kfun:app#next(){}', 'weak_one',
-                          'no_size'])
+                          'kfun:app#of(kotlin.Array<out|0:0>){}', 'kclass:app.Box', 'no_size'])
 
     def test_return_address_names_the_caller(self):
         # a call that never returns ends top: its return address is next's first instruction
@@ -61,8 +67,18 @@ class Lookup(unittest.TestCase):
     def test_before_the_first_function(self):
         self.assertEqual(self.name(0x07ffff00), '?')
 
-    def test_size_zero_counts_as_inside(self):
+    def test_a_function_without_a_size_goes_on_to_the_next_symbol(self):
         self.assertEqual(self.name(0x080001f0), 'no_size+0xf0')
+        self.assertEqual(self.name(0x08000300), 'no_size+0x200')         # _etext is no function
+
+    def test_a_log_with_cr_lf_line_ends_keeps_them(self):
+        # stdin passes the CR on where the system's line end is LF
+        for end in ('\r\n', '\n', ''):
+            out = io.StringIO()
+            with mock.patch.object(symbolize, 'has_lines', return_value=False):
+                symbolize.rewrite(['boot' + end, '    at 0x08000030' + end], 'image.elf', self.addrs, self.names, out)
+            self.assertEqual(out.getvalue(), 'boot' + end + '    at 0x08000030  app#top(kotlin.Int){}kotlin.Int+0x20'
+                             + (end or '\n'))
 
 
 @unittest.skipUnless(HAVE_GCC, 'needs the xPack arm-none-eabi-gcc (python toolchain/paths.py)')
@@ -113,6 +129,11 @@ class Image(unittest.TestCase):
             self.assertEqual(lines[0], 'Uncaught Kotlin exception: café 😀')
             self.assertTrue(lines[1].startswith(f'    at 0x{self.ret:08x}  top+0x'), out)
             self.assertEqual(lines[-1], 'after')
+
+    def test_an_assembly_function_without_a_size(self):
+        rc, out, err = self.run_tool(self.elf, hex(self.after_top['bare'] + 4), hex(self.after_top['bare'] + 8))
+        self.assertEqual(rc, 0, err)
+        self.assertEqual([line.split()[1] for line in out.splitlines()], ['bare+0x4', 'bare+0x8'])
 
     def test_fault_line_names_the_faulting_function(self):
         rc, out, _ = self.run_tool(self.elf, stdin=f'kmicro fault: UsageFault at 0x{self.after_top["_start"]:08x}\n')

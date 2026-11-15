@@ -23,6 +23,8 @@ usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot
 - String.toDouble()/toFloat(): the hexadecimal parser calls runtime/hexfloat.c instead of compiling regular
   expressions, so number parsing does not link the Regex engine
 - the stdlib's Unicode tables stay in flash instead of being copied to the heap on first use
+- the functions that box an Int, Long, Short or Byte are never inlined: tools/isr_check.py --boxing finds a box by
+  the call
 - one of these three rewrites that matches nothing in a module that defines the code it rewrites prints a warning
   (stderr): the sign of the IR of another compiler version
 Debug information (kotlinc-native -g) passes through intact: every rewrite keeps or drops whole !dbg attachments.
@@ -169,6 +171,11 @@ if '--size' in args:  # optimize for size: LLVM's minsize/optsize on every Kotli
             sys.exit(f'retarget: --hot {hot_src!r} matches no function (symbols look like '
                      f'kfun:package#function(kotlin.Int){{}}kotlin.Int)')
         print(f'size: minsize everywhere except {n_hot} hot functions', file=sys.stderr)
+# The functions that box an Int, Long, Short or Byte (and the unsigned ones) stay functions: tools/isr_check.py
+# --boxing finds a box by the call to one, and when the LTO link inlines one into its caller, only a call to
+# AllocInstance is left there, like that of any other object.
+BOX_RE = re.compile(r'^(define [^@\n]*@"kfun:kotlin#<U?(?:Int|Long|Short|Byte)-box>\([^\n]*\) )(#\d+ )', re.M)
+text = BOX_RE.sub(r'\1noinline \2', text)
 if '--no-tls' in args:
     text = TLS_RE.sub(r'\1', text)
 if '--single-core' in args:

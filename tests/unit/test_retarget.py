@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """toolchain/retarget.py on a small IR module shaped like kotlinc-native's output: the target attributes equal clang's
 for paths.target_flags(), --no-tls, --single-core, --hot, and the stdlib rewrites (Random seed, hex float parser, Unicode
-tables). The output must compile with clang.
+tables, box functions). The output must compile with clang.
 
 usage: python -m unittest discover tests/unit       (skipped when the LLVM of Kotlin/Native is not installed)
 """
@@ -104,6 +104,27 @@ entry:
   ret void
 }
 
+define ptr @"kfun:kotlin#<Int-box>(kotlin.Int){}kotlin.Any"(i32 %0, ptr %1) #0 {
+entry:
+  ret ptr %1
+}
+
+define ptr @"kfun:kotlin#<ULong-box>(kotlin.ULong){}kotlin.Any"(i64 %0, ptr %1) #0 personality ptr @bridge {
+entry:
+  ret ptr %1
+}
+
+define ptr @"kfun:kotlin#<Char-box>(kotlin.Char){}kotlin.Any"(i16 zeroext %0, ptr %1) #0 {
+entry:
+  ret ptr %1
+}
+
+define ptr @"kfun:app#boxed(kotlin.Int){}kotlin.Any"(i32 %0, ptr %1) #0 {
+entry:
+  %2 = call ptr @"kfun:kotlin#<Int-box>(kotlin.Int){}kotlin.Any"(i32 %0, ptr %1)
+  ret ptr %2
+}
+
 attributes #0 = { "target-cpu"="arm1176jzf-s" "target-features"="+armv6kz,+dsp,+vfp2" }
 attributes #1 = { }
 '''
@@ -118,6 +139,11 @@ target triple = "armv6kz-unknown-linux-gnueabihf"
 define void @bridge() !dbg !10 {
 entry:
   ret void, !dbg !11
+}
+
+define ptr @"kfun:kotlin#<Short-box>(kotlin.Short){}kotlin.Any"(i16 signext %0, ptr %1) #0 !dbg !18 {
+entry:
+  ret ptr %1, !dbg !19
 }
 
 define double @"kfun:kotlin.native.internal.HexStringParser.Companion#parseDouble(kotlin.String){}kotlin.Double"(ptr %0, ptr %1) #0 !dbg !12 {
@@ -163,6 +189,8 @@ attributes #0 = { "target-cpu"="arm1176jzf-s" "target-features"="+armv6kz,+dsp,+
 !15 = !DILocation(line: 3, column: 1, scope: !14)
 !16 = distinct !DISubprogram(name: "NativeRandom", scope: !1, file: !1, line: 4, type: !4, scopeLine: 4, spFlags: DISPFlagDefinition, unit: !0)
 !17 = !DILocation(line: 4, column: 1, scope: !16)
+!18 = distinct !DISubprogram(name: "box", scope: !1, file: !1, line: 5, type: !4, spFlags: DISPFlagDefinition, unit: !0)
+!19 = !DILocation(line: 5, column: 1, scope: !18)
 '''
 
 
@@ -193,6 +221,7 @@ class RetargetTest(unittest.TestCase):
         self.assertIn('%1 = getelementptr inbounds i8, ptr @1, i32 0, !dbg !15', text)
         self.assertIn('%seed = call i64 @kmicro_random_seed(), !dbg !17', text)
         self.assertRegex(text, r'define double @"[^"]*parseDouble[^"]*"\(ptr %0, ptr %1\) #\d+ \{')
+        self.assertRegex(text, r'define ptr @"kfun:kotlin#<Short-box>[^"]*"\([^\n]*\) noinline #\d+ !dbg !18 \{')
         c = subprocess.run([str(paths.clang()), *paths.target_flags(), '-O2', '-c', '-x', 'ir', OUT / 'debug_out.ll',
                             '-o', OUT / 'debug_out.o'], capture_output=True, text=True)
         self.assertEqual(c.returncode, 0, c.stderr)
@@ -258,6 +287,15 @@ class RetargetTest(unittest.TestCase):
             c = subprocess.run([str(paths.clang()), *paths.target_flags(), '-O2', '-c', '-x', 'ir', OUT / 'out.ll',
                                 '-o', OUT / 'out.o'], capture_output=True, text=True)
             self.assertEqual(c.returncode, 0, c.stderr)
+
+    def test_the_integer_box_functions_are_never_inlined(self):
+        # tools/isr_check.py --boxing finds a box by the call to one of them
+        for opts in ((), ('--no-tls', '--single-core', '--size', '--hot', 'kotlin')):
+            r, text = self.retarget(*opts)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            kept = re.findall(r'^define [^\n]*@"kfun:[^"]*#<(\w+)-box>[^\n]* noinline #\d+ ', text, re.M)
+            self.assertEqual(kept, ['Int', 'ULong'], opts)
+            self.assertNotIn('noinline', body(text, 'kfun:app#boxed(kotlin.Int){}kotlin.Any'))
 
     def test_hot(self):
         for regex, hot in (('^kfun:demo#', 4), ('^kfun:demo#fast', 1), (r'kotlin\.Int$', 1), ('§', 1)):

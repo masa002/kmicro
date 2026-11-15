@@ -38,6 +38,10 @@ The programs run with qbuild --icount: QEMU's clock is the number of instruction
 the same instruction in every run. One test (host_clock) keeps the host's clock, which is qbuild's default: one whose
 output does not depend on the clock.
 
+A test is skipped, with the reason on its SKIP line, when its machine does not run the code of the core, when it
+says why it is for a Cortex-M core only (m_profile), or when it needs the periodic interrupt of the QEMU target
+(tick) and that target has no tick.h.
+
 Several tests can share one Kotlin build and one C driver: the driver then tells the cases apart by a TEST_* macro,
 which run_all defines in a small file that includes the driver (build/t/<name>/case_<driver>), so that the runtime,
 compiled once per set of -D values, is shared. A test can instead expect its Kotlin build, its link or a command to
@@ -64,7 +68,7 @@ sys.path.insert(0, str(ROOT / 'tools'))
 import frames  # noqa: E402
 import kn  # noqa: E402
 import paths  # noqa: E402
-from qbuild import RUNS, cflags  # noqa: E402
+from qbuild import DEFAULT_TARGET, RUNS, TARGETS, cflags  # noqa: E402
 
 BUILD = ROOT / 'build/t'
 EXPECTED = ROOT / 'tests/expected'
@@ -113,6 +117,8 @@ class Test:
     folder: str = None                  # the build folder's name, if not the test's
     copy: bool = False                  # compile copies of the C files, made in the build folder
     host_clock: bool = False            # run without qbuild --icount: timers follow the host's clock
+    tick: bool = False                  # the C driver uses the periodic interrupt of the target (its tick.h)
+    m_profile: str = None               # why the test runs for a Cortex-M core only
 
 
 def eh_without_exceptions(d):
@@ -150,6 +156,8 @@ FAULTS = Kotlin('faults', ['tests/faults/faults.kt'])
 
 SYMBOLIZE = Check('symbolize', ['tools/symbolize.py', '{elf}', '{log}'])
 REGEX = 'the Regex engine, which CANON_EQ needs, is most of its flash'
+PENDS = 'its Kotlin code pends SysTick in the System Control Block'
+SYSTICK = 'the example programs SysTick, the timer of the Cortex-M cores, from Kotlin'
 
 
 def uncaught(name, macro, exit=98, **kw):
@@ -157,7 +165,8 @@ def uncaught(name, macro, exit=98, **kw):
 
 
 def isr(name, macro, exit=98, **kw):
-    return Test(name, INTERRUPTS, ['tests/interrupts/main.c'], exit=exit, case={macro: 1, **kw.pop('case', {})}, **kw)
+    return Test(name, INTERRUPTS, ['tests/interrupts/main.c'], exit=exit, case={macro: 1, **kw.pop('case', {})},
+                tick=True, **kw)
 
 
 def native(name, macro, exit=98, **kw):
@@ -188,7 +197,7 @@ TESTS = [
     Test('app_gc_stress_0', Kotlin('app', ['tests/app/app.kt']), ['tests/app/main.c'], heap=32768,
          defs=['KM_GC_STRESS=0', 'TEST_FEW_COLLECTIONS']),      # 0 is off (the check is skipped under --stress)
     Test('event_loop', Kotlin('event_loop', ['tests/event_loop/event_loop.kt']), ['tests/event_loop/main.c'],
-         heap=8192),
+         heap=8192, tick=True),
     Test('kotlin_main', Kotlin('kotlin_main', ['tests/kotlin_main/main.kt'], dict(main=True)),
          ['targets/common/kotlin_main.c']),
     # exceptions: caught, then uncaught; the report, the hook, processUnhandledException
@@ -226,7 +235,7 @@ TESTS = [
     Test('qbuild_folder_name', ADD, ['tests/add/main.c'], folder='テスト café', copy=True,
          checks=[Check('symbolize', ['tools/symbolize.py', '{elf}', '0x08000101']),
                  Check('frames', ['tools/frames.py', '{elf}', '--top', '1'])]),
-    Test('qbuild_icount', None, ['tests/qbuild/ticks.c']),
+    Test('qbuild_icount', None, ['tests/qbuild/ticks.c'], tick=True),
     Test('qbuild_unaligned', None, ['tests/qbuild/unaligned.c']),
     # interrupt handlers: the run-time guards, isr_check, --init-all, reference stores while the collector marks
     isr('isr_alloc', 'TEST_ALLOC', checks=[Check('isr_check', ['tools/isr_check.py', '{elf}'], exit=1), SYMBOLIZE]),
@@ -237,9 +246,9 @@ TESTS = [
     isr('isr_lazy_globals', 'TEST_LAZY'),
     isr('isr_init_all', 'TEST_INIT_ALL', exit=0),
     isr('isr_throw', 'TEST_THROW', exit=0),
-    Test('isr_init_window', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98),
+    Test('isr_init_window', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98, m_profile=PENDS),
     Test('isr_init_window_tls', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98,
-         case={'TEST_THREAD_LOCAL': 1}),
+         case={'TEST_THREAD_LOCAL': 1}, m_profile=PENDS),
     isr('isr_swap_fields', 'TEST_SWAP_FIELDS', exit=0, heap=32768, defs=['KM_GC_STRESS=1'],
         case={'RVR': '1000u', 'ROUNDS': 40000}),
     isr('isr_swap_slots', 'TEST_SWAP_SLOTS', exit=0, heap=32768, defs=['KM_GC_STRESS=1'],
@@ -292,7 +301,7 @@ TESTS = [
     Test('size_throw', Kotlin('size_throw', ['tests/size_throw/throw.kt'], dict(size=True)),
          ['targets/common/kotlin_main.c']),
     Test('selftest_stm32l431', command=board_build),
-    Test('irq', IRQ, ['examples/irq/main.c', 'support/hw.c'],
+    Test('irq', IRQ, ['examples/irq/main.c', 'support/hw.c'], m_profile=SYSTICK,
          checks=[Check('isr_check', ['tools/isr_check.py', '{elf}']),
                  Check('gen_regs', ['tools/gen_regs.py', '--header', 'examples/irq/systick.h', '--sources',
                                     'examples/irq', '--out', '{dir}/gen/Regs.kt', '--package', 'irq'],
@@ -505,6 +514,18 @@ def run_test(t, args):
     return note + ''.join(f', {c.name}' for c in checks)
 
 
+def skip_reason(t, cpu):
+    """Why test t does not run for this core; None when it does."""
+    if t.target != 'l475' and cpu not in RUNS[t.target]:
+        return f'runs on QEMU {t.target}, which does not run {cpu} code'
+    if t.m_profile and paths.profile() != 'M':
+        return f'for a Cortex-M core only: {t.m_profile}'
+    target = t.target if t.target != 'l475' else DEFAULT_TARGET.get(cpu, 'l475')
+    if t.tick and not (TARGETS[target][0] / 'tick.h').exists():
+        return f'needs a periodic interrupt, which the QEMU target {target} does not have (no tick.h)'
+    return None
+
+
 def parse_args():
     names = [t.name for t in TESTS]
     head, usage, *rest = __doc__.split('\n\n')
@@ -533,9 +554,10 @@ def main():
     selected = [t for t in TESTS if not args.names or t.name in args.names]
     failed = skipped = 0
     for t in selected:
-        if t.target != 'l475' and cpu not in RUNS[t.target]:
+        why = skip_reason(t, cpu)
+        if why:
             skipped += 1
-            print(f'SKIP  {t.name:28s} runs on QEMU {t.target}, which does not run {cpu} code')
+            print(f'SKIP  {t.name:28s} {why}')
             continue
         try:
             print(f'PASS  {t.name:28s} {run_test(t, args)}')

@@ -26,15 +26,18 @@ AT = re.compile(r'at (0x[0-9a-fA-F]{8})')
 
 
 def load(elf):
-    r = binutils.run('nm', elf, '-n', '-S')
+    """(addresses in rising order, [(name, size)]) of the image's functions, and of the constants in its code. An
+    assembly function without a .size directive has size 0 (libgcc's __aeabi_drsub, a hand-written Reset_Handler);
+    other symbols without a size are no code: the linker script's, such as _etext."""
+    r = binutils.run('nm', elf, '-n', '-S', '--format=sysv')
     if r.returncode != 0:
         sys.exit(f'symbolize: nm failed on {elf}: {r.stderr.strip()}')
     addrs, names = [], []
     for line in r.stdout.splitlines():
-        p = line.split(maxsplit=3)
-        if len(p) == 4 and p[2] in 'tTwW':
-            addrs.append(int(p[0], 16) & ~1)
-            names.append((p[3], int(p[1], 16)))
+        p = [x.strip() for x in line.rsplit('|', 6)]   # name|value|class|type|size|line|section; a name may hold `|`
+        if len(p) == 7 and p[1] and p[2] and p[2] in 'tTwW' and (p[4] or p[3] == 'FUNC'):
+            addrs.append(int(p[1], 16) & ~1)
+            names.append((p[0], int(p[4] or '0', 16)))
     if not addrs:
         sys.exit(f'symbolize: {elf} has no function symbols')
     return addrs, names
@@ -75,9 +78,9 @@ def source_lines(elf, trace, exact=False):
     return out
 
 
-def detail(levels):
+def detail(levels, end='\n'):
     last = len(levels) - 1
-    return [f'        {fn} ({loc}){" [inlined]" if i < last else ""}\n' for i, (fn, loc) in enumerate(levels)]
+    return [f'        {fn} ({loc}){" [inlined]" if i < last else ""}{end}' for i, (fn, loc) in enumerate(levels)]
 
 
 def rewrite(lines, elf, addrs, names, out):
@@ -89,9 +92,11 @@ def rewrite(lines, elf, addrs, names, out):
             continue
         a = int(m.group(1), 16)
         exact = 'kmicro fault:' in line              # the stacked PC, not a return address
-        out.write(line.rstrip('\n') + f'  {name_of(addrs, names, a, exact)}\n')
+        text = line.rstrip('\r\n')                   # a log with CR LF line ends keeps them: stdin passes the CR on
+        end = line[len(text):] or '\n'
+        out.write(f'{text}  {name_of(addrs, names, a, exact)}{end}')
         if dwarf:
-            out.writelines(detail(source_lines(elf, [a], exact).get(a & ~1, [])))
+            out.writelines(detail(source_lines(elf, [a], exact).get(a & ~1, []), end))
         out.flush()
 
 

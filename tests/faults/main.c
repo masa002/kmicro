@@ -30,7 +30,11 @@ static uint32_t pad_argument(uint32_t fallback)
     struct { char *buf; uint32_t len; } block = { line, sizeof line };
     register uint32_t r0 __asm("r0") = 0x15u;   /* SYS_GET_CMDLINE */
     register void *r1 __asm("r1") = &block;
+#if __ARM_ARCH_PROFILE == 'M'
     __asm volatile("bkpt 0xAB" : "+r"(r0) : "r"(r1) : "memory");
+#else                                           /* the semihosting call of the A and R profiles, in Thumb state */
+    __asm volatile("svc 0xAB" : "+r"(r0) : "r"(r1) : "memory");
+#endif
     if (r0 != 0)
         return fallback;
     uint32_t v = fallback;
