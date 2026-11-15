@@ -37,6 +37,12 @@ fun floatStructCallback(): Int =                            // C calls Kotlin, w
         v.useContents { cValue<vec2_t> { x = this@useContents.x * k; y = this@useContents.y * k } }
     })                                                      // 3.0, -5.0
 
+@CName("kt_float_struct_loop")
+fun floatStructLoop(): Int = vec_count(6000)
+
+@CName("kt_one_float_struct")
+fun oneFloatStruct(): Int = one_half(cValue<one_t> { v = 42.0f }).useContents { v.toInt() }
+
 fun twice(x: Int): Int = x * 2
 
 @CName("kt_callback")

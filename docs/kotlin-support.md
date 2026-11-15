@@ -135,7 +135,7 @@ from the Cortex-M0 to the Cortex-M33, and what was checked on each.
 | memScoped, usePinned/addressOf (on a String too), readBytes, cValuesOf, vectorOf | works | `d_natives` |
 | nativeHeap alloc/free in any order | works | freed blocks are reused and merged with their neighbours |
 | native memory beyond `KM_INTEROP_BYTES` (1 KB) | partly | throws OutOfMemoryError; raise the arena with `-D KM_INTEROP_BYTES=N` |
-| structs by value (CValue, useContents, cValue{}) | works | [tests/cinterop_shapes](../tests/cinterop_shapes), structs of floats and doubles included, on cores with and without an FPU. Not on a core without an FPU: a struct of one float returned by value, and a struct of floats returned through a C function pointer that Kotlin calls; kbuild stops with a message |
+| structs by value (CValue, useContents, cValue{}) | works | [tests/cinterop_shapes](../tests/cinterop_shapes), structs of floats and doubles included, on cores with and without an FPU. Not on a core without an FPU: a struct of floats returned through a C function pointer that Kotlin calls; kbuild stops with a message |
 | staticCFunction callbacks | works | an exception thrown inside one does not reach a Kotlin try around the C call, as on stock: catch it in the callback |
 | header static inline functions, with loops, inline assembly or restrict pointers | works | |
 | StableRef | works | at most `KM_STABLE_REFS` (16) live at once |

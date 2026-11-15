@@ -20,6 +20,19 @@ vec2_t vec_scale(vec2_t v, float k);
 cplx_t cplx_conj(cplx_t z);
 typedef vec2_t (*vec_cb_t)(vec2_t, float);
 int32_t vec_apply(vec_cb_t cb);                 /* calls cb({ 1.5, -2.5 }, 2) and returns x * 100 + y */
+typedef struct { float v; } one_t;              /* 4 bytes: in r0 on a core without an FPU */
+one_t one_half(one_t a);
+
+/* such a call in a loop of a header's inline function: 6000 passes must not take 6000 result slots of stack */
+static inline int32_t vec_count(int32_t n)
+{
+    float s = 0;
+    for (int32_t i = 0; i < n; i++) {
+        vec2_t one = { 1.0f, 0.0f };
+        s += vec_scale(one, 1.0f).x;
+    }
+    return (int32_t)s;
+}
 
 typedef int32_t (*drv_cb_t)(int32_t);
 void drv_set_cb(drv_cb_t cb);                   /* the driver keeps a callback ... */
