@@ -74,6 +74,23 @@ static inline void copy_check(const ArrayHeader *src, int32_t from, const ArrayH
         ThrowArrayIndexOutOfBoundsException();
 }
 
+/* Copies and fills go element by element, each element with one load and one store. volatile: the compiler must
+ * not turn the loop into memmove or memset, which newlib-nano does byte by byte. An interrupt handler that reads an
+ * element in the middle of a copy then gets the old value or the new one, never bytes of both: for a reference, a
+ * valid pointer and not a wild one. (An element of 8 bytes, a Long or a Double, is two words here as in any store
+ * of one.) The direction is memmove's: backwards when the destination overlaps the source from above. */
+#define KM_COPY(T, dst, src, n)                                                                                \
+    do {                                                                                                       \
+        volatile T *d_ = (dst);                                                                                \
+        const volatile T *s_ = (src);                                                                          \
+        if ((uintptr_t)d_ <= (uintptr_t)s_)                                                                    \
+            for (int32_t i_ = 0; i_ < (n); i_++)                                                               \
+                d_[i_] = s_[i_];                                                                               \
+        else                                                                                                   \
+            for (int32_t i_ = (n); i_-- > 0;)                                                                  \
+                d_[i_] = s_[i_];                                                                               \
+    } while (0)
+
 /* Element access is a bounds check and one load or store: always inlined into the Kotlin code under LTO (with
  * minsize the inliner would otherwise keep a call per element, several per element in a tight interrupt loop). */
 #define KM_ACCESS __attribute__((always_inline))
@@ -104,15 +121,14 @@ static inline void copy_check(const ArrayHeader *src, int32_t from, const ArrayH
     {                                                                                                          \
         ArrayHeader *h = (ArrayHeader *)a;                                                                     \
         checkRangeIndexes(from, to, (int32_t)h->count_);                                                       \
-        T *p = (T *)km_array_data(h);                                                                          \
+        volatile T *p = (T *)km_array_data(h);                  /* (volatile: see KM_COPY) */                  \
         for (int32_t i = from; i < to; i++)                                                                    \
             p[i] = v;                                                                                          \
     }                                                                                                          \
     void Kotlin_##Name##Array_copyImpl(const ObjHeader *a, int32_t from, ObjHeader *d, int32_t to, int32_t n)  \
     {                                                                                                          \
         copy_check((const ArrayHeader *)a, from, (const ArrayHeader *)d, to, n);                               \
-        memmove((T *)km_array_data((ArrayHeader *)d) + to, (T *)km_array_data((ArrayHeader *)a) + from,        \
-                (size_t)n * sizeof(T));                                                                        \
+        KM_COPY(T, (T *)km_array_data((ArrayHeader *)d) + to, (T *)km_array_data((ArrayHeader *)a) + from, n); \
     }
 KM_PRIM_ARRAY(Boolean, bool)
 KM_PRIM_ARRAY(Byte, int8_t)
@@ -147,14 +163,15 @@ void Kotlin_Array_fillImpl(ObjHeader *a, int32_t from, int32_t to, ObjHeader *v)
     ArrayHeader *h = (ArrayHeader *)a;
     checkRangeIndexes(from, to, (int32_t)h->count_);
     km_ref_stored();
+    ObjHeader *volatile *p = km_array_refs(h);                      /* (volatile: see KM_COPY) */
     for (int32_t i = from; i < to; i++)
-        km_array_refs(h)[i] = v;
+        p[i] = v;
 }
 void Kotlin_Array_copyImpl(const ObjHeader *a, int32_t from, ObjHeader *d, int32_t to, int32_t n)
 {
     copy_check((const ArrayHeader *)a, from, (const ArrayHeader *)d, to, n);
     km_ref_stored();
-    memmove(km_array_refs((ArrayHeader *)d) + to, km_array_refs((ArrayHeader *)a) + from, (size_t)n * sizeof(ObjHeader *));
+    KM_COPY(ObjHeader *, km_array_refs((ArrayHeader *)d) + to, km_array_refs((ArrayHeader *)a) + from, n);
 }
 extern const ArrayHeader theEmptyArray;
 KM_NOTHROW ObjHeader *Kotlin_emptyArray(ObjHeader **result) { return km_return(result, (ObjHeader *)&theEmptyArray); }

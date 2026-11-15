@@ -153,7 +153,10 @@ What a handler may do:
 - **Read and store object references**: fields, array elements, globals. When a handler stores a reference while the
   collector is marking, the collector marks again; after `KM_GC_REMARKS` passes (3) it marks the last time with
   interrupts masked. This costs one byte store per reference store. C code that stores a Kotlin reference from a
-  handler calls `km_ref_stored()` ([runtime/kmicro.h](../runtime/kmicro.h)).
+  handler calls `km_ref_stored()` ([runtime/kmicro.h](../runtime/kmicro.h)). An array element that a handler reads
+  while the main code copies inside the array or fills it (`copyInto`, `fill`, `ArrayList.removeAt`) is the old
+  value or the new one, never a part of each; an element of a `LongArray` or `DoubleArray` is two words, as any
+  `Long` that is not atomic.
 - **Use the atomics**: `AtomicInt`, `AtomicLong`, `AtomicReference`, the atomic arrays, and `@Volatile` fields of any
   type. They are atomic against handlers: 32-bit values and references with LDREX/STREX (an interrupt in between
   makes the update retry), 64-bit values with interrupts masked. ARMv6-M (Cortex-M0, M0+, M1) has no LDREX/STREX:

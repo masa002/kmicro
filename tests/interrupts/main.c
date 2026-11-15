@@ -36,6 +36,8 @@ void SysTick_Handler(void)
     swap_fields();
 #elif defined(TEST_SWAP_SLOTS)
     swap_slots();
+#elif defined(TEST_COPY)
+    copy_read();
 #endif
 }
 
@@ -121,6 +123,19 @@ int main(void)
     kmicro_put_int(bad);
     kmicro_puts(bad == 0 && s_ticks > 100 ? "  OK\n" : "  BROKEN\n");
     return bad != 0 || s_ticks <= 100;
+#elif defined(TEST_COPY)
+    (void)b;
+    int32_t size = copy_setup() - 40;   /* four arrays of 8 */
+    systick(RVR);
+    int32_t torn = copy_rotate(ROUNDS, size / 4);
+    systick(0);
+    kmicro_stats(&a);
+    kmicro_puts("copied and filled under ");
+    kmicro_put_int(s_ticks);
+    kmicro_puts(" handler calls, torn elements ");
+    kmicro_put_int(torn);
+    kmicro_puts(torn == 0 && s_ticks > 100 ? "  OK\n" : "  BROKEN\n");
+    return torn != 0 || s_ticks <= 100;
 #else                                   /* the cases the runtime must stop */
     (void)a;
     (void)b;

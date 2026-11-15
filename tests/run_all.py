@@ -238,6 +238,7 @@ TESTS = [
         case={'RVR': '1000u', 'ROUNDS': 40000}),
     isr('isr_swap_slots', 'TEST_SWAP_SLOTS', exit=0, heap=32768, defs=['KM_GC_STRESS=1'],
         case={'RVR': '1000u', 'ROUNDS': 40000}),
+    isr('isr_copy', 'TEST_COPY', exit=0, case={'RVR': '97u', 'ROUNDS': 20000}),
     # runtime natives: platform values, console input, entropy, and the APIs kmicro does not support
     native('natives_platform', 'TEST_PLATFORM', exit=3,
            checks=[Check('missing_natives', ['tools/missing_natives.py', '--check', '--ir', '{kotlin}/m4.ll'])]),
