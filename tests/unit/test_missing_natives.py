@@ -22,6 +22,8 @@ define void @"kfun:#main(){}"() {
 
 declare void @llvm.memset.p0.i32(ptr, i8, i32, i1)
 declare ptr @__cxa_begin_catch(ptr)
+declare i32 @_3131343a2f6170702f6170702e6b74_1_knbridge1(i32)
+declare void @"_3131343a2f6170702f6170702e6b74_2_kncfun3"(ptr)
 declare ptr @AllocInstance(ptr, ptr)
 declare zeroext i1 @"Kotlin_Char_isISOControl"(i16 zeroext)
 '''
@@ -38,7 +40,7 @@ class DeclaredFunctions(unittest.TestCase):
         return path
 
     def test_declared_functions(self):
-        m4 = self.ir('m4.ll', MODULE)
+        m4 = self.ir('m4.ll', MODULE)                # the cinterop bridges are the program's own: not listed
         self.assertEqual(missing_natives.declared_functions([m4]), {
             'AllocInstance': (('', 'ptr', (('', 'ptr'), ('', 'ptr'))), m4),
             'Kotlin_Char_isISOControl': (('zeroext', 'i1', (('zeroext', 'i16'),)), m4)})

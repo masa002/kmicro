@@ -18,8 +18,9 @@ IR. Each stdlib native is one of:
 the runtime calls the compiler emits itself, such as LookupInterfaceTableRecord. A declared function that runtime/
 defines must have the same LLVM signature (types, and zeroext/signext on narrow integers): link-time optimisation
 treats a call through a mismatched signature as undefined behaviour. A declared function that neither runtime/ nor
-newlib/libgcc defines is listed like a missing native. A file that declares no function is an error: a compiled
-Kotlin program always declares runtime functions, so such a file is empty, cut or not LLVM IR.
+newlib/libgcc defines is listed like a missing native. The cinterop bridges of a program (..._knbridgeN,
+..._kncfunN) are not looked at: kbuild compiles them into the program's bridges.o. A file that declares no function is
+an error: a compiled Kotlin program always declares runtime functions, so such a file is empty, cut or not LLVM IR.
 
     -v       list the implemented and Objective-C natives too
     --check  exit 1 when a native is missing or a signature differs
@@ -34,6 +35,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'toolchain'))
+import bridges  # noqa: E402
 import paths  # noqa: E402
 
 UNSUPPORTED_C = 'unsupported.c'
@@ -140,12 +142,13 @@ def library_symbols():
 
 
 def declared_functions(irs):
-    """{name: (signature, file)} of the functions the IR files declare, without LLVM's intrinsics and the C++ ABI.
-    A file that declares none stops the run."""
+    """{name: (signature, file)} of the functions the IR files declare, without LLVM's intrinsics, the C++ ABI and
+    the program's cinterop bridges (defined in its bridges.o, not in the runtime). A file that declares none stops the
+    run."""
     declared = {}
     for ir in irs:
         funcs = {n: s for n, s in ir_functions(ir.read_text(errors='replace'), 'declare').items()
-                 if not n.startswith(('llvm.', '__', '_Z'))}
+                 if not n.startswith(('llvm.', '__', '_Z')) and not bridges.ROOT.search(n)}
         if not funcs:
             sys.exit(f'missing_natives: {ir} declares no function: it is not the IR of a compiled Kotlin program')
         for name, sig in funcs.items():
