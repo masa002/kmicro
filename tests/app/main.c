@@ -28,6 +28,12 @@ int main(void)
     int32_t r = k_event(2, 0);                 /* Tick(0) -> 0, log size */
     kmicro_stats_t st;
     kmicro_stats(&st);
+#ifdef TEST_FEW_COLLECTIONS                    /* the heap fills twice here; hundreds: one per allocation */
+    if (st.gc_count > 20) {
+        bad++;
+        kmicro_puts("  too many collections\n");
+    }
+#endif
     kmicro_puts("app: last*1000+log = "); kmicro_put_int(r);
     kmicro_puts("  gcs="); kmicro_put_int((int32_t)st.gc_count);
     kmicro_puts(" peak="); kmicro_put_int((int32_t)st.peak_bytes);

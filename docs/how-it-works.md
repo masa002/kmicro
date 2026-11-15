@@ -153,7 +153,7 @@ such as `kmicro panic: too many globals (raise KM_GLOBALS, now 160)`.
 | `KM_TLS_SLOTS` | 64 | 4 B each | thread-local reference slots, all modules together |
 | `KM_MARK_STACK` | 96 | 4 B each | the collector's mark stack; not a limit: an overflow costs a rescan of the heap |
 | `KM_GC_REMARKS` | 3 | none | how often an interrupt handler that stores references can make the collector mark again; the pass after that runs with interrupts masked |
-| `KM_GC_STRESS` | off | none | `-D KM_GC_STRESS=1`: a full collection before every allocation, and freed memory overwritten; for tests |
+| `KM_GC_STRESS` | 0 | none | 1 (`-D KM_GC_STRESS=1`): a full collection before every allocation, and freed memory overwritten; for tests |
 
 Two limits are fixed in `runtime/eh.c`: a stack trace keeps at most 12 frames (`KM_TRACE_MAX`), and the
 uncaught-exception report prints at most 8 exceptions of a cause chain (`KM_CAUSES_MAX`).

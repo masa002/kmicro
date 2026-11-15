@@ -183,6 +183,8 @@ TESTS = [
     Test('coroutines', Kotlin('coroutines', ['tests/coroutines/coroutines.kt']), ['tests/coroutines/main.c'],
          heap=4096),
     Test('app', Kotlin('app', ['tests/app/app.kt']), ['tests/app/main.c'], heap=32768),
+    Test('app_gc_stress_0', Kotlin('app', ['tests/app/app.kt']), ['tests/app/main.c'], heap=32768,
+         defs=['KM_GC_STRESS=0', 'TEST_FEW_COLLECTIONS']),      # 0 is off, as the table of settings says
     Test('event_loop', Kotlin('event_loop', ['tests/event_loop/event_loop.kt']), ['tests/event_loop/main.c'],
          heap=8192),
     Test('kotlin_main', Kotlin('kotlin_main', ['tests/kotlin_main/main.kt'], dict(main=True)),

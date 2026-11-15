@@ -40,6 +40,9 @@
 #ifndef KM_GC_REMARKS
 #define KM_GC_REMARKS 3                              /* marking passes an interrupt handler may restart (mark()) */
 #endif
+#ifndef KM_GC_STRESS
+#define KM_GC_STRESS  0                              /* 1: collect before every allocation, overwrite freed memory */
+#endif
 
 #define FREE_BIT 1u
 #define MARK_BIT 2u
@@ -251,7 +254,7 @@ static uint32_t *alloc_block(uint32_t object_bytes)
     if (object_bytes > KM_HEAP_BYTES)
         ThrowOutOfMemoryError();
     uint32_t bytes = round8(object_bytes);
-#ifdef KM_GC_STRESS
+#if KM_GC_STRESS
     collect();                                       /* stress: a full collection before every allocation */
 #endif
     uint32_t *b = take(bytes);
@@ -607,7 +610,7 @@ static void sweep(void)
                 live = true;
             } else {
                 s_st.objects_freed++;
-#ifdef KM_GC_STRESS
+#if KM_GC_STRESS
                 memset(b, 0xA5, size);               /* stress: a dangling reference reads garbage, not old data */
 #endif
             }
