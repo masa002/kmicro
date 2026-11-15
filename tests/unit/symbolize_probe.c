@@ -9,3 +9,5 @@ static inline void level2(int x) { if (x > 5) level3(x * 2); plain(x); }
 __attribute__((noinline)) int top(int x) { level2(x); plain(x + 1); return x; }
 int main(void) { return top(7); }
 void _start(void) { main(); }
+/* An assembly function without a .size directive, as in a hand-written start file. */
+__asm(".text\n.thumb_func\n.global bare\n.type bare, %function\nbare:\n  bl plain\n  bl plain\n");
