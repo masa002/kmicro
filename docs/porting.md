@@ -355,6 +355,7 @@ purpose. For a board, replace `start.c` and `l475.ld` with its own and write the
   larger core: such a core has the HardFault exception only, without MemManage, BusFault and UsageFault and their
   status registers (CFSR, MMFAR, BFAR), and a Cortex-M0 or M1 has no MPU.
 - **Limits.** The stack-overflow report has no PC. A frame larger than the guard can step over it:
-  `python tools/frames.py app.elf` lists the largest frames, and `--limit 4096` makes it fail for a larger one.
+  `python tools/frames.py app.elf` lists the largest frames, and `--limit 4096` makes it fail for a larger one and
+  for a function that computes the size of its frame (a variable-length array, `alloca()`).
 
 The STM32L431 example prints a shorter fault report (exception number, PC, LR, CFSR) and has no MPU guards.

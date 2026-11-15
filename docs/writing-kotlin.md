@@ -91,7 +91,9 @@ compared with the same program without it.
 
    `checksum()` was inlined into `run_main`, the start code's call of `main`. frames.py reads each function's
    prologue up to its first call, so it also sees a prologue placed after an early return. `--limit BYTES` makes it
-   exit 1 when a frame is larger.
+   exit 1 when a frame is larger. A C function with a variable-length array or `alloca()` takes an amount it computes
+   when it runs: frames.py lists it first, with a `+` after the bytes of its prologue, and `--limit` fails for it
+   unless `--allow FUNCTION` names it.
 5. **Use loops, or `tailrec`, instead of deep recursion.** There is no `StackOverflowError`. On `qemu-l475` an MPU
    guard below the stack stops the program with `kmicro fault: stack overflow` (exit 99) before the stack reaches
    `.bss`; a board without such a guard ([porting.md](porting.md#optional-a-fault-report-and-mpu-guards)) lets the

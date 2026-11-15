@@ -27,8 +27,9 @@ or mps2-an505; or on mps2-an386, for a test that says so) and checks:
   the runtime's tables, the globals) at most 64 KB, unless the test is marked large with the reason. qbuild links
   the image into that memory, so the stack is what those 64 KB leave, and a program that needs more stops with a
   stack overflow; a test marked large is linked with qbuild --large;
-- that no function of the image has a stack frame larger than the 4 KB stack guard of the qemu-l475 target, which
-  such a frame could step over without a fault (tools/frames.py), unless the test says why it has one;
+- that no function of the image has a stack frame larger than the 4 KB stack guard of the qemu-l475 target, or of
+  a size the function computes (a variable-length array, alloca), which such a frame could step over without a fault
+  (tools/frames.py), unless the test says why it has one;
 - the checks the test adds: a tool run on the image or on the output (isr_check, symbolize, frames, gen_regs,
   missing_natives), its exit code and its output against tests/expected/<name>.<check>.txt (not with --stress,
   which builds another runtime than users get).
@@ -102,7 +103,8 @@ class Test:
     defs: list = field(default_factory=list)    # more -D values for qbuild: the runtime and every C file
     target: str = 'l475'                # qbuild --target
     large: str = None                   # why the image may exceed the STM32L431: linked with qbuild --large
-    big_frame: str = None               # why a function of the image may have a frame larger than the stack guard
+    big_frame: str = None               # why a function of the image may have a frame larger than the stack guard,
+                                        # or of a size it computes
     checks: list = field(default_factory=list)
     fails: str = None                   # the step that must fail: 'kotlin' (kn.build) or 'link' (qbuild)
     command: object = None              # instead of a build: a function (build folder) -> the command line to run
@@ -268,7 +270,7 @@ TESTS = [
     fault('stack_budget', 'TEST_DEPTH'),
     fault('stack_budget_large', 'TEST_DEPTH', exit=0, large='52 KB of stack, and the STM32L431 has 40 KB left'),
     fault('null_field', 'TEST_NULL_FIELD'),
-    fault('stack_guard', 'TEST_GUARD_SCAN', exit=0,
+    fault('stack_guard', 'TEST_GUARD_SCAN', exit=0, big_frame='an alloca that takes the stack down to the guard',
           checks=[Check('scan', ['tests/faults/guard_scan.py', '{elf}'])]),
     fault('stack_array', 'TEST_BIG_ARRAY', exit=0, big_frame='a 56 KB array on the stack, which frames.py must report',
           large='the array is 56 KB of stack, and the STM32L431 has 40 KB left',

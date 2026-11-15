@@ -24,7 +24,8 @@ A program can declare, each on a comment line of its own:
     // difftest: ulp N -- reason          floating-point numbers in the output may differ by N units in the last
                                           place: of a Float where the program prints an `f` after the number
                                           ("${sin(x)}f"), of a Double elsewhere. Integers must be equal
-    // difftest: frame -- reason          allowed to have a stack frame larger than the 4 KB stack guard
+    // difftest: frame -- reason          allowed to have a stack frame larger than the 4 KB stack guard, or of a
+                                          size the function computes
 
 Each line of the report shows SAME, DIFF, OVER (same output, but the image does not fit the STM32L431), FRAME (same
 output, but a function of the image has a stack frame larger than the stack guard, which it could step over without a
