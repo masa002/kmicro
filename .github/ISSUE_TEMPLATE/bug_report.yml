@@ -47,6 +47,12 @@ body:
         - cortex-m23
         - cortex-m33
         - cortex-m33f
+        - cortex-m55
+        - cortex-m55-nomve
+        - cortex-m55-nofp
+        - cortex-m85
+        - cortex-m85-nomve
+        - cortex-m85-nofp
     validations:
       required: true
   - type: dropdown

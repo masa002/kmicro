@@ -81,7 +81,8 @@ class Targets(unittest.TestCase):
     def test_a_core_the_target_does_not_run_is_refused(self):
         for cpu, target, default in (('cortex-m4f', 'an505', 'l475'), ('cortex-m33', 'l475', 'an505'),
                                      ('cortex-m4f', 'an385', 'l475'), ('cortex-m7', 'an386', 'an500'),
-                                     ('cortex-m4f', 'an547', 'l475')):
+                                     ('cortex-m4f', 'an547', 'l475'), ('cortex-m55', 'an505', 'an547'),
+                                     ('cortex-m85-nofp', 'an505', 'an547')):
             r = run('--cpu', cpu, '--target', target)
             self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
             self.assertIn(f'qbuild: --target {target} ', r.stderr)

@@ -1,6 +1,7 @@
 # Copyright 2026 the kmicro authors (NOTICE).
 # SPDX-License-Identifier: Apache-2.0
-"""toolchain/paths.py: which installed tool version is picked, and the `python toolchain/paths.py` check.
+"""toolchain/paths.py: which installed tool version is picked, the `python toolchain/paths.py` check, and the table of
+cores (its two tests are skipped when arm-none-eabi-gcc or the LLVM of Kotlin/Native is not installed).
 
 python -m unittest discover -s tests/unit
 """
@@ -114,6 +115,39 @@ class Check(unittest.TestCase):
         self.assertIn('NOT FOUND', llvm[0])
         self.assertIn(str(Path(d) / 'data' / 'dependencies'), llvm[0])
         self.assertIn('(KONAN_DATA_DIR)', llvm[0])
+
+
+class Cores(unittest.TestCase):
+    def each_core(self):
+        """Every core of the table, as the core of this process while the caller looks at it."""
+        saved = os.environ.get('KMICRO_CPU')
+        try:
+            for cpu in paths.CORES:
+                os.environ['KMICRO_CPU'] = cpu
+                yield cpu
+        finally:
+            os.environ.pop('KMICRO_CPU', None)
+            if saved is not None:
+                os.environ['KMICRO_CPU'] = saved
+
+    @unittest.skipUnless(paths._find(paths.arm_gcc.env, paths.arm_gcc.patterns, paths.arm_gcc.what), 'needs GCC')
+    def test_every_core_has_its_newlib_and_libgcc(self):
+        for cpu in self.each_core():
+            self.assertTrue((paths.newlib_lib() / 'libc_nano.a').is_file(), f'{cpu}: {paths.newlib_lib()}')
+            self.assertTrue(paths.libgcc_ok(), f'{cpu}: libgcc in {paths.multilib()}')
+
+    @unittest.skipUnless(paths._find(paths.llvm.env, paths.llvm.patterns, paths.llvm.what), 'needs LLVM')
+    def test_the_flags_give_the_fpu_and_mve_the_entry_stands_for(self):
+        # -mcpu alone turns on what the full core has: an entry without the FPU or without MVE has to take it away
+        for cpu in self.each_core():
+            r = subprocess.run([str(paths.clang()), *paths.target_flags(), '-dM', '-E', '-x', 'c', '-'], input='',
+                               capture_output=True, text=True, errors='replace')
+            self.assertEqual(r.returncode, 0, f'{cpu}: {r.stderr}')
+            macros = set(re.findall(r'^#define (\w+)', r.stdout, re.M))
+            fpu = '-mfloat-abi=hard' in paths.target_flags()
+            self.assertEqual('__ARM_FP' in macros, fpu, cpu)
+            self.assertEqual('__ARM_PCS_VFP' in macros, fpu, cpu)           # the hard-float calling convention
+            self.assertEqual('__ARM_FEATURE_MVE' in macros, cpu in ('cortex-m55', 'cortex-m85'), cpu)
 
 
 class BugReportForm(unittest.TestCase):

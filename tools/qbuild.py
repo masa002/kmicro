@@ -23,9 +23,10 @@ usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--
                an505: the same on QEMU mps2-an505, a Cortex-M33 with an FPU (the default for cortex-m33, cortex-m33f
                and cortex-m23, whose ARMv8-M Baseline code it runs too). The program runs in the Secure state, in
                which that core starts
-               an547: the same on QEMU mps3-an547, a Cortex-M55 with an FPU and MVE, in the Secure state too. It
-               runs the code of the three ARMv8-M cores as well. QEMU gives this machine 2 GB of memory, which a
-               Windows host commits when the machine starts
+               an547: the same on QEMU mps3-an547, a Cortex-M55 with an FPU and MVE, in the Secure state too (the
+               default for the cortex-m55 and cortex-m85 cores: QEMU has no Cortex-M85). It runs the code of the
+               three ARMv8-M cores as well. QEMU gives this machine 2 GB of memory, which a Windows host commits when
+               the machine starts
     --large    l475, an385, an500, an505 and an547 give a program the memory of the STM32L431 kmicro aims at, 256 KB
                of flash and 64 KB of RAM: one that does not fit fails to link, and the stack ends where it would end
                on that chip. With --large the program gets the memory of the STM32L475: 1 MB of flash and 96 KB of
@@ -65,9 +66,11 @@ TARGETS = {   # start code and linker script, QEMU machine, the newlib system-ca
 }
 # The machine a core's programs run on when --target is not given: its own where QEMU has one with this start code,
 # else the STM32L475, whose Cortex-M4F runs the code of every core below it. QEMU has no Cortex-M23: its code, ARMv8-M
-# Baseline, runs on the Cortex-M33.
+# Baseline, runs on the Cortex-M33. It has no Cortex-M85 either: its code runs on the Cortex-M55, which has every
+# instruction of that core but those of PACBTI, and kmicro builds none of them (paths.py).
+_M55 = ('cortex-m55', 'cortex-m55-nomve', 'cortex-m55-nofp', 'cortex-m85', 'cortex-m85-nomve', 'cortex-m85-nofp')
 DEFAULT_TARGET = {'cortex-m3': 'an385', 'cortex-m7': 'an500', 'cortex-m7-sp': 'an500', 'cortex-m23': 'an505',
-                  'cortex-m33': 'an505', 'cortex-m33f': 'an505'}
+                  'cortex-m33': 'an505', 'cortex-m33f': 'an505', **dict.fromkeys(_M55, 'an547')}
 # The cores whose code each machine runs. A machine does not run code for an FPU or for instructions its core lacks.
 # And the start code is compiled for the core: its stack and null guards are written for the MPU of ARMv8-M or for the
 # one of the older cores, and on a machine with the other MPU the program runs with no guard at all.
@@ -75,7 +78,7 @@ _M3 = ('cortex-m0', 'cortex-m0plus', 'cortex-m1', 'cortex-m3')
 _M4F = (*_M3, 'cortex-m4', 'cortex-m4f')
 _M33F = ('cortex-m23', 'cortex-m33', 'cortex-m33f')
 RUNS = {'l475': _M4F, 'an386': _M4F, 'an385': _M3, 'an500': (*_M4F, 'cortex-m7', 'cortex-m7-sp'), 'an505': _M33F,
-        'an547': _M33F}
+        'an547': (*_M33F, *_M55)}
 
 
 def cflags():

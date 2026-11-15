@@ -35,7 +35,15 @@ KOTLIN_NATIVE_VERSION = '2.4.21'          # retarget.py reads this compiler's IR
 # The cores kmicro builds for: the clang target, the flags that choose the core and its floating-point unit, and the
 # newlib / libgcc multilib of the xPack GCC that matches them. A core without an FPU uses the soft-float calling
 # convention. Every 32-bit little-endian Thumb target has the data layout that retarget.py expects.
+# The Cortex-M55 and the Cortex-M85 are made with or without their FPU (half, single and double precision) and with
+# or without MVE. Each has three entries: with both, as -mcpu means the core to clang and GCC; with the FPU only
+# (-nomve); with neither (-nofp: -mfpu=none takes MVE away too, whose registers are the FPU's). The libraries are
+# those of ARMv8-M Mainline, which GCC links for these cores too (arm-none-eabi-gcc -mcpu=cortex-m55 -mfloat-abi=hard
+# -print-multi-directory). A core with MVE and no FPU has no entry: -nofp code runs on it. Nothing is built with
+# -mbranch-protection: the code for the Cortex-M85 has no PACBTI instruction, and GCC's libraries with PACBTI are not
+# used.
 _SOFT = ['-mfpu=none', '-mfloat-abi=soft']
+_FP_V81 = ['-mfpu=fp-armv8-fullfp16-d16', '-mfloat-abi=hard']
 CORES = {
     'cortex-m0': ('thumbv6m-none-eabi', ['-mcpu=cortex-m0', *_SOFT], 'thumb/v6-m/nofp'),
     'cortex-m0plus': ('thumbv6m-none-eabi', ['-mcpu=cortex-m0plus', *_SOFT], 'thumb/v6-m/nofp'),
@@ -52,6 +60,14 @@ CORES = {
     'cortex-m33': ('thumbv8m.main-none-eabi', ['-mcpu=cortex-m33', *_SOFT], 'thumb/v8-m.main/nofp'),
     'cortex-m33f': ('thumbv8m.main-none-eabihf', ['-mcpu=cortex-m33', '-mfpu=fpv5-sp-d16', '-mfloat-abi=hard'],
                     'thumb/v8-m.main+fp/hard'),
+    'cortex-m55': ('thumbv8.1m.main-none-eabihf', ['-mcpu=cortex-m55', *_FP_V81], 'thumb/v8-m.main+dp/hard'),
+    'cortex-m55-nomve': ('thumbv8.1m.main-none-eabihf', ['-mcpu=cortex-m55+nomve', *_FP_V81],
+                         'thumb/v8-m.main+dp/hard'),
+    'cortex-m55-nofp': ('thumbv8.1m.main-none-eabi', ['-mcpu=cortex-m55', *_SOFT], 'thumb/v8-m.main/nofp'),
+    'cortex-m85': ('thumbv8.1m.main-none-eabihf', ['-mcpu=cortex-m85', *_FP_V81], 'thumb/v8-m.main+dp/hard'),
+    'cortex-m85-nomve': ('thumbv8.1m.main-none-eabihf', ['-mcpu=cortex-m85+nomve', *_FP_V81],
+                         'thumb/v8-m.main+dp/hard'),
+    'cortex-m85-nofp': ('thumbv8.1m.main-none-eabi', ['-mcpu=cortex-m85', *_SOFT], 'thumb/v8-m.main/nofp'),
 }
 DEFAULT_CPU = 'cortex-m4f'
 
@@ -84,7 +100,8 @@ def triple():
 
 
 def arch():
-    """The architecture of the core, as in its triple: thumbv6m, thumbv7m, thumbv7em, thumbv8m.base, thumbv8m.main."""
+    """The architecture of the core, as in its triple: thumbv6m, thumbv7m, thumbv7em, thumbv8m.base, thumbv8m.main,
+    thumbv8.1m.main."""
     return CORES[cpu()][0].split('-')[0]
 
 
