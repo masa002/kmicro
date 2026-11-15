@@ -136,9 +136,9 @@ int main(void)
 #elif defined(TEST_WEAK)
     (void)b;
     kt_init_all();
-    systick(RVR);
+    tick_start(RVR);
     int32_t bad = weak_rounds(ROUNDS);
-    systick(0);
+    tick_stop();
     kmicro_stats(&a);
     int ok = bad == 0 && s_ticks > 100 && weak_taken() > 100;
     kmicro_puts("weak references read in ");
