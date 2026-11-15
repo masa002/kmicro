@@ -213,6 +213,7 @@ TESTS = [
     Test('cinterop_callback_throws', SHAPES, ['tests/cinterop_shapes/drv.c'], exit=98,
          case={'TEST_CALLBACK_THROWS': 1}),
     Test('stdio', Kotlin('stdio', ['tests/stdio/stdio.kt']), ['tests/stdio/main.c']),
+    Test('stdio_float', Kotlin('stdio', ['tests/stdio/stdio.kt']), ['tests/stdio/main.c', 'tests/stdio/float.c']),
     Test('qbuild_c_files', None, ['tests/qbuild/init.c', 'support/hw.c']),
     Test('qbuild_cxx', None, ['tests/qbuild/cxx.cpp', 'support/hw.c']),
     Test('qbuild_undefined', None, ['tests/qbuild/undefined.c'], fails='link', exit=1),

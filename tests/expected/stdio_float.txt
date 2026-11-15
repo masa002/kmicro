@@ -1,0 +1,12 @@
+printf from C says 42
+printf returned 22
+printf from Kotlin says 42
+printf returned 27
+puts from C
+stderr from C
+[kmicro_puts]no line end yet, now
+a line longer than the 64 bytes that one kmicro_puts takes from the default kmicro_write|0123456789|end
+integers: [   42|-42  |00042|ff|FF|10|A|str|3000000000|7|%]
+floating point: [3.14 V, 1.234500e+03, 0.0001]
+a Long with %lld: [ld ms]
+a Long with %s: [5000000000 ms]

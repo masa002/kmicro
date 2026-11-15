@@ -140,7 +140,7 @@ from the Cortex-M0 to the Cortex-M33, and what was checked on each.
 | header static inline functions, with loops, inline assembly or restrict pointers | works | |
 | StableRef | works | at most `KM_STABLE_REFS` (16) live at once |
 | C calling Kotlin by plain names (--c-api) | works | the prototypes are checked against the Kotlin functions |
-| platform.posix | partly | the string functions, `snprintf` and `printf` work, and `printf` prints where `println` does ([tests/stdio](../tests/stdio)); generated for glibc: errno and usleep missing, time_t size differs from newlib |
+| platform.posix | partly | the string functions, `snprintf` and `printf` work, and `printf` prints where `println` does ([tests/stdio](../tests/stdio)). They are newlib-nano's: `%d %i %u %x %X %o %c %s %ld %lu` with widths and flags work; `%f %e %g` print nothing unless the link has `_printf_float` (10 to 13 KB of flash, [porting.md](porting.md#the-link)); there is no `ll`, `hh` or `z` length, so `%lld` prints `ld` and every argument after it is read from the wrong place (a `%s` there faults): print a `Long` with `%s` and `toString()`; generated for glibc: errno and usleep missing, time_t size differs from newlib |
 | **Build and tools** | | |
 | a Kotlin-only program with `fun main()` | works | link [targets/common/kotlin_main.c](../targets/common/kotlin_main.c) as the C main |
 | interrupt handlers written in Kotlin | works | the allocation guard covers the runtime's own allocations and collections; isr_check reads the vector table; [examples/irq](../examples/irq) |

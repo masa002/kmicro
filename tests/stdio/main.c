@@ -6,6 +6,7 @@
 #include "kmicro.h"
 
 void k_printf(void);
+void k_formats(void);
 
 int main(void)
 {
@@ -20,5 +21,6 @@ int main(void)
     printf("now\n");
     printf("%s|%s|%s\n", "a line longer than the 64 bytes that one kmicro_puts takes from the default kmicro_write",
            "0123456789", "end");
+    k_formats();
     return 0;
 }

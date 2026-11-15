@@ -199,6 +199,10 @@ ld.lld -T board.ld --gc-sections --lto-O2 --target2=abs -o app.elf <C objects> <
   kmicro's personality routine never reads them, and the STM32L431 example links without it.
 - `-lc_nano -lm`: newlib-nano and its libm (`memcpy`, string functions, `kotlin.math`). `-lnosys`: empty system
   calls, as there is no operating system.
+- newlib-nano's `printf` has the integer conversions of 32 bits, `%c` and `%s`. The floating-point ones
+  (`%f %e %g`) print nothing unless the link has `-u _printf_float`, or one C file of the program says
+  `__asm__(".global _printf_float");`: 10 to 13 KB of flash. It has no `ll`, `hh` or `z` length: `%lld` prints
+  `ld`, and the arguments after it are read from the wrong place.
 - newlib's `printf` and `puts`, from C or from Kotlin through `platform.posix`, write through the system call
   `_write`. The runtime has a weak `_write` that passes standard output and standard error to `kmicro_write`, so the
   text goes where `println` goes; a board's own `_write` replaces it. Without one, `kmicro_puts` and `kmicro_write`
