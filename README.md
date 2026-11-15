@@ -57,7 +57,7 @@ feature, is in [docs/kotlin-support.md](docs/kotlin-support.md).
 | a Kotlin-only program with `fun main()`, or Kotlin functions called from a C `main` | C names through `--c-api` or `@CName` |
 | garbage collection | precise mark-sweep in a fixed arena (`KM_HEAP_BYTES`), non-moving |
 | strings, `StringBuilder`, `println`, `readln` | UTF-16; text goes out through your `kmicro_puts` and comes in through `kmicro_getc` |
-| exceptions, `try`/`catch`/`finally`, cause chains, `runCatching`, `setUnhandledExceptionHook` | ARM EHABI unwinding; the uncaught-exception report prints the causes |
+| exceptions, `try`/`catch`/`finally`, cause chains, `runCatching`, `setUnhandledExceptionHook` | ARM EHABI unwinding; the uncaught-exception report prints the causes and the suppressed exceptions |
 | coroutines (`kotlin.coroutines`) | suspend, resume, sequence builders, your own event loop |
 | collections, sequences, `Regex`, number formatting and parsing | output byte-identical to stock Kotlin/Native; `Regex` needs a large heap (below) |
 | `kotlin.random`, `kotlin.time`, `Uuid`, `Platform`, `exitProcess` | clocks and entropy come from board hooks; the QEMU targets provide the clocks |

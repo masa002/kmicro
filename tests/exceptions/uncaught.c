@@ -16,6 +16,7 @@ void k_circular_cause(void);
 void k_message_throws(void);
 void k_local_class(void);
 void k_anonymous_object(void);
+void k_suppressed(void);
 
 #if defined(TEST_BL_ENTRY)
 /* A naked function that calls with bl, as a reset entry that reaches the C start function with bl: from then on lr
@@ -58,6 +59,8 @@ int main(void)
     k_local_class();
 #elif defined(TEST_ANONYMOUS_OBJECT)
     k_anonymous_object();
+#elif defined(TEST_SUPPRESSED)
+    k_suppressed();
 #elif defined(TEST_BL_ENTRY)
     bl_entry();
 #endif

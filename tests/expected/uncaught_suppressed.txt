@@ -1,0 +1,18 @@
+Uncaught Kotlin exception: kotlin.RuntimeException: boot failed
+    at 0x{X}
+{...}
+    Suppressed: kotlin.IllegalArgumentException: first suppressed
+        at 0x{X}
+{...}
+    Caused by: kotlin.ArithmeticException: its cause
+        at 0x{X}
+{...}
+    Suppressed: Fault #7 (fault)
+        at 0x{X}
+{...}
+        Suppressed: kotlin.IllegalStateException: closing failed
+            at 0x{X}
+{...}
+            ... and {N} more common stack frames skipped
+Caused by: [CIRCULAR REFERENCE, SEE ABOVE: Fault #7 (fault)]
+kmicro panic: uncaught Kotlin exception

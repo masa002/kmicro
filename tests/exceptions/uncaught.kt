@@ -78,6 +78,28 @@ fun messageThrows() {
     throw Broken()
 }
 
+// The report prints what toString() of a class that has its own gives, and under each exception the ones it
+// suppressed, with their causes. The Fault comes up twice: as a suppressed exception and as the cause.
+class Fault(val code: Int) : Exception("fault") {
+    override fun toString() = "Fault #$code ($message)"
+}
+
+class Flash : AutoCloseable {
+    override fun close() = throw IllegalStateException("closing failed")
+}
+
+@CName("k_suppressed")
+fun suppressed() {
+    try {
+        Flash().use { throw Fault(7) }
+    } catch (e: Fault) {
+        val top = RuntimeException("boot failed", e)
+        top.addSuppressed(IllegalArgumentException("first suppressed", ArithmeticException("its cause")))
+        top.addSuppressed(e)
+        throw top
+    }
+}
+
 // The report names a class as toString() does: a local class by its simple name, an anonymous object as Throwable.
 @CName("k_local_class")
 fun localClass() {

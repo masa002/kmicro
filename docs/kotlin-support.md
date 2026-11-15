@@ -60,7 +60,7 @@ from the Cortex-M0 to the Cortex-M85, and what was checked on each.
 | exceptions from init blocks, lazy, toString, sequences, file initializers | works | |
 | stack trace of a single exception (getStackTrace, stackTraceToString) | partly | addresses, at most 12 frames; `tools/symbolize.py` names them (with file:line under `-g`); LTO folds inlined functions into their callers |
 | printStackTrace()/stackTraceToString() with cause or suppressed | works | |
-| uncaught exception report | partly | the whole message and every 'Caused by'; suppressed exceptions and custom toString() are left out |
+| uncaught exception report | works | what `printStackTrace()` prints: `toString()` of each exception, its frames (addresses, as above), its suppressed exceptions and every cause (`d_uncaught_report`); at most 16 exceptions; inside an interrupt handler a class's own `toString()` is not called |
 | setUnhandledExceptionHook | works | not for an exception that escapes an interrupt handler; the C hook `kmicro_on_uncaught` runs in every case |
 | processUnhandledException | works | |
 | terminateWithUnhandledException | works | |

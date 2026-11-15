@@ -99,7 +99,7 @@ first comment.
 |---|---|
 | `kmicro.h` | The contract between the compiled code, the runtime and the board: object layouts, the board's functions and hooks, the runtime's C API. |
 | `mm.c` | Memory: a static arena (`KM_HEAP_BYTES`, default 16 KB), objects 8-byte aligned, no per-object header beyond the type pointer. Precise mark-sweep, stop-the-world, non-moving. Roots are the shadow-stack frames the compiled code pushes, the registered globals, the thread-local slots, `kmicro_root` slots, StableRefs and an exception in flight. The collector runs only inside an allocation or an explicit `kmicro_gc()`; an interrupt handler that stores a reference while it marks makes it mark again. After marking it clears each `WeakReference` whose object nothing else holds; the action of a `Cleaner` whose object the sweep freed runs at the start of the next allocation, never inside the collector. |
-| `eh.c` | Exceptions: libgcc's ARM EHABI unwinder with kmicro's own personality routine. `try`/`catch`/`finally` work as on the JVM. An uncaught exception prints its type, its whole message, its stack trace and every cause, as `printStackTrace()` does ([below](#reading-a-stack-trace)). |
+| `eh.c` | Exceptions: libgcc's ARM EHABI unwinder with kmicro's own personality routine. `try`/`catch`/`finally` work as on the JVM. An uncaught exception prints its type, its whole message, its stack trace, every exception it suppressed and every cause, as `printStackTrace()` does ([below](#reading-a-stack-trace)). |
 | `init.c`, `init_cxx.cpp` | Startup: the module initializers, the initialisation of file-level globals on first use (a failing initializer behaves as in the stock runtime), `kmicro_panic`. |
 | `strings.c` | `String` (UTF-16, and the compiler's Latin-1 option: `kbuild.py --kotlinc -Xbinary=latin1Strings=true`), `toString`, `println`. |
 | `types.c` | Type checks, identity hash codes, boxing caches, arrays, interface dispatch. |
@@ -162,7 +162,7 @@ such as `kmicro panic: too many globals (raise KM_GLOBALS, now 160)`.
 | `KM_GC_STRESS` | 0 | none | 1 (`-D KM_GC_STRESS=1`): a full collection before every allocation, and freed memory overwritten; for tests |
 
 Two limits are fixed in `runtime/eh.c`: a stack trace keeps at most 12 frames (`KM_TRACE_MAX`), and the
-uncaught-exception report prints at most 8 exceptions of a cause chain (`KM_CAUSES_MAX`).
+uncaught-exception report prints at most 16 exceptions, causes and suppressed ones together (`KM_REPORT_MAX`).
 
 ## Calling between C and Kotlin
 
@@ -247,13 +247,18 @@ has the rules and the Kotlin constructs that allocate where it is not obvious.
 
 ## Reading a stack trace
 
-An uncaught exception prints its type, its whole message and its stack trace, then each cause as
-`Caused by: ...` with its own frames. The type is named as `Throwable.toString()` names it: the qualified name, the
-simple name for a local class, `Throwable` for an anonymous object. Frames that a cause shares with the exception
-above it become `... and N more common stack frames skipped`, as in `printStackTrace()`. The report allocates nothing.
-It leaves out suppressed exceptions (`e.printStackTrace()` in a catch block shows them) and does not call a custom
-`toString()`. A stack trace is a list of return addresses; [tools/symbolize.py](../tools/symbolize.py) names them from
-the ELF.
+An uncaught exception prints what `printStackTrace()` prints on stock Kotlin/Native: its type, its whole message
+and its stack trace; under it, four spaces further in, each exception it suppressed (`Suppressed: ...`) with that
+one's own causes; then each cause as `Caused by: ...`. An exception that comes up a second time is only named
+(`[CIRCULAR REFERENCE, SEE ABOVE: ...]`). The type is named as `Throwable.toString()` names it: the qualified name,
+the simple name for a local class, `Throwable` for an anonymous object. Frames that an exception shares with the
+first one become `... and N more common stack frames skipped`. A stack trace is a list of return addresses;
+[tools/symbolize.py](../tools/symbolize.py) names them from the ELF.
+
+The report is C code that allocates nothing, so it also runs on a full heap and for an exception that escapes an
+interrupt handler. One case is Kotlin code: a class with a `toString()` of its own is printed with it, and that may
+allocate. On a full heap the program then stops with the out-of-memory report in the middle of the line, and
+inside an interrupt handler the report does not call it and prints the type and the message instead.
 
 Before the report, the hook set with `setUnhandledExceptionHook` runs, as on stock Kotlin/Native; if it throws, its
 exception is reported instead. It may end the program itself with `terminateWithUnhandledException(it)`.

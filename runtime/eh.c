@@ -305,6 +305,16 @@ KM_NOTHROW int32_t Kotlin_String_getStringLength(const ObjHeader *s);
 uint16_t Kotlin_String_get(const ObjHeader *s, int32_t index);
 __attribute__((weak)) ObjHeader *km_throwable_cause(ObjHeader *throwable, ObjHeader **result)
     __asm__("kfun:kotlin.Throwable#<get-cause>(){}kotlin.Throwable?");   /* the virtual getter */
+__attribute__((weak)) ObjHeader *km_throwable_to_string(ObjHeader *throwable, ObjHeader **result)
+    __asm__("kfun:kotlin.Throwable#toString(){}kotlin.String-impl");     /* what a class without its own inherits */
+/* The exceptions added with addSuppressed, a MutableList or null, and the two interface calls that read a List. */
+__attribute__((weak)) ObjHeader *km_throwable_suppressed(ObjHeader *throwable, ObjHeader **result)
+    __asm__("kfun:kotlin.Throwable#<get-suppressedExceptionsList>(){}"
+            "kotlin.collections.MutableList<kotlin.Throwable>?");
+__attribute__((weak)) int32_t km_list_size(ObjHeader *list)
+    __asm__("kfun:kotlin.collections.List#<get-size>(){}kotlin.Int");
+__attribute__((weak)) ObjHeader *km_list_get(ObjHeader *list, int32_t index, ObjHeader **result)
+    __asm__("kfun:kotlin.collections.List#get(kotlin.Int){}1:0");
 void Kotlin_runUnhandledExceptionHook(ObjHeader *throwable);   /* stdlib: the hook, or rethrows when none is set */
 ObjHeader *kmicro_call_catching(void (*fn)(ObjHeader *), ObjHeader *arg, ObjHeader **frame, ObjHeader **slot);
 __attribute__((weak)) void kmicro_on_uncaught(ObjHeader *exception) { (void)exception; }
@@ -326,12 +336,25 @@ static void put_kstr(const ObjHeader *s)
         Kotlin_io_Console_print(s);
 }
 
-/* "<Class>: <message>", as Throwable.toString() prints it. The class is its qualifiedName ?: simpleName ?: "Throwable"
- * (TypeInfoNames.kt): the flags tell which names a class has. A local class has only a simple name, the end of its
- * relative name ("local$LocalError"); the class of an anonymous object has none. */
-static void put_throwable(ObjHeader *e, ObjHeader **msg)
+/* What toString() of the exception gives. For Throwable's own toString() that is "<Class>: <message>", printed here
+ * without a string being built. The class is its qualifiedName ?: simpleName ?: "Throwable" (TypeInfoNames.kt): the
+ * flags tell which names a class has. A local class has only a simple name, the end of its relative name
+ * ("local$LocalError"); the class of an anonymous object has none. A class with a toString() of its own has it in
+ * its vtable, after equals and hashCode, and it is called: Kotlin code that may allocate, so not inside an interrupt
+ * handler, where the line is the one Throwable's would give. */
+#define KM_VTABLE_TO_STRING 2
+
+#define KM_REPORT __attribute__((cold))              /* the report runs once: built for size, kept out of the way */
+
+KM_REPORT static void put_throwable(ObjHeader *e, ObjHeader **text)
 {
     const TypeInfo *t = km_type_info(e);
+    typedef ObjHeader *(*to_string_t)(ObjHeader *, ObjHeader **);
+    to_string_t to_string = ((const to_string_t *)(t + 1))[KM_VTABLE_TO_STRING];
+    if (km_throwable_to_string != NULL && to_string != km_throwable_to_string && !km_in_interrupt()) {
+        put_kstr(to_string(e, text));
+        return;
+    }
     const ObjHeader *pkg = (t->flags_ & KM_TF_REFLECTION_SHOW_PKG_NAME) ? t->packageName_ : NULL;
     const ObjHeader *rel = (t->flags_ & KM_TF_REFLECTION_SHOW_REL_NAME) ? t->relativeName_ : NULL;
     int32_t from = 0;                                /* where the name to print starts in rel */
@@ -349,16 +372,22 @@ static void put_throwable(ObjHeader *e, ObjHeader **msg)
     }
     if (rel != NULL)
         km_print_from(rel, (uint32_t)from);
-    Kotlin_Throwable_getMessage(e, msg);
-    if (*msg != NULL) {
+    Kotlin_Throwable_getMessage(e, text);
+    if (*text != NULL) {
         kmicro_puts(": ");
-        put_kstr(*msg);
+        put_kstr(*text);
     }
 }
 
-/* The frames of a trace. A cause's frames end with the ones it shares with the top exception: all but one of those
- * are left out, as printStackTrace() does. */
-static void put_frames(const ObjHeader *trace, const ObjHeader *top)
+static void put_indent(int depth)
+{
+    while (depth-- > 0)
+        kmicro_puts("    ");
+}
+
+/* The frames of a trace. A later exception's frames end with the ones it shares with the first exception: all but
+ * one of those are left out, as printStackTrace() does. */
+KM_REPORT static void put_frames(const ObjHeader *trace, const ObjHeader *top, int depth)
 {
     uint32_t n = trace != NULL ? ((const ArrayHeader *)trace)->count_ : 0, common = 0;
     const uint32_t *pc = trace != NULL ? km_array_data((ArrayHeader *)trace) : NULL;
@@ -371,55 +400,92 @@ static void put_frames(const ObjHeader *trace, const ObjHeader *top)
             common--;
     }
     for (uint32_t i = 0; i < n - common; i++) {
+        put_indent(depth);
         kmicro_puts("    at ");
         put_hex(pc[i]);
         kmicro_puts("\n");
     }
     if (common > 0) {
+        put_indent(depth);
         kmicro_puts("    ... and ");
         kmicro_put_int((int32_t)common);
         kmicro_puts(" more common stack frames skipped\n");
     }
 }
 
-#define KM_CAUSES_MAX 8
+/* The report of the stock runtime (ReportUnhandledException, which is printStackTrace(): Throwable.kt
+ * ExceptionTraceBuilder): the exception, then every cause, each with its frames and, four spaces further in, the
+ * exceptions it suppressed with their own causes. Written in C, it links none of the stdlib's printing code (about
+ * 30 KB) and needs no heap unless a class has its own toString(), so it also works inside an interrupt handler and,
+ * for the standard exceptions, on a full heap. */
+#define KM_REPORT_MAX 16                             /* exceptions one report prints */
 
-/* The report of the stock runtime (ReportUnhandledException, printStackTrace()): the exception and every cause, each
- * with its frames. Written in C, it needs no heap and links none of the stdlib's printing code (about 30 KB), so it
- * also works inside an interrupt handler and on a full heap. Suppressed exceptions are not listed: printStackTrace()
- * in a catch block shows them. */
-void kmicro_report_exception(ObjHeader *e)
+typedef struct {
+    const ObjHeader *seen[KM_REPORT_MAX];            /* printed so far: one that comes up again is only named */
+    int n;
+    bool cut;                                        /* the list is full: "..." was printed, nothing more follows */
+    ObjHeader **top;                                 /* the first exception's trace, in a frame slot of the caller */
+} km_report_t;
+
+static void report_chain(km_report_t *r, ObjHeader *e, int depth, const char *qualifier);
+
+/* One exception (dumpSelfTrace). False when its causes must not follow: it was printed before or the list is full. */
+KM_REPORT static bool report_one(km_report_t *r, ObjHeader *e, int depth, const char *qualifier)
 {
-    struct { FrameOverlay f; ObjHeader *cur, *msg, *trace, *top; } fr = { { 0, 0, 0 }, e, 0, 0, 0 };
+    if (r->cut)
+        return false;
+    struct { FrameOverlay f; ObjHeader *text, *trace, *list, *item; } fr = { { 0, 0, 0 }, 0, 0, 0, 0 };
     EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
-    const ObjHeader *seen[KM_CAUSES_MAX];
-    int n = 0;
-    kmicro_puts("Uncaught Kotlin exception: ");
-    for (;;) {
-        put_throwable(fr.cur, &fr.msg);
+    bool fresh = true;
+    for (int i = 0; i < r->n; i++)
+        fresh &= r->seen[i] != e;
+    put_indent(depth);
+    kmicro_puts(qualifier);
+    if (!fresh) {
+        kmicro_puts("[CIRCULAR REFERENCE, SEE ABOVE: ");
+        put_throwable(e, &fr.text);
+        kmicro_puts("]\n");
+    } else if (r->n == KM_REPORT_MAX) {
+        kmicro_puts("...\n");
+        r->cut = true;
+        fresh = false;
+    } else {
+        r->seen[r->n++] = e;
+        put_throwable(e, &fr.text);
         kmicro_puts("\n");
-        Kotlin_Throwable_getStackTrace(fr.cur, &fr.trace);
-        put_frames(fr.trace, n == 0 ? NULL : fr.top);
-        if (n == 0)
-            fr.top = fr.trace;
-        seen[n++] = fr.cur;
-        if (km_throwable_cause == NULL || km_throwable_cause(fr.cur, &fr.cur) == NULL)
-            break;
-        kmicro_puts("Caused by: ");
-        bool again = false;
-        for (int i = 0; i < n; i++)
-            again |= seen[i] == fr.cur;
-        if (again) {
-            kmicro_puts("[CIRCULAR REFERENCE, SEE ABOVE: ");
-            put_throwable(fr.cur, &fr.msg);
-            kmicro_puts("]\n");
-            break;
-        }
-        if (n == KM_CAUSES_MAX) {
-            kmicro_puts("...\n");
-            break;
-        }
+        Kotlin_Throwable_getStackTrace(e, &fr.trace);
+        put_frames(fr.trace, r->n == 1 ? NULL : *r->top, depth);
+        if (r->n == 1)
+            *r->top = fr.trace;
+        if (km_throwable_suppressed != NULL && km_list_size != NULL && km_list_get != NULL
+            && km_throwable_suppressed(e, &fr.list) != NULL)
+            for (int32_t i = 0; i < km_list_size(fr.list); i++)
+                report_chain(r, km_list_get(fr.list, i, &fr.item), depth + 1, "Suppressed: ");
     }
+    LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+    return fresh;
+}
+
+/* An exception and its causes (dumpFullTrace). */
+KM_REPORT static void report_chain(km_report_t *r, ObjHeader *e, int depth, const char *qualifier)
+{
+    struct { FrameOverlay f; ObjHeader *cur; } fr = { { 0, 0, 0 }, e };
+    EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+    while (report_one(r, fr.cur, depth, qualifier) && km_throwable_cause != NULL
+           && km_throwable_cause(fr.cur, &fr.cur) != NULL)
+        qualifier = "Caused by: ";
+    LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+}
+
+KM_REPORT void kmicro_report_exception(ObjHeader *e)
+{
+    struct { FrameOverlay f; ObjHeader *top; } fr = { { 0, 0, 0 }, 0 };
+    EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+    km_report_t r;
+    r.n = 0;
+    r.cut = false;
+    r.top = &fr.top;
+    report_chain(&r, e, 0, "Uncaught Kotlin exception: ");
     LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
 }
 
