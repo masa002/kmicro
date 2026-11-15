@@ -28,7 +28,7 @@ int main(void)
     int32_t r = k_event(2, 0);                 /* Tick(0) -> 0, log size */
     kmicro_stats_t st;
     kmicro_stats(&st);
-#ifdef TEST_FEW_COLLECTIONS                    /* the heap fills twice here; hundreds: one per allocation */
+#if defined(TEST_FEW_COLLECTIONS) && !KM_GC_STRESS  /* the heap fills twice here; hundreds: one per allocation */
     if (st.gc_count > 20) {
         bad++;
         kmicro_puts("  too many collections\n");

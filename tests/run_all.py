@@ -184,7 +184,7 @@ TESTS = [
          heap=4096),
     Test('app', Kotlin('app', ['tests/app/app.kt']), ['tests/app/main.c'], heap=32768),
     Test('app_gc_stress_0', Kotlin('app', ['tests/app/app.kt']), ['tests/app/main.c'], heap=32768,
-         defs=['KM_GC_STRESS=0', 'TEST_FEW_COLLECTIONS']),      # 0 is off, as the table of settings says
+         defs=['KM_GC_STRESS=0', 'TEST_FEW_COLLECTIONS']),      # 0 is off (the check is skipped under --stress)
     Test('event_loop', Kotlin('event_loop', ['tests/event_loop/event_loop.kt']), ['tests/event_loop/main.c'],
          heap=8192),
     Test('kotlin_main', Kotlin('kotlin_main', ['tests/kotlin_main/main.kt'], dict(main=True)),
@@ -389,7 +389,8 @@ def archived(objs, d):
 
 def qbuild(t, d, objs, args):
     """tools/qbuild.py for test t, into folder d: (exit code, its output)."""
-    defs = dict.fromkeys([f'KM_HEAP_BYTES={t.heap}', *t.defs, *(['KM_GC_STRESS=1'] if args.stress else [])])
+    own = [d for d in t.defs if not (args.stress and d.startswith('KM_GC_STRESS='))]    # --stress decides it then
+    defs = dict.fromkeys([f'KM_HEAP_BYTES={t.heap}', *own, *(['KM_GC_STRESS=1'] if args.stress else [])])
     timeout = 120 * (10 if args.stress else 1)
     cmd = [sys.executable, ROOT / 'tools/qbuild.py', d / f'{t.name}.elf', *c_files(t, d), *objs,
            *(x for v in defs for x in ('-D', v)), *([] if t.target == 'l475' else ['--target', t.target]),
