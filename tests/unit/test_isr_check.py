@@ -62,7 +62,7 @@ class IsrCheck(unittest.TestCase):
         return isr_check.analyse(disassembly(funcs), vector_table(table(systick)), **kw)
 
     def test_vector_table_words(self):
-        self.assertEqual(isr_check.vector_words(vector_table(table(0x08000200))), table(0x08000201))
+        self.assertEqual(isr_check.vector_words(vector_table(table(0x08000200))), (table(0x08000201), None))
 
     def test_clean_handler_passes(self):
         lines, bad, n = self.run_check(0x08000200)
@@ -204,6 +204,22 @@ class IsrCheck(unittest.TestCase):
         code, out = run('--handlers', '.nope')
         self.assertEqual(code, 2, out)
         self.assertIn('no section .nope (--handlers)', out)
+
+    def test_the_table_at_the_start_of_the_code_section(self):
+        # `.text : { KEEP(*(.isr_vector)) *(.text*) }`: after the 16 vectors the section goes on with Reset_Handler's
+        # code. One of its words is a literal pool entry, the address of the allocating thread function
+        # kfun:app#loop(){}: no vector.
+        code = [0xbd80b580, 0xf000b580, 0x080001c1, 0x46c04770]
+        text = vector_table(table(0x08000200) + code, base=0x080000c0).replace('.isr_vector', '.text')
+        lines, bad, n = isr_check.analyse(disassembly(FUNCS), text, section='.text')
+        self.assertEqual((bad, n), (0, 2), lines)
+        self.assertEqual(lines, ['note   the section .text goes on with code: its first 16 words, up to the function '
+                                 'Reset_Handler, were read as the vector table',
+                                 '2 interrupt handler(s) checked: no path to an allocation'])
+        text = vector_table(table(0x08000280) + code, base=0x080000c0).replace('.isr_vector', '.text')
+        lines, bad, _ = isr_check.analyse(disassembly(FUNCS), text, section='.text')
+        self.assertEqual(bad, 1, lines)                                # a handler of the table is still found
+        self.assertIn('ALLOC  kfun:irq#record(){}: kfun:irq#record(){} -> alloc_block', lines)
 
     def test_nothing_to_check_is_an_error(self):
         with self.assertRaises(ValueError):

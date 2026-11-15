@@ -6,7 +6,8 @@
     python tools/isr_check.py firmware.elf [--vectors SECTION] [--handlers SECTION] [--callback NAME ...] [--boxing]
 
     --vectors   the section that holds the vector table of a Cortex-M, when the linker script does not call it
-                .isr_vector (.vectors, .intvec, .vector_table ...)
+                .isr_vector (.vectors, .intvec, .vector_table ...). A section that goes on with code (.text, with
+                the table at its start) is read up to its first function
     --handlers  the section that holds a table of handler addresses and nothing else, when it is not called
                 .irq_handlers
     --callback  a function handlers reach only through a pointer (a callback registered with a driver): C functions
@@ -95,15 +96,19 @@ def parse_disassembly(text):
     return calls, indirect, start
 
 
-def vector_words(text):
-    """objdump -s -j SECTION output -> the section's 32-bit words, in order."""
-    data = bytearray()
+def vector_words(text, start=()):
+    """objdump -s -j SECTION output -> (the section's 32-bit words in order, None). start (address -> function): when
+    a function starts inside the section, the table ends there: (the words before it, that function)."""
+    data, base = bytearray(), None
     for line in text.splitlines():
         if not re.match(r'^ [0-9a-f]+ [0-9a-f]', line):
             continue
-        hexpart = line[1:].split('  ')[0].split()[1:]      # address, up to 4 groups of bytes, then the ASCII
-        data += bytes.fromhex(''.join(hexpart))
-    return [int.from_bytes(data[i:i + 4], 'little') for i in range(0, len(data) - 3, 4)]
+        hexpart = line[1:].split('  ')[0].split()      # address, up to 4 groups of bytes, then the ASCII
+        base = int(hexpart[0], 16) if base is None else base
+        data += bytes.fromhex(''.join(hexpart[1:]))
+    words = [int.from_bytes(data[i:i + 4], 'little') for i in range(0, len(data) - 3, 4)]
+    end = min((a for a in start if data and base < a < base + len(data)), default=None)
+    return (words, None) if end is None else (words[:(end - base) // 4], start[end])
 
 
 def handler_roots(words, calls, start, callbacks=(), table=()):
@@ -164,8 +169,11 @@ def analyse(disasm, vectors, callbacks=(), boxing=False, section='.isr_vector', 
     unknown = [c for c in callbacks if c not in calls]
     if unknown:
         raise ValueError('no such function: ' + ', '.join(unknown))
-    words, table = vector_words(vectors), vector_words(handlers)
+    (words, code), table = vector_words(vectors, start), vector_words(handlers)[0]
     roots, lines = handler_roots(words, calls, start, callbacks, table)
+    if code:            # `.text : { KEEP(*(.isr_vector)) *(.text*) }`: the words after the table are no vectors
+        lines.insert(0, f'note   the section {section} goes on with code: its first {len(words)} words, up to the '
+                     f'function {code}, were read as the vector table')
     if not roots:
         raise ValueError('no interrupt handler found (no vector table, no function named like a handler)')
     if not words and not table:
