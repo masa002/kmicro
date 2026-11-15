@@ -2,14 +2,18 @@
 
 Kotlin/Native has no target for a microcontroller without an operating system. It does have `linux_arm32_hfp`:
 32-bit ARM, hard-float, EABI. The LLVM data layout of that target is identical, character for character, to the
-one for Cortex-M (`thumbv7em-none-eabihf`):
+one of every Cortex-M target, from `thumbv6m-none-eabi` (Cortex-M0) to `thumbv8m.main-none-eabihf` (Cortex-M33):
 
     e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64
 
-So the IR that the official compiler produces for `linux_arm32_hfp` is already laid out the way a Cortex-M4
-program must be: the same sizes, alignments and calling convention. kmicro takes that IR before the compiler links
-its own runtime, which needs Linux, threads and about 184 KB of code, and links it with a small runtime written for
-one thread and no OS. The compiler itself is not modified.
+So the IR that the official compiler produces for `linux_arm32_hfp` is already laid out the way a Cortex-M
+program must be: the same sizes and alignments. The IR names no calling convention: the code generator takes it
+from the target, hard-float for a core with an FPU and soft-float for one without. kmicro takes that IR before the
+compiler links its own runtime, which needs Linux, threads and about 184 KB of code, and links it with a small
+runtime written for one thread and no OS. The compiler itself is not modified.
+
+The core is one option, `--cpu`, with the Cortex-M4F as the default. [roadmap.md](roadmap.md#targets) lists the
+cores and what was checked on each; the sizes and the outputs on this page are those of the default core.
 
 ## The build
 
@@ -19,7 +23,7 @@ app.kt
   │                        -Xsave-llvm-ir-after=Codegen,LinkBitcodeDependencies
   ▼
 out.Codegen.ll                 your code + the parts of the standard library it uses, as LLVM IR
-  │  toolchain/retarget.py     triple -> thumbv7em, Cortex-M4 attributes, thread-locals -> plain globals
+  │  toolchain/retarget.py     triple and attributes of the core, thread-locals -> plain globals
   ▼
 m4.ll ──(C names for Kotlin functions, --c-api)──▶ clang -flto ──▶ k.o (LLVM bitcode)
                                                                      │
@@ -34,15 +38,19 @@ them from the command line, and [tools/qbuild.py](../tools/qbuild.py) links the 
 [porting.md](porting.md) is the same link for a board: the runtime's flags, the linker script and the libraries.
 
 ```
-python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--target l475|an386] [--large] [--run]
-                       [--icount] [--timeout S]
+python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--cpu CORE] [--target NAME] [--large]
+                       [--run] [--icount] [--timeout S]
 ```
 
 The files are any number of C, C++ and assembly files and the objects kbuild printed (`k.o`, and `bridges.o` when
 the Kotlin code calls C). `-D` applies to every C file and to the runtime, which is compiled once per set of `-D`
-values, and `-I` to every C file; `runtime/` and `support/` are always on the include path. `--target an386` links
-for QEMU's `mps2-an386` (4 MB of code, 16 MB of RAM) instead of the STM32L475, for a program that needs more memory
-than a microcontroller has. `--run` runs the image and exits with its exit code, 124 after `--timeout` seconds (120
+values, and `-I` to every C file; `runtime/` and `support/` are always on the include path. `--cpu` names the core,
+as for kbuild, whose objects must be built for the same one. qbuild links for the QEMU machine that runs the code
+of that core: the STM32L475 (`--target l475`) for the default core and the cores below it, `mps2-an385` for the
+Cortex-M3, `mps2-an500` for the Cortex-M7 and `mps2-an505` for the cores of ARMv8-M (`--target an385`, `an500`,
+`an505`: the start code of `qemu-l475` with the linker script of the machine). `--target an386` links for QEMU's
+`mps2-an386` (4 MB of code, 16 MB of RAM) instead, for a program that needs more memory than a microcontroller
+has. `--run` runs the image and exits with its exit code, 124 after `--timeout` seconds (120
 by default). With `--icount` the emulator's clock is the number of instructions the program has run, one nanosecond
 each, instead of the host's clock: a timer interrupt then lands on the same instruction in every run. qbuild prints
 a size line, `qbuild: app.elf  text N  data N  bss N  stack N`, where the stack is the RAM above `.bss`, without the
@@ -51,6 +59,7 @@ stack guard on a target that has one (`qemu-l475`); `bss` leaves the guard out t
 The STM32L475 has 1 MB of flash and 96 KB of RAM, but qbuild links a program into the memory of the STM32L431,
 256 KB of flash and 64 KB of RAM: a program that does not fit fails to link, and one that needs more stack than
 those 64 KB leave stops with `kmicro fault: stack overflow`. `--large` links it for the whole STM32L475 instead.
+The machines of the other cores give a program the same memory, with and without `--large`.
 
 Link-time optimisation treats the runtime and the Kotlin code as one program. The runtime's hooks, such as the
 frame push of the garbage collector or an array access, are inlined into the Kotlin functions that call them. For
@@ -61,7 +70,7 @@ What retarget.py changes:
 
 | Change | Why |
 |---|---|
-| target triple `thumbv7em-unknown-none-eabihf` | the code generator then emits Thumb-2 for Cortex-M |
+| target triple of the core (`thumbv7em-unknown-none-eabihf` for the default, the Cortex-M4F) | the code generator then emits Thumb code for that core, with its calling convention |
 | `target-cpu` / `target-features` = clang's values for the core (`CORES` in [toolchain/paths.py](../toolchain/paths.py)) | LTO inlines runtime hooks into Kotlin code; the values are read from clang once and kept in `target_attributes.txt` next to the output |
 | `thread_local` removed (`--no-tls`) | one thread; no `__aeabi_read_tp` on bare metal |
 | init-state loads made plain (`--single-core`) | each access to a file's globals checks its init state with an acquire load (a `DMB`); with one core and one thread a plain load is exact and can leave the loop |
@@ -95,6 +104,7 @@ first comment.
 | `unsupported.c` | The standard-library functions that need threads or an OS (`Worker`, `WeakReference`, heap tuning, ...): each stops the program with `... is not supported on kmicro`. `python tools/missing_natives.py` lists them. |
 | `interop.c` | What cinterop needs: thread-state switches (nothing to do) and a small arena for `memScoped`, `cstr`, `nativeHeap` (`KM_INTEROP_BYTES`). |
 | `atomic64.c` | 64-bit atomics (`AtomicLong`, `@Volatile` `Long` fields) on a CPU without 64-bit exclusive loads. |
+| `atomic32.c` | Atomics of 1, 2 and 4 bytes on a core without LDREX/STREX (ARMv6-M), with interrupts masked. On the other cores the file is empty: the compiler emits the exclusive load and store itself. |
 
 ## The board
 
@@ -112,13 +122,14 @@ Exit codes: `kmicro_panic` stops with 98, for an uncaught exception, an out-of-m
 an allocation inside an interrupt handler. The QEMU start code stops with 99 for a CPU fault. `exitProcess(n)` and a
 C `main` that returns `n` stop with `n`.
 
-The start code enables the FPU in a naked `Reset_Handler` before any compiled C runs (LTO can inline floating-point
-code into the C start function), copies `.data`, clears `.bss` and runs the constructors in `.init_array` (the
-compiler registers the module initializers there); `kmicro_init()` then comes before the first Kotlin call.
-[porting.md](porting.md#start-up) has the details. [targets/qemu-l475/start.c](../targets/qemu-l475/start.c), the
-start code for QEMU, adds three optional parts: a fault report, MPU guards against stack overflow and null reads, and
-clocks through semihosting. [examples/selftest/stm32l431/board.c](../examples/selftest/stm32l431/board.c) is the
-start code of a real STM32L431. The `main()` of every C example begins with `kmicro_init()`;
+The start code enables the FPU, on a core that has one, in a naked `Reset_Handler` before any compiled C runs (LTO
+can inline floating-point code into the C start function), copies `.data`, clears `.bss` and runs the constructors
+in `.init_array` (the compiler registers the module initializers there); `kmicro_init()` then comes before the
+first Kotlin call. [porting.md](porting.md#start-up) has the details.
+[targets/qemu-l475/start.c](../targets/qemu-l475/start.c), the start code for QEMU, adds three optional parts: a
+fault report, MPU guards against stack overflow and null reads, and clocks through semihosting.
+[examples/selftest/stm32l431/board.c](../examples/selftest/stm32l431/board.c) is the start code of a real
+STM32L431. The `main()` of every C example begins with `kmicro_init()`;
 [targets/common/kotlin_main.c](../targets/common/kotlin_main.c) is the C `main` of a Kotlin-only program.
 
 ## Sizes
@@ -193,6 +204,8 @@ Kotlin has no volatile memory access (`@Volatile` applies to properties only) an
 [support/hw.h](../support/hw.h) provides what is missing, one instruction each after LTO: `hw_rd32` / `hw_wr32`
 (volatile register access), `mem_*` (plain memory shared with C), barriers, `WFI`, `PRIMASK` / `BASEPRI`, and the DWT
 cycle counter (`hw_cycles_enable()`, `hw_cycles()`; QEMU does not model the DWT, so `hw_cycles()` stays 0 there).
+ARMv6-M and ARMv8-M Baseline (Cortex-M0, M0+, M1, M23) have no `BASEPRI`: the three `hw_basepri` functions are not
+defined there, and a program that calls them does not link.
 Kotlin reaches them through cinterop: `kbuild.py --def support/hw.def` makes them the package `c` (`import c.*`).
 `support/hw.c` is linked with the program: on QEMU it is one of qbuild's C files, on a board it is compiled with the
 runtime's flags ([porting.md](porting.md#compiling-the-runtime)). A call such as `hw_wr32(RCC.CR, v)` becomes a single
@@ -416,7 +429,8 @@ call.
 ## Testing
 
 - [tests/run_all.py](../tests/run_all.py) builds every test program and the examples, runs them on QEMU
-  (`b-l475e-iot01a`, an emulated STM32L475; one test on `mps2-an386`) and compares each program's whole output with
+  (`b-l475e-iot01a`, an emulated STM32L475; two tests on `mps2-an386`; with `--cpu CORE`, for that core on the
+  machine qbuild chooses for it, in `build/t-<core>`) and compares each program's whole output with
   its file in `tests/expected/`. It also fails a program that does not fit the STM32L431 unless the test is marked
   large, and runs the tools (isr_check, symbolize, frames, gen_regs, missing_natives) on some of them. The programs
   run with `qbuild --icount`, so an interrupt test takes its ticks at the same instructions in every run; the `hello`

@@ -1,5 +1,5 @@
 """Differential test: the same Kotlin program on the official runtime (built for this computer) and on kmicro
-(Cortex-M4, QEMU). The outputs must be byte-identical.
+(Cortex-M, QEMU). The outputs must be byte-identical.
 
 usage: python tools/difftest.py [NAME ...] [--cpu CORE] [--stress] [--size]
 

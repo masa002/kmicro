@@ -1,4 +1,4 @@
-"""Kotlin sources -> Cortex-M4 objects to link with the kmicro runtime (toolchain/kn.py build()).
+"""Kotlin sources -> Cortex-M objects to link with the kmicro runtime (toolchain/kn.py build()).
 
 usage: python tools/kbuild.py <outdir> <file.kt or folder>... [options]      (--help lists the options)
 

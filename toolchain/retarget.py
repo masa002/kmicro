@@ -1,10 +1,11 @@
-"""Retarget a kotlinc-native textual IR module to Cortex-M4 (thumbv7em-none-eabihf).
+"""Retarget a kotlinc-native textual IR module to a Cortex-M core (paths.CORES; KMICRO_CPU, default cortex-m4f).
 
 usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot REGEX]]
                           [--stubs stubs.c] [--eh-stubs] [--drop-ctors]
 
-- target triple -> thumbv7em-unknown-none-eabihf (the data layout of armv6kz/armv7 Linux EABI and thumbv7em EABI
-  is identical: e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64; checked, not assumed)
+- target triple -> that of the core, thumbv7em-unknown-none-eabihf for the default (the data layout of armv6kz/armv7
+  Linux EABI and of the Cortex-M targets is identical: e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64; checked,
+  not assumed)
 - replaces the "target-cpu" / "target-features" function attributes with the ones clang gives C code built for
   paths.target_flags(), so Kotlin and the C runtime carry identical attributes
 - --no-tls: single thread, so thread-local storage becomes ordinary storage (no __aeabi_read_tp)

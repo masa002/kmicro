@@ -27,7 +27,8 @@ Three suites, all on the host and QEMU; no hardware is needed.
   each program's whole output with `tests/expected/<name>.txt`. With names it runs only those; `--stress` collects
   garbage at every allocation, `--kotlin` recompiles the Kotlin code even when its saved IR is current, and `-v`
   prints the build messages and the program's output. A test also fails when its image does not fit the STM32L431
-  (256 KB of flash, 64 KB of RAM) and the test is not marked large.
+  (256 KB of flash, 64 KB of RAM) and the test is not marked large. `--cpu CORE` builds and runs the tests for a
+  core other than the Cortex-M4F ([the cores](docs/roadmap.md#targets)), in `build/t-<core>`.
 
   ```
   $ python tests/run_all.py selftest

@@ -13,7 +13,9 @@ not work and run only when named.
 - **not supported**: left out by design (it needs threads or an OS); the note says what happens instead.
 - **not applicable**: not part of Kotlin/Native either, or deprecated with an error.
 
-This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fixes land.
+This page describes Kotlin/Native 2.4.21 on the current kmicro and changes as fixes land. The rows were checked
+for the default core, the Cortex-M4F; [roadmap.md](roadmap.md#targets) lists the other cores kmicro builds for,
+from the Cortex-M0 to the Cortex-M33, and what was checked on each.
 
 | feature | status on kmicro | note |
 |---|---|---|

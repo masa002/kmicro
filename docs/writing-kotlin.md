@@ -10,7 +10,8 @@ from kmicro's own tests. That firmware is not part of this repository, so the nu
 not reproducible here. Times are at 16 MHz on the STM32L431, from the board run recorded on 2026-10-16 with an
 earlier version of the runtime, before release 0.1.0 ([report](../examples/selftest/stm32l431-report.txt)); the run
 has not been repeated with the current runtime. Sizes and instruction counts were measured on QEMU's emulated
-STM32L475 (`qemu-l475`, the target qbuild links for) with the current runtime.
+STM32L475 (`qemu-l475`, the target qbuild links for) with the current runtime, for the default core, the
+Cortex-M4F; [roadmap.md](roadmap.md#targets) has the size of the selftest for each of the other cores.
 
 ## Memory
 
@@ -153,7 +154,8 @@ What a handler may do:
   handler calls `km_ref_stored()` ([runtime/kmicro.h](../runtime/kmicro.h)).
 - **Use the atomics**: `AtomicInt`, `AtomicLong`, `AtomicReference`, the atomic arrays, and `@Volatile` fields of any
   type. They are atomic against handlers: 32-bit values and references with LDREX/STREX (an interrupt in between
-  makes the update retry), 64-bit values with interrupts masked.
+  makes the update retry), 64-bit values with interrupts masked. ARMv6-M (Cortex-M0, M0+, M1) has no LDREX/STREX:
+  there the runtime masks interrupts for the smaller values too.
 - **Use native memory** with `nativeHeap.alloc` and `nativeHeap.free`: the arena masks interrupts. Not `memScoped` or
   `cstr`, which may create Kotlin objects.
 - **Print a string that already exists**: `println` of it does not allocate.

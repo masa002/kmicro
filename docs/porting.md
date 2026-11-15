@@ -10,7 +10,9 @@ does the same with four parts:
 
 Two references in the repository do all of this. [targets/qemu-l475](../targets/qemu-l475) (`start.c`, `l475.ld`)
 is what qbuild links for the emulated STM32L475. [examples/selftest/stm32l431](../examples/selftest/stm32l431)
-(`board.c`, `stm32l431.ld`, `build.py`) is a complete build for a real STM32L431.
+(`board.c`, `stm32l431.ld`, `build.py`) is a complete build for a real STM32L431. The flags, the libraries and the
+outputs on this page are those of the Cortex-M4F, the core of both and the default;
+[Another core](#another-core) says what changes for another one.
 
 ## The board contract
 
@@ -49,24 +51,35 @@ STM32L431 `board.c` writes to USART1, and its `kmicro_exit` prints the code and 
 
 The start code runs these steps, in this order:
 
-1. **`Reset_Handler` turns the FPU on before any compiled C code runs.** The compiler target is hard-float. With
-   LTO, code that uses floating-point registers can be inlined into the C start function, whose prologue then saves
-   them (`vpush`), and with the FPU still off that is a fault. So `Reset_Handler` is naked: it sets CP10/CP11 to full
-   access in CPACR and branches to the C start function.
+1. **`Reset_Handler` turns the FPU on before any compiled C code runs,** on a core that has one. With LTO, code
+   that uses floating-point registers can be inlined into the C start function, whose prologue then saves them
+   (`vpush`), and with the FPU still off that is a fault. So `Reset_Handler` is naked: it sets CP10/CP11 to full
+   access in CPACR and jumps to the C start function. For a core without an FPU the compiler does not define
+   `__ARM_FP`, and the entry leaves CPACR alone.
 
    ```c
    __attribute__((naked)) void Reset_Handler(void)
    {
-       __asm volatile("movw r0, #0xED88\n"
-                      "movt r0, #0xE000\n"                         /* CPACR */
+   #if defined(__ARM_FP)
+       __asm volatile("ldr r0, =0xE000ED88\n"                      /* CPACR */
                       "ldr r1, [r0]\n"
-                      "orr r1, r1, #(0xF << 20)\n"                  /* CP10/CP11 full access (FPU) */
+                      "ldr r2, =0x00F00000\n"                      /* CP10/CP11 full access (FPU) */
+                      "orrs r1, r2\n"
                       "str r1, [r0]\n"
                       "dsb\n"
-                      "isb\n"
-                      "b start_c\n");
+                      "isb\n");
+   #endif
+       __asm volatile("ldr r0, =0xFFFFFFFF\n"                      /* no return address: a stack walk ends here */
+                      "mov lr, r0\n"
+                      "ldr r0, =start_c\n"
+                      "bx r0\n"
+                      ".ltorg\n");
    }
    ```
+
+   The assembly keeps to the forms every Cortex-M has. ARMv6-M (Cortex-M0, M0+, M1) has no `movw`/`movt`, no `orr`
+   with a constant and no IT block, and its plain branch reaches 2 KB only: the constants come from a literal pool,
+   and the jump goes through a register.
 
    The entry reaches the C start function with a jump (`b`, or `bx` through a register), not with a call (`bl`),
    and the start function never returns. After the jump lr still has its reset value (0xFFFFFFFF on a Cortex-M4),
@@ -101,7 +114,7 @@ The files are `runtime/*.c`, `runtime/*.cpp` and `runtime/dtoa/*.cpp`.
 
 | Flags | Why |
 |---|---|
-| `--target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard` | the Cortex-M4F, with the values retarget.py gives the Kotlin code (`cortex-m4f` in `CORES`, [toolchain/paths.py](../toolchain/paths.py)) |
+| `--target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard` | the core, here the Cortex-M4F, with the values retarget.py gives the Kotlin code: the entry of the core in `CORES`, [toolchain/paths.py](../toolchain/paths.py) ([another core](#another-core)) |
 | `-isystem <arm-none-eabi-gcc>/arm-none-eabi/include` | newlib's headers |
 | `-O2 -flto` | the runtime is LLVM bitcode like `k.o`, so ld.lld optimises both as one program and inlines the runtime's hooks (the garbage collector's frame push, an array access, a reference store) into the Kotlin functions |
 | `-ffunction-sections -fdata-sections` | `--gc-sections` drops what the program does not use |
@@ -185,13 +198,45 @@ ld.lld -T board.ld --gc-sections --lto-O2 --target2=abs -o app.elf <C objects> <
   linker scripts here `end` is the low end of the stack's RAM, so a program that prints with `printf` has that much
   less stack.
 - `libgcc.a`: the ARM EHABI unwinder and the compiler helpers. Newlib and libgcc come from the
-  `thumb/v7e-m+fp/hard` multilib, the one for a Cortex-M4F with the hard-float calling convention.
+  `thumb/v7e-m+fp/hard` multilib, the one for a Cortex-M4F with the hard-float calling convention; `CORES` names
+  the multilib of each core.
 
 qbuild links a Kotlin runtime function that kmicro does not define to a stub that stops the program with
 `kmicro panic: unimplemented runtime symbol: NAME`, and warns `qbuild: warning: N runtime symbols stubbed`. A board
 link reports `undefined symbol: NAME` instead. `python tools/missing_natives.py` lists the standard library's
 runtime functions and how kmicro handles each. On the current runtime its first line reads `353 natives in the
 Kotlin/Native stdlib: 261 implemented, 52 unsupported, 40 Objective-C, 0 missing`.
+
+## Another core
+
+kmicro builds for the cores from the Cortex-M0 to the Cortex-M33. [roadmap.md](roadmap.md#targets) lists them with
+what was checked on each: all of it on QEMU, and only the Cortex-M4F on a board. For a core other than the
+Cortex-M4F, these parts of a board build change:
+
+- **The name of the core.** `python tools/kbuild.py build/app app.kt --cpu cortex-m0plus` builds `k.o` and
+  `bridges.o` for that core; the environment variable `KMICRO_CPU` does the same. Every object of the link is
+  built for the same core.
+- **The flags and the multilib.** The runtime and the C code are compiled with the clang target and the flags of
+  the core's entry in `CORES` ([toolchain/paths.py](../toolchain/paths.py)), in place of the first row of
+  [the table of flags](#compiling-the-runtime), and newlib and libgcc come from the multilib folder of that entry.
+  For the Cortex-M0+ they are `--target=thumbv6m-none-eabi -mcpu=cortex-m0plus -mfpu=none -mfloat-abi=soft` and
+  `thumb/v6-m/nofp`. [The check on QEMU](#a-check-on-qemu) below passes with these in `CFLAGS` and `ML` and with
+  `--cpu cortex-m0plus` on its kbuild line: the Cortex-M4F of that machine runs the code of an ARMv6-M core.
+- **A core without an FPU** uses the soft-float calling convention (`-mfpu=none -mfloat-abi=soft`, a `nofp`
+  multilib) in every object of the link: C compiled with arm-none-eabi-gcc needs the same options. The reset
+  entry does not touch CPACR there (step 1 of [Start-up](#start-up)).
+- **ARMv6-M (Cortex-M0, M0+, M1)** has the Thumb-1 instructions only. A reset or fault entry written in assembly
+  keeps to them, as those of the QEMU start code do, and sets lr before it jumps to the C start function (step 1
+  of Start-up). There is no LDREX/STREX either: the compiler calls `__atomic_*` functions for the atomics of up to
+  4 bytes, which `runtime/atomic32.c` defines, with interrupts masked. clang then warns about a
+  `large atomic operation` in `runtime/mm.c`; `-Wno-atomic-alignment`, which qbuild passes, silences it.
+- **No BASEPRI on ARMv6-M and ARMv8-M Baseline** (Cortex-M0, M0+, M1, M23). [support/hw.c](../support/hw.c) does
+  not define `hw_basepri`, `hw_basepri_set` and `hw_basepri_max` for them, and the link of a program that calls one
+  fails with `undefined symbol: hw_basepri`. `hw_irq_save` and `hw_irq_restore` (PRIMASK) are there on every core.
+- **ARMv8-M (Cortex-M23, M33).** The MPU has other registers and no permission that refuses every access, so the
+  guards are set up in another way ([below](#optional-a-fault-report-and-mpu-guards)). A core with the Security
+  Extension starts in the Secure state; the tests leave it there and link the program into the Secure aliases of
+  the machine's memories ([an505.ld](../targets/qemu-l475/an505.ld)).
 
 ## A check on QEMU
 
@@ -269,6 +314,14 @@ purpose. For a board, replace `start.c` and `l475.ld` with its own and write the
   unwinder) and the standard library of up to 2984 bytes (the character-class tables of `Regex`); a program without
   `Regex` can do with a 2 KB guard if frames.py shows nothing larger. PRIVDEFENA keeps the default memory map everywhere else, and SHCSR turns on the MemManage,
   BusFault and UsageFault handlers.
+- **The guards on other cores.** ARMv6-M and ARMv7-M have the same MPU registers (`MPU_RBAR`, `MPU_RASR`), and a
+  region can refuse every access: the guards are regions 0 and 1. The MPU of ARMv8-M gives a region a base and a
+  limit (`MPU_RBAR`, `MPU_RLAR`), and none of its permissions refuses a privileged read. An address that lies in
+  two regions faults whatever they allow, so there the start code sets up each guard as the same region twice:
+  regions 0 and 1 for the null guard, 2 and 3 for the stack guard. The guards and the fault report ran on QEMU's
+  Cortex-M3, M4F, M7 and M33. They never ran on an ARMv6-M or ARMv8-M Baseline core, whose code the tests run on a
+  larger core: such a core has the HardFault exception only, without MemManage, BusFault and UsageFault and their
+  status registers (CFSR, MMFAR, BFAR), and a Cortex-M0 or M1 has no MPU.
 - **Limits.** The stack-overflow report has no PC. A frame larger than the guard can step over it:
   `python tools/frames.py app.elf` lists the largest frames, and `--limit 4096` makes it fail for a larger one.
 

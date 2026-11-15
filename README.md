@@ -6,13 +6,13 @@
 [![Release](https://img.shields.io/github/v/release/masa002/kmicro)](https://github.com/masa002/kmicro/releases)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Kotlin/Native 2.4.21](https://img.shields.io/badge/Kotlin%2FNative-2.4.21-informational)](https://github.com/JetBrains/kotlin/releases/tag/v2.4.21)
-[![Target: Cortex-M4F](https://img.shields.io/badge/target-Cortex--M4F%2C%20bare%20metal-informational)](docs/how-it-works.md)
+[![Target: Cortex-M](https://img.shields.io/badge/target-Cortex--M%2C%20bare%20metal-informational)](docs/roadmap.md#targets)
 [![RAM: 64 KB](https://img.shields.io/badge/RAM-64%20KB-informational)](#numbers)
 [![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#status)
 
 **Running Kotlin® on bare-metal microcontrollers, built by the official compiler.**
 
-kmicro runs the output of the unmodified Kotlin/Native 2.4.21 compiler on a Cortex-M4 with no operating system and
+kmicro runs the output of the unmodified Kotlin/Native 2.4.21 compiler on a Cortex-M with no operating system and
 64 KB of RAM. It replaces the Kotlin/Native runtime with one written for a single thread and a heap of a few
 kilobytes: a precise garbage collector, exceptions, coroutines, strings, and cinterop to call C.
 
@@ -35,9 +35,11 @@ Hello from Kotlin #1, Kotlin #2, Kotlin #3 on a bare Cortex-M4
 qemu: exit 0
 ```
 
-kbuild compiles the Kotlin code for the Cortex-M4; qbuild links it with the kmicro runtime and runs it on QEMU's
-emulated STM32L475. [examples/hello](examples/hello) does the same from a C `main`, the way a firmware written in C
-starts calling Kotlin.
+kbuild compiles the Kotlin code for the Cortex-M4F, the default core; qbuild links it with the kmicro runtime and
+runs it on QEMU's emulated STM32L475. `--cpu` on both chooses another core, from the Cortex-M0 to the Cortex-M33:
+[docs/roadmap.md](docs/roadmap.md#targets) lists them with what was checked on each.
+[examples/hello](examples/hello) does the same from a C `main`, the way a firmware written in C starts calling
+Kotlin.
 
 ## Status
 
@@ -96,9 +98,10 @@ Limits by design:
 
 - **One compiler version.** kmicro reads the IR of Kotlin/Native 2.4.21. It builds on the `linux_arm32_hfp` target,
   which JetBrains has deprecated, so a later compiler may not offer it.
-- **One CPU, tested: Cortex-M4F.** The compiler target is hard-float, so the core needs an FPU. The CPU is one setting,
-  `--cpu` (the table `CORES` in [toolchain/paths.py](toolchain/paths.py)), so a Cortex-M7 should need only that
-  (untested); a core without an FPU would need the soft-float calling convention.
+- **Cortex-M only.** kmicro builds for the cores from the Cortex-M0 to the Cortex-M33, with or without an FPU
+  (`--cpu`; [the cores and what was checked on each](docs/roadmap.md#targets)). Cortex-R and 32-bit Cortex-A cores
+  have another start-up and interrupt model and are not supported. 64-bit ARM is out of reach: kmicro reads the IR
+  of the compiler's 32-bit ARM target.
 - **One thread.** Interrupts are fine, with the rules in [docs/writing-kotlin.md](docs/writing-kotlin.md). There are
   no threads: `Worker` and `WeakReference` are not supported.
 - **The standard library only.** kotlinx libraries are untested.
@@ -175,7 +178,7 @@ instructions: 7,164 to create the exception with its message and stack trace, 2,
 | [runtime/](runtime) | the Kotlin runtime, in C and C++; `kmicro.h` is its contract with the board |
 | [toolchain/](toolchain) | the build steps: `paths.py` finds the tools (tested versions in `versions.txt`), `kn.py` runs the pipeline, `retarget.py` and `bridges.py` adapt the compiler's IR, `binutils.py` runs `nm`, `objdump` and the like on an image |
 | [support/](support) | `hw.h`, `hw.c`, `hw.def`: volatile register access, barriers, interrupt masks for Kotlin |
-| [targets/](targets) | startup code and linker scripts for QEMU (`qemu-l475` for programs, `qemu-an386` through `qbuild --target an386` for programs that need more memory), and `common/kotlin_main.c` for `fun main()` |
+| [targets/](targets) | startup code and linker scripts for QEMU (`qemu-l475` for programs, with a linker script for each machine the cores run on; `qemu-an386` through `qbuild --target an386` for programs that need more memory), and `common/kotlin_main.c` for `fun main()` |
 | [tools/](tools) | `kbuild.py`, `qbuild.py`, `gen_regs.py` (CMSIS to Kotlin), `isr_check.py`, `symbolize.py`, `frames.py`, `missing_natives.py`, `difftest.py`, `measure.py`, `irstat.py`, `port_dtoa.py` |
 | [examples/](examples) | `hello`, `irq` (a Kotlin SysTick handler on registers), `selftest` (with its STM32L431 board files) |
 | [tests/](tests) | `run_all.py` and one folder per feature, `expected/` (the outputs run_all compares), `diff/` (the differential tests), `unit/` for the tools |

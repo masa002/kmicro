@@ -54,6 +54,8 @@ else the newest, with a warning.
    named (`NOT FOUND`, `MISSING`), and paths.py then exits 1.
 7. `python tests/run_all.py` builds and runs every test program and example on QEMU, one PASS or FAIL line each, and
    ends with the count, `N passed, 0 failed`. `python -m unittest discover -s tests/unit` tests the tools.
+   run_all builds for the Cortex-M4F; `--cpu CORE` builds and runs the tests for another core, on the QEMU machine
+   that runs its code ([docs/roadmap.md](docs/roadmap.md#targets) lists the cores).
 
 ## Hosts
 

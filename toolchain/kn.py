@@ -1,8 +1,10 @@
-"""Kotlin sources -> Cortex-M4 LTO objects, the steps every kmicro build shares.
+"""Kotlin sources -> Cortex-M LTO objects, the steps every kmicro build shares.
 
     compile_ir()   the official kotlinc-native 2.4.21, unmodified, for linux_arm32_hfp (a 32-bit EABI target whose
-                   data layout equals thumbv7em's): textual LLVM IR after Codegen (+ the C stubs of cinterop)
-    retarget()     toolchain/retarget.py: thumbv7em triple, Cortex-M4 attributes, TLS -> plain storage ...
+                   data layout equals that of the Cortex-M targets): textual LLVM IR after Codegen (+ the C stubs of
+                   cinterop)
+    retarget()     toolchain/retarget.py: the triple and the attributes of the core (paths.CORES), TLS -> plain
+                   storage ...
     lto_object()   clang -flto: the IR becomes an object that ld.lld optimises together with the runtime and the C code
     bridges()      the cinterop call bridges (toolchain/bridges.py), when the program calls C through cinterop
     cinterop()     a .def file -> klib (C declarations Kotlin can call)
