@@ -162,6 +162,57 @@ class Cores(unittest.TestCase):
             self.assertEqual('__ARM_FEATURE_MVE' in macros, cpu in ('cortex-m55', 'cortex-m85'), cpu)
 
 
+class ArgPathError(unittest.TestCase):
+    """arg_path() as on Windows with the code page 1252, on a volume without 8.3 short names: what the error advises
+    for a path that Java cannot take."""
+    NAME, FOLDER = 'give it, or the file it is named after, a name', 'move it to a folder'
+    RELATIVE = 'run the build from inside the folder'
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.saved = paths.WINDOWS, paths._ansi_codepage, paths._short_path, os.getcwd()
+        paths.WINDOWS, paths._ansi_codepage, paths._short_path = True, lambda: 'cp1252', lambda p: None
+        self.dir = Path(self.tmp.name).resolve() / 'テスト'
+        self.dir.mkdir()
+
+    def tearDown(self):
+        paths.WINDOWS, paths._ansi_codepage, paths._short_path, cwd = self.saved
+        os.chdir(cwd)
+        self.tmp.cleanup()
+
+    def error(self, path, **kw):
+        with self.assertRaises(SystemExit) as e:
+            paths.arg_path(path, **kw)
+        self.assertIn('cannot be passed to the tool (cp1252 only)', str(e.exception))
+        return str(e.exception)
+
+    def test_folder_name(self):
+        msg = self.error(self.dir / 'x.def')
+        self.assertIn(self.FOLDER, msg)
+        self.assertIn(self.RELATIVE, msg)
+        self.assertNotIn(self.NAME, msg)
+        os.chdir(self.dir)
+        self.assertEqual(paths.arg_path(self.dir / 'x.def'), 'x.def')
+
+    def test_no_relative_path_is_tried(self):
+        os.chdir(self.dir)
+        msg = self.error(self.dir / 'x.def', relative=False)
+        self.assertIn(self.FOLDER, msg)
+        self.assertNotIn(self.RELATIVE, msg)
+
+    def test_file_name(self):
+        os.chdir(self.dir.parent)
+        for path in (self.dir.parent / 'build' / 'カフェ', Path('カフェ.def')):
+            msg = self.error(path)
+            self.assertIn(self.NAME, msg)
+            self.assertNotIn(self.FOLDER, msg)
+        both = self.error(self.dir / 'カフェ.def')
+        self.assertIn(self.NAME, both)
+        self.assertIn(self.FOLDER, both)
+        os.chdir(self.dir)
+        self.assertNotIn(self.FOLDER, self.error(self.dir / 'カフェ.def'))
+
+
 class BugReportForm(unittest.TestCase):
     def test_the_form_offers_every_core(self):
         form = (ROOT / '.github/ISSUE_TEMPLATE/bug_report.yml').read_text(encoding='utf-8')

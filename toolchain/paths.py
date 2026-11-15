@@ -326,9 +326,17 @@ def arg_path(p, relative=True, fail=True):
         if ok(t):
             return t
     if fail:
-        sys.exit(f'kmicro: {s}: this path cannot be passed to the tool ({cp} only) and has no short name: move it to '
-                 'a folder whose name has no such characters, or run the build from inside the folder that has them '
-                 '(a relative path avoids them).')
+        # what helps depends on where the characters are left in the forms tried: no folder and no relative path
+        # avoids a file's own name
+        forms, advice = [Path(t) for t in tries] or [Path(s)], []
+        if not any(ok(f.name) for f in forms):
+            advice.append('give it, or the file it is named after, a name without such characters')
+        if not any(ok(f.parent.as_posix()) for f in forms):
+            advice.append('move it to a folder whose name has no such characters' + (
+                ', or run the build from inside the folder that has them (a relative path avoids them)' if relative
+                else ''))
+        sys.exit(f'kmicro: {s}: this path cannot be passed to the tool ({cp} only) and has no short name: '
+                 + '; '.join(advice) + '.')
     return None
 
 
