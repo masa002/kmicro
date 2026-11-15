@@ -3,6 +3,95 @@
 What changed in each release of kmicro. [docs/roadmap.md](docs/roadmap.md#releases-and-versions) says how versions
 are numbered. The open problems are the [issues](https://github.com/masa002/kmicro/issues).
 
+## 0.2.1 (2026-11-16)
+
+The fixes of a check of the whole repository after 0.2.0. Three of the problems gave a wrong program without a
+message: an exception lost with `kbuild --size`, array copies under an interrupt handler, and C functions that
+return a struct of floats on a core without an FPU.
+
+### What a build script or a board has to change
+
+- **Rebuild a firmware that was built with `kbuild --size`** (#197, below). Its image is now 1 to 3 % larger: a
+  program close to the flash limit may no longer fit.
+- **qbuild refuses a `k.o` that kbuild built for another core,** and a `--target` whose machine does not run the
+  code of the core: give kbuild and qbuild the same `--cpu` (or `KMICRO_CPU`). kbuild leaves the core's name in
+  `core.txt` next to `k.o` and `bridges.o`. A link that succeeds now prints the linker's warnings.
+- **`hw_cycles_enable()` returns a `bool`** ([support/hw.h](support/hw.h)): false where there is no cycle counter,
+  and `hw_cycles()` then stays 0. Code that ignores the result needs no change.
+- **The QEMU start code has vectors for the external interrupts:** `IRQ0_Handler` to `IRQ99_Handler`, numbered as
+  the NVIC numbers them. A program for a QEMU target gives its handler that name; an interrupt that is enabled
+  without one ends in the fault report. The table takes 0.5 KB of flash in a QEMU image.
+- **isr_check** has `--vectors SECTION` for a linker script that does not call the vector table `.isr_vector`; without
+  that section it now prints a note that only the functions named like handlers were checked.
+- **difftest:** under `// difftest: ulp N` a number is compared as a Float only when the program prints an `f`
+  after it.
+- The hello example and the selftest say `Cortex-M` where they said `Cortex-M4` (#167): a script that compares
+  their output follows.
+- Nothing changes in `runtime/kmicro.h` except that a C++ file can include it.
+
+### Fixed
+
+- **`kbuild --size` could lose an exception (#197).** An exception thrown below a call that LLVM's machine outliner
+  had moved out of a Kotlin function passed the `try` that should have caught it, and the program ended with
+  `Uncaught Kotlin exception`. Seen on the Cortex-M4F, M7 and M33; code for the Cortex-M0+ was not affected. `--size`
+  now keeps the outliner away from Kotlin code (#199), and the sizes the documents give for `--size` are measured
+  again (#206).
+- **An interrupt handler could read a half-copied array element (#178).** `copyInto`, and with it
+  `ArrayList.removeAt` and `add(0, x)`, copied byte by byte: a handler that read an element in the middle of a copy
+  got bytes of two values, for a reference a pointer to nowhere, and one that stored into the array could leave
+  such a pointer in it. Copies and fills now go element by element, each element with one load and one store; an
+  element of a `LongArray` or `DoubleArray` is two words, as any `Long` (#205, #211).
+- **cinterop on a core without an FPU: a C function that returns a struct of floats or doubles by value (#171)**
+  wrote its result through its first argument: wrong values, or a fault far from the cause. A `staticCFunction`
+  that returns such a struct to C failed the same way. The bridges now pass the result as C compiled for the core
+  does (#210, #219). One shape is not handled there and stops the build with a message that says what to do: a
+  struct of floats returned through a C function pointer that Kotlin calls. The cores with an FPU were not affected.
+- **Runtime:** `-D KM_GC_STRESS=0` turned GC stress on (#189); `kmicro.h` and `support/hw.h` could not be included
+  from C++ (#181); `hw_cycles()` stayed 0 without a word on ARMv6-M, on ARMv8-M Baseline and on Cortex-M7 chips that
+  lock the DWT: `hw_cycles_enable()` opens the lock and says whether a counter counts (#183; not run on a chip,
+  QEMU models no DWT); `toDouble()` and `toFloat()` could free native memory twice when the arena ran out in a later
+  round of the parser (#188); a C `main` without `kmicro_init()` stopped with `unknown TLS key`, and the panic now
+  names the missing call (#190); the compare-and-set functions for ARMv6-M had a parameter that the compiler's call
+  does not pass (#191).
+- **Tools:** qbuild linked a `k.o` built for another core without a word and hid the linker's warnings (#172), built
+  for a `--target` on which the stack and null guards do nothing (#164), and wrote stubs for missing runtime
+  functions that did not assemble on ARMv6-M (#173); the QEMU start code had no vectors for the external interrupts:
+  a handler was dropped and the interrupt jumped into code (#180); `gen_regs.py` gave every register after a nested
+  struct of 8- or 16-bit registers a wrong address (#174), read interrupt numbers in hexadecimal or octal wrong and
+  computed some constants as C does not (#175); `isr_check.py` did not say when it found no vector table (#176);
+  difftest `ulp N` compared short Doubles and integers with the tolerance of a Float (#177) and headed the kmicro
+  side `Cortex-M4` for every core (#166).
+- **Documentation:** `printf` of `platform.posix` prints nothing for `%f` and reads the wrong arguments after `%lld`,
+  where the documents said it works: they now say which conversions work and how to get the others (#198);
+  [docs/porting.md](docs/porting.md) says what the null guard needs on a chip whose flash begins at address 0 (#179),
+  that a board hook in a static library is not linked (#182), and that ARMv6-M and ARMv8-M Baseline fault on an
+  unaligned access (#170); the instruction counts of a throw say what they depend on (#169); the sample outputs
+  and sizes in the documents, and the sizes in kbuild's warning about Regex, are measured again (#236).
+
+### Tests and CI
+
+- The QEMU start code turns on the fault for an unaligned access (CCR.UNALIGN_TRP) for the cores that have it on
+  the chip, so the tests that run ARMv6-M and ARMv8-M Baseline code on a larger core find such an access (#168).
+- New tests for the fixes above: `size_throw`, `isr_copy`, `no_init`, `app_gc_stress_0`, `qbuild_cxx`, `qbuild_irq`,
+  `qbuild_irq_an386`, `qbuild_unaligned`, `stdio_float`, and struct results of floats in `cinterop_shapes`.
+- The bug report form asks for the core (#165).
+
+### Tested with
+
+- Kotlin/Native 2.4.21 with the LLVM 21 it downloads, xPack GNU Arm Embedded GCC 15.2.1-1.1, xPack QEMU Arm 9.2.4-1,
+  Python 3.10 to 3.12 ([toolchain/versions.txt](toolchain/versions.txt)).
+- Hosts: Windows and Linux x64, both in CI. macOS is untested.
+- Cores: run_all passes for cortex-m0plus, cortex-m3, cortex-m4, cortex-m4f, cortex-m7, cortex-m23, cortex-m33 and
+  cortex-m33f on QEMU; an STM32L431 board in [a run recorded before 0.1.0](examples/selftest/stm32l431-report.txt).
+- Suites: 88 run_all tests, on the default core also with a collection at every allocation; 45 difftest programs,
+  the same way; 169 tool tests.
+
+### Known issues
+
+- The board times in the README are from a runtime older than 0.1.0; the run has not been repeated (#111).
+- Kotlin 2.5.0-RC: programs do not link, because its standard library no longer has a function that the runtime
+  calls (#149). The supported version is 2.4.21.
+
 ## 0.2.0 (2026-11-15)
 
 kmicro builds for every Cortex-M core from the Cortex-M0 to the Cortex-M33, and the problems listed with 0.1.0 are

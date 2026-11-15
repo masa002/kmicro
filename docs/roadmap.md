@@ -11,7 +11,7 @@ their known issues. A release is cut when a set of fixes or a feature is ready a
 - While the major version is 0, a minor release (0.2.0) may change the board contract in
   [runtime/kmicro.h](../runtime/kmicro.h), the command line of a tool, or the supported Kotlin/Native version. The
   changelog says what a board or a build script has to change.
-- A patch release (0.1.1) fixes problems and changes none of those.
+- A patch release (0.2.1) fixes problems and changes none of those.
 - Version 1.0 is the point from which the board contract and the command lines stay compatible within a major
   version.
 
