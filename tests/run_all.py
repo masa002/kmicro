@@ -31,7 +31,8 @@ on QEMU's STM32L475 (or mps2-an386, for a test that says so) and checks:
   which builds another runtime than users get).
 
 The programs run with qbuild --icount: QEMU's clock is the number of instructions run, so a timer interrupt lands on
-the same instruction in every run. One test (host_clock) keeps the host's clock, which is qbuild's default.
+the same instruction in every run. One test (host_clock) keeps the host's clock, which is qbuild's default: one whose
+output does not depend on the clock.
 
 Several tests can share one Kotlin build and one C driver: the driver then tells the cases apart by a TEST_* macro,
 which run_all defines in a small file that includes the driver (build/t/<name>/case_<driver>), so that the runtime,
@@ -262,7 +263,7 @@ TESTS = [
           checks=[Check('frames', ['tools/frames.py', '{elf}', '--top', '1', '--limit', '8192'], exit=1)]),
     Test('stack_array_error', Kotlin('faults', FAULTS.srcs, dict(stack_array_error=True)), fails='kotlin', exit=1),
     # the examples
-    Test('hello', HELLO, ['examples/hello/main.c']),
+    Test('hello', HELLO, ['examples/hello/main.c'], host_clock=True),
     Test('selftest', SELFTEST, ['examples/selftest/main.c'],
          checks=[Check('isr_check', ['tools/isr_check.py', '{elf}']),
                  Check('isr_check_boxing', ['tools/isr_check.py', '{elf}', '--boxing'], exit=1)]),
@@ -272,7 +273,7 @@ TESTS = [
                                                                     hot=r'^kfun:selftest#(gcChains|coroEvent)\(')),
          ['examples/selftest/main.c']),
     Test('selftest_stm32l431', command=board_build),
-    Test('irq', IRQ, ['examples/irq/main.c', 'support/hw.c'], host_clock=True,
+    Test('irq', IRQ, ['examples/irq/main.c', 'support/hw.c'],
          checks=[Check('isr_check', ['tools/isr_check.py', '{elf}']),
                  Check('gen_regs', ['tools/gen_regs.py', '--header', 'examples/irq/systick.h', '--sources',
                                     'examples/irq', '--out', '{dir}/gen/Regs.kt', '--package', 'irq'],
