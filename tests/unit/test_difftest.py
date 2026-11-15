@@ -56,6 +56,27 @@ class UlpTolerance(unittest.TestCase):
         self.assertFalse(self.close('2.5foo\n', '2.5000002foo\n'))        # no mark: a word that begins with f
         self.assertFalse(self.close('1.0E300f\n', '1.0000000000000002E300f\n'))    # no Float is that large
 
+    def test_the_numbers_are_counted_not_their_digits_subtracted(self):
+        # The digits of a Float are up to half a unit away from it: the neighbours 0.1f and 0.10000001f are 1.3 units
+        # apart as decimals.
+        self.assertTrue(self.close('0.1f\n', '0.10000001f\n'))
+        self.assertFalse(self.close('0.1f\n', '0.10000002f\n'))
+        self.assertTrue(self.close('0.1f\n', '0.10000002f\n', 2))
+        self.assertFalse(self.close('0.1f\n', '0.100000024f\n', 2))
+        self.assertTrue(self.close('3.4028235E38f\n', '3.4028233E38f\n'))         # Float.MAX_VALUE and the one below
+        self.assertFalse(self.close('3.4028235E38f\n', '3.5E38f\n', 100))         # no Float
+        self.assertTrue(self.close('1.4E-45f -1.4E-45f\n', '0.0f -0.0f\n'))        # Float.MIN_VALUE next to zero
+        self.assertFalse(self.close('1.4E-45f\n', '-1.4E-45f\n'))
+
+    def test_the_unit_is_the_same_from_both_sides_of_a_power_of_two(self):
+        for one, below in (('1.0f', '0.99999994f'), ('1.0', '0.9999999999999999')):
+            self.assertTrue(self.close(one + '\n', below + '\n'))
+            self.assertTrue(self.close(below + '\n', one + '\n'))
+        for one, below in (('1.0f', '0.9999999f'), ('1.0', '0.9999999999999998')):  # two numbers below 1
+            self.assertFalse(self.close(one + '\n', below + '\n'))
+            self.assertFalse(self.close(below + '\n', one + '\n'))
+            self.assertTrue(self.close(one + '\n', below + '\n', 2))
+
     def test_integers_and_text_must_be_equal(self):
         self.assertFalse(self.close('sum 16777216\n', 'sum 16777217\n'))
         self.assertFalse(self.close('hash 123456789\n', 'hash 123456792\n'))

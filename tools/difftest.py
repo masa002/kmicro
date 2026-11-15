@@ -57,7 +57,6 @@ STATS = re.compile(rb'kmicro-difftest: heap (\d+) peak (\d+) live (\d+)\n\Z')   
 NUMBER = re.compile(r'-?(?:\d+(?:\.\d+)?(?:E-?\d+)?|Infinity)|NaN')
 INTEGER = re.compile(r'-?\d+')
 FLOAT_MARK = re.compile(r'f(?!\w)')                # after a number: the program says that it printed a Float
-FLOAT_MAX = 3.4028234663852886e38               # Float.MAX_VALUE
 VALUE, FLAG = {'heap', 'ulp'}, {'large', 'frame'}   # the directives with a number and those without
 
 
@@ -144,10 +143,17 @@ def kmicro(name, src, opts, stress, size):
     return out, q.returncode, notes, (text + data, data + bss), frame, stats and tuple(map(int, stats.groups()))
 
 
-def float_ulp(x):
-    bits = struct.unpack('<I', struct.pack('<f', abs(x)))[0]
-    lo, hi = (struct.unpack('<f', struct.pack('<I', b))[0] for b in (bits, bits + 1))
-    return hi - lo
+def place(text, fmt):
+    """Where the number lies among the Floats (fmt '<f') or the Doubles ('<d'), counted from zero: the next larger
+    number of the type is one more, and -0.0 is 0 like 0.0. None when the type has no such number (1.0E300 as a
+    Float). The printed digits are the shortest that read back as the number, up to half a unit away from it, so
+    the numbers are counted and not their digits subtracted."""
+    try:
+        packed = struct.pack(fmt, float(text))
+    except OverflowError:
+        return None
+    bits, sign = int.from_bytes(packed, 'little'), 1 << (8 * len(packed) - 1)
+    return sign - bits if bits & sign else bits
 
 
 def close(golden, got, ulps):
@@ -163,13 +169,11 @@ def close(golden, got, ulps):
             continue
         if INTEGER.fullmatch(x) or INTEGER.fullmatch(y):
             return False
-        fx, fy = float(x), float(y)
-        if not (math.isfinite(fx) and math.isfinite(fy)):
+        if not (math.isfinite(float(x)) and math.isfinite(float(y))):
             return False
-        if FLOAT_MARK.match(a, mx.end()):               # the text between the numbers is the same on both sides
-            if abs(fx) > FLOAT_MAX or abs(fx - fy) > ulps * float_ulp(fx):
-                return False
-        elif abs(fx - fy) > ulps * math.ulp(fx):
+        fmt = '<f' if FLOAT_MARK.match(a, mx.end()) else '<d'     # the text after the number is the same on both sides
+        px, py = place(x, fmt), place(y, fmt)
+        if px is None or py is None or abs(px - py) > ulps:
             return False
     return True
 
