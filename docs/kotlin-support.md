@@ -78,7 +78,7 @@ from the Cortex-M0 to the Cortex-M85, and what was checked on each.
 | GC.schedule, GC.lastGCInfo | partly | GC.schedule collects at once (and does nothing inside an interrupt handler); lastGCInfo is always null |
 | GC heap tuning (autotune, targetHeapBytes, ...), Debugging.dumpMemory, ImmutableBlob, MemoryUsageInfo.peakResidentSetSizeBytes, the settings of GC.MainThreadFinalizerProcessor | not supported | the program stops with '... is not supported on kmicro'; GC.MainThreadFinalizerProcessor.available is false |
 | WeakReference | works | `get()` is null from the collection that finds the object dead; each one takes 16 B of heap besides itself; an interrupt handler may call `get()` |
-| createCleaner | not supported | the program stops with 'finalizers (Cleaner) are not supported' |
+| createCleaner | works | the action runs once, on the one thread there is: at the next allocation after the collection that found the object dead, or before `GC.collect()` returns; a Cleaner holds one of the `KM_STABLE_REFS` (16) slots until then ([the rules](writing-kotlin.md#cleaners-and-weak-references)) |
 | @ThreadLocal objects and properties | works | |
 | dead objects referenced by frame slots | partly | stay alive until the function returns; matters on a small heap |
 | **Concurrency** | | |
@@ -138,7 +138,7 @@ from the Cortex-M0 to the Cortex-M85, and what was checked on each.
 | structs by value (CValue, useContents, cValue{}) | works | [tests/cinterop_shapes](../tests/cinterop_shapes), structs of floats and doubles included, on cores with and without an FPU. Not on a core without an FPU: a struct of floats returned through a C function pointer that Kotlin calls; kbuild stops with a message |
 | staticCFunction callbacks | works | an exception thrown inside one does not reach a Kotlin try around the C call, as on stock: catch it in the callback |
 | header static inline functions, with loops, inline assembly or restrict pointers | works | |
-| StableRef | works | at most `KM_STABLE_REFS` (16) live at once |
+| StableRef | works | at most `KM_STABLE_REFS` (16) live at once, the Cleaners whose actions have not run included |
 | C calling Kotlin by plain names (--c-api) | works | the prototypes are checked against the Kotlin functions |
 | platform.posix | partly | the string functions, `snprintf` and `printf` work, and `printf` prints where `println` does ([tests/stdio](../tests/stdio)). They are newlib-nano's: `%d %i %u %x %X %o %c %s %ld %lu` with widths and flags work; `%f %e %g` print nothing unless the link has `_printf_float` (10 to 13 KB of flash, [porting.md](porting.md#the-link)); there is no `ll`, `hh` or `z` length, so `%lld` prints `ld` and every argument after it is read from the wrong place (a `%s` there faults): print a `Long` with `%s` and `toString()`; generated for glibc: errno and usleep missing, time_t size differs from newlib |
 | **Build and tools** | | |

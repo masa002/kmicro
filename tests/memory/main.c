@@ -7,6 +7,7 @@ int32_t k_too_big(void);
 int32_t k_heap_full(void);
 void k_native_oom(void);
 void k_stable_refs(void);
+void k_cleaners(void);
 int32_t k_uppercase(void);
 int32_t k_is_letter(void);
 int32_t k_category(void);
@@ -39,6 +40,8 @@ int main(void)
     return 0;
 #elif defined(TEST_STABLE_REFS)
     k_stable_refs();
+#elif defined(TEST_CLEANERS)
+    k_cleaners();
 #elif defined(TEST_UNICODE_TABLES)
     k_println();                        /* the first println creates what printing needs, before the measurements */
     kept("\"abc\".uppercase(): ", k_uppercase);

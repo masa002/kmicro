@@ -269,11 +269,14 @@ TESTS = [
     memory('oom_panic', 'TEST_HEAP_FULL', exit=98),
     memory('native_oom', 'TEST_NATIVE_OOM'),
     memory('stable_refs_full', 'TEST_STABLE_REFS', exit=98),
+    memory('cleaners', 'TEST_CLEANERS', exit=98),
     memory('globals_limit', 'TEST_GLOBALS', exit=98),
     memory('globals_raised', 'TEST_GLOBALS', defs=['KM_GLOBALS=300']),
     memory('unicode_tables', 'TEST_UNICODE_TABLES'),
-    # the output is the stock runtime's (tools/difftest.py d_weak_reference)
+    # the output is the stock runtime's (tools/difftest.py d_weak_reference d_cleaner)
     Test('weak_reference', Kotlin('weak_reference', ['tests/diff/d_weak_reference.kt'], dict(main=True)),
+         ['targets/common/kotlin_main.c']),
+    Test('cleaner', Kotlin('cleaner', ['tests/diff/d_cleaner.kt'], dict(main=True)),
          ['targets/common/kotlin_main.c']),
     Test('native_double_free', None, ['tests/memory/double_free.c'], exit=98),
     Test('native_arena_fuzz', None, ['tests/memory/arena_fuzz.c']),

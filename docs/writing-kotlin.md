@@ -132,6 +132,31 @@ The runtime's other tables have fixed sizes too, each settable with `-D`; a full
 that names its macro, such as `too many globals (raise KM_GLOBALS, now 160)`.
 [how-it-works.md](how-it-works.md#sizes) lists them all.
 
+### Cleaners and weak references
+
+`createCleaner(resource) { ... }` runs its action once, after the collector has found the object that holds the
+`Cleaner` dead. The stock runtime runs it on another thread. kmicro has one thread and runs it between two steps of
+the program:
+
+- at the start of the next allocation after that collection, whoever allocates: the action then runs in the middle
+  of that code, on its stack;
+- before `GC.collect()`, `GC.schedule()` or `kmicro_gc()` returns, for the objects that collection found;
+- when the StableRef table is full (below).
+
+It never runs inside the collector or inside an interrupt handler. The action may allocate, collect and create
+cleaners; an exception it throws is dropped, as in the stock runtime. As there, it must not count on the state of
+data that other code is in the middle of changing, and an action whose object is still alive when the program ends
+does not run. A program that stops allocating leaves the actions waiting: call `GC.collect()`, or `kmicro_gc()` from
+the C main loop, where they should run.
+
+A `Cleaner` holds one slot of the StableRef table (`KM_STABLE_REFS`, 16, shared with `StableRef`) from
+`createCleaner` until its action has run. When the table is full the runtime collects and runs the actions of the
+cleaners that are dead; if no slot comes free the program stops with a panic, `too many StableRefs`, that names the
+macro. A program that keeps more cleaners alive than that sets `-D KM_STABLE_REFS=N`, 8 bytes of RAM each.
+
+A `WeakReference` needs no slot: it takes 16 bytes of heap besides itself, and `get()` is null from the collection
+that finds its object dead.
+
 ## Interrupt handlers
 
 A handler can run while the collector is working, and the heap is not reentrant, so **a handler must not allocate**.

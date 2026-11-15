@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlin.experimental.ExperimentalNativeApi::class)
 
+import kotlin.concurrent.AtomicInt
 import kotlin.native.CName
+import kotlin.native.ref.createCleaner
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.StableRef
 import kotlinx.cinterop.allocArray
@@ -63,6 +65,36 @@ fun stableRefs() {
     } finally {
         println("not reached")
     }
+}
+
+// Cleaners without GC.collect(): the actions run at an allocation after the collection that found the objects dead,
+// which comes when the heap is full. The one whose object is held does not run. Then 17 Cleaners alive at once: each
+// holds a slot of the StableRef table until its action has run.
+val returned = AtomicInt(0)
+var sink: Box? = null                   // what is stored here is a heap object: a Box nobody keeps would not be one
+
+class Lease(id: Int) {
+    val cleaner = createCleaner(id) { returned.addAndGet(1 + it * 100) }
+}
+
+// its own function, so that no frame slot of the caller keeps a Lease alive
+fun lease(n: Int) {
+    repeat(n) { Lease(it) }
+}
+
+@CName("k_cleaners")
+fun cleaners() {
+    val held = Lease(1000)
+    lease(5)
+    var rounds = 0
+    while (returned.value % 100 < 5 && rounds < 100_000) {
+        sink = Box(rounds)
+        rounds++
+    }
+    val ran = returned.value
+    println("5 dropped, 1 held: actions ${ran % 100}, ids ${ran / 100}, held ${held.cleaner != null}")
+    val all = List(16) { Lease(it) }
+    println("not reached: ${all.size}")
 }
 
 // Case mapping and Char properties read the Unicode tables in flash: no heap kept. Char.category creates the 30

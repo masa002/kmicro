@@ -1,0 +1,9 @@
+3 ports dropped: closed 3, handles 60
+30 dropped, 4 kept: closed 33, handles 4710
+churn 16890, kept 406
+the kept ones are still open: closed 33
+an action that allocates: built 230
+an action that throws: ran 1, and the program goes on
+actions that make objects with cleaners: 4
+held cleaner: handles 4710
+dropped: handles 11710

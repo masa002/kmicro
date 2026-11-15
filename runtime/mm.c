@@ -227,10 +227,15 @@ static inline void isr_check(void *caller, const char *what)
 }
 #define KM_ISR_ALLOC "allocation inside an interrupt handler"
 
+static bool s_cleaners;                              /* a collection found Cleaners dead: their actions are to run */
+static void run_cleaners(void);
+
 static uint32_t *alloc_block(uint32_t object_bytes)
 {
     if (s_lo == NULL)
         heap_init();
+    if (__builtin_expect(s_cleaners, 0))             /* before anything is taken from the heap */
+        run_cleaners();
     if (object_bytes > KM_HEAP_BYTES)
         ThrowOutOfMemoryError();
     uint32_t bytes = round8(object_bytes);
@@ -286,8 +291,6 @@ ObjHeader *kmicro_alloc_array(const TypeInfo *type, int32_t count, ObjHeader **r
 KM_NOTHROW ObjHeader *AllocInstance(const TypeInfo *type, ObjHeader **result)
 {
     isr_check(__builtin_return_address(0), KM_ISR_ALLOC);
-    if (type->flags_ & KM_TF_HAS_FINALIZER)          /* CleanerImpl (a RegularWeakReferenceImpl is made below) */
-        kmicro_panic("finalizers (Cleaner) are not supported");
     return alloc_object(type, result);
 }
 ObjHeader *AllocArrayInstance(const TypeInfo *type, int32_t elements, ObjHeader **result)
@@ -401,11 +404,12 @@ void kmicro_unroot(ObjHeader **slot)
 /* StableRef.create(obj).asCPointer() is the address of a slot in this table; C keeps it as a void * (callback user
  * data) and Kotlin turns it back with asStableRef. While the count is above zero the object is a root (create sets
  * 1, dispose releases and frees the slot); at zero the slot is weak and the collector clears it once nothing else
- * keeps the object. A null object has no slot: its reference is NULL. Interrupt handlers may use these too. */
+ * keeps the object. A null object has no slot: its reference is NULL. Interrupt handlers may use these too.
+ * A Cleaner keeps its action in a slot as well (createCleaner, below). */
 #ifndef KM_STABLE_REFS
 #define KM_STABLE_REFS 16
 #endif
-typedef struct { ObjHeader *obj; uint16_t rc; bool used; } km_stable_ref_t;
+typedef struct { ObjHeader *obj; uint16_t rc; bool used, clean; } km_stable_ref_t;   /* clean: see run_cleaners */
 static km_stable_ref_t s_stable[KM_STABLE_REFS];
 
 static km_stable_ref_t *stable_slot(void *ref)
@@ -420,14 +424,25 @@ static void *stable_create(ObjHeader *obj, uint16_t rc)
 {
     if (obj == NULL)
         return NULL;
-    uint32_t pm = km_irq_save();
-    for (int i = 0; i < KM_STABLE_REFS; i++)
-        if (!s_stable[i].used) {
-            s_stable[i] = (km_stable_ref_t){ obj, rc, true };
-            km_ref_stored();                         /* a new root: a collection that is marking looks again */
-            km_irq_restore(pm);
-            return &s_stable[i];
-        }
+    for (int attempt = 0;; attempt++) {
+        uint32_t pm = km_irq_save();
+        for (int i = 0; i < KM_STABLE_REFS; i++)
+            if (!s_stable[i].used) {
+                s_stable[i] = (km_stable_ref_t){ obj, rc, true, false };
+                km_ref_stored();                     /* a new root: a collection that is marking looks again */
+                km_irq_restore(pm);
+                return &s_stable[i];
+            }
+        km_irq_restore(pm);
+        if (attempt > 0 || km_in_interrupt())
+            break;
+        /* Full. A Cleaner keeps a slot until its action has run: collect, and run the actions of the dead ones. */
+        struct { FrameOverlay f; ObjHeader *obj; } fr = { { 0, 0, 0 }, obj };
+        EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+        collect();
+        run_cleaners();
+        LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+    }
     kmicro_panic("too many StableRefs (raise KM_STABLE_REFS, now " KM_STR(KM_STABLE_REFS) ")");
 }
 
@@ -459,7 +474,7 @@ KM_NOTHROW void Kotlin_native_internal_ref_disposeExternalRCRef(void *ref)
     if (ref == NULL)
         return;
     uint32_t pm = km_irq_save();
-    *stable_slot(ref) = (km_stable_ref_t){ NULL, 0, false };
+    *stable_slot(ref) = (km_stable_ref_t){ NULL, 0, false, false };
     km_irq_restore(pm);
 }
 KM_NOTHROW ObjHeader *Kotlin_native_internal_ref_dereferenceExternalRCRef(void *ref, ObjHeader **result)
@@ -497,6 +512,56 @@ ObjHeader *Konan_getWeakReferenceImpl(ObjHeader *referent, ObjHeader **result)
     w->next = s_weak;
     s_weak = w;
     return &w->header;
+}
+
+/* ---------------------------------------------------------------------------------------------------------- */
+/* createCleaner (ref/Cleaner.kt; stock main/cpp Cleaner.cpp)                                                 */
+/* ---------------------------------------------------------------------------------------------------------- */
+
+/* createCleaner(resource, action) returns a CleanerImpl whose only field is a retained StableRef of a lambda that
+ * runs the action. When the sweep frees the CleanerImpl it marks that slot (finalize), and the lambda, still a
+ * root, runs later. The stock runtime runs it on its finalizer thread. kmicro has one thread and runs it where
+ * Kotlin code can run and nothing is half done: at the start of the next allocation, at the end of GC.collect() and
+ * kmicro_gc(), and when the StableRef table is full. Never inside the collector, and never in an interrupt handler,
+ * which reaches none of these places. The action may allocate, collect and make Cleaners; an exception it throws
+ * ends inside the lambda, as in the stock runtime. */
+__attribute__((weak)) ObjHeader *km_function0_invoke(ObjHeader *function, ObjHeader **result)
+    __asm__("kfun:kotlin.Function0#invoke(){}1:0");  /* the interface call */
+
+__attribute__((noinline, cold)) static void run_cleaners(void)
+{
+    static bool s_running;
+    if (s_running)                                   /* an action that allocates or collects: the loop below goes on */
+        return;
+    if (km_function0_invoke == NULL)
+        kmicro_panic("Cleaner: no Function0.invoke");
+    s_running = true;
+    struct { FrameOverlay f; ObjHeader *action, *unit; } fr = { { 0, 0, 0 }, 0, 0 };
+    EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+    while (s_cleaners) {
+        s_cleaners = false;
+        for (int i = 0; i < KM_STABLE_REFS; i++)
+            if (s_stable[i].clean) {                 /* as the stdlib's executeAndRelease: free the slot, then run */
+                fr.action = s_stable[i].obj;
+                uint32_t pm = km_irq_save();
+                s_stable[i] = (km_stable_ref_t){ NULL, 0, false, false };
+                km_irq_restore(pm);
+                km_function0_invoke(fr.action, &fr.unit);
+            }
+    }
+    LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
+    s_running = false;
+}
+
+/* The sweep frees an object whose class has a finalizer. For a CleanerImpl the first field is the slot of its
+ * action; for a RegularWeakReferenceImpl it is an object or NULL, and there is nothing to do. */
+static void finalize(const uint32_t *b)
+{
+    km_stable_ref_t *s = (km_stable_ref_t *)b[1];
+    if (s >= s_stable && s < s_stable + KM_STABLE_REFS && s->used && s->rc > 0) {
+        s->clean = true;
+        s_cleaners = true;
+    }
 }
 
 /* ---------------------------------------------------------------------------------------------------------- */
@@ -618,6 +683,8 @@ static void sweep(void)
                 live = true;
             } else {
                 s_st.objects_freed++;
+                if (((const TypeInfo *)b[0])->typeInfo_->flags_ & KM_TF_HAS_FINALIZER)
+                    finalize(b);
 #if KM_GC_STRESS
                 memset(b, 0xA5, size);               /* stress: a dangling reference reads garbage, not old data */
 #endif
@@ -701,6 +768,8 @@ void kmicro_gc(void)
 {
     isr_check(__builtin_return_address(0), "garbage collection inside an interrupt handler");
     collect();
+    if (s_cleaners)
+        run_cleaners();
 }
 
 void kmicro_stats(kmicro_stats_t *out)

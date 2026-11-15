@@ -98,7 +98,7 @@ first comment.
 | File | What it does |
 |---|---|
 | `kmicro.h` | The contract between the compiled code, the runtime and the board: object layouts, the board's functions and hooks, the runtime's C API. |
-| `mm.c` | Memory: a static arena (`KM_HEAP_BYTES`, default 16 KB), objects 8-byte aligned, no per-object header beyond the type pointer. Precise mark-sweep, stop-the-world, non-moving. Roots are the shadow-stack frames the compiled code pushes, the registered globals, the thread-local slots, `kmicro_root` slots, StableRefs and an exception in flight. The collector runs only inside an allocation or an explicit `kmicro_gc()`; an interrupt handler that stores a reference while it marks makes it mark again. After marking it clears each `WeakReference` whose object nothing else holds. |
+| `mm.c` | Memory: a static arena (`KM_HEAP_BYTES`, default 16 KB), objects 8-byte aligned, no per-object header beyond the type pointer. Precise mark-sweep, stop-the-world, non-moving. Roots are the shadow-stack frames the compiled code pushes, the registered globals, the thread-local slots, `kmicro_root` slots, StableRefs and an exception in flight. The collector runs only inside an allocation or an explicit `kmicro_gc()`; an interrupt handler that stores a reference while it marks makes it mark again. After marking it clears each `WeakReference` whose object nothing else holds; the action of a `Cleaner` whose object the sweep freed runs at the start of the next allocation, never inside the collector. |
 | `eh.c` | Exceptions: libgcc's ARM EHABI unwinder with kmicro's own personality routine. `try`/`catch`/`finally` work as on the JVM. An uncaught exception prints its type, its whole message, its stack trace and every cause, as `printStackTrace()` does ([below](#reading-a-stack-trace)). |
 | `init.c`, `init_cxx.cpp` | Startup: the module initializers, the initialisation of file-level globals on first use (a failing initializer behaves as in the stock runtime), `kmicro_panic`. |
 | `strings.c` | `String` (UTF-16, and the compiler's Latin-1 option: `kbuild.py --kotlinc -Xbinary=latin1Strings=true`), `toString`, `println`. |
@@ -153,7 +153,7 @@ such as `kmicro panic: too many globals (raise KM_GLOBALS, now 160)`.
 | `KM_INTEROP_BYTES` | 1024 | the value, when the program uses native memory or parses numbers | native memory: `nativeHeap`, `memScoped`, `cstr`, and the scratch memory of `toDouble()`; a request that does not fit throws `OutOfMemoryError` |
 | `KM_GLOBALS` | 160 | 4 B each | reference globals, the standard library's included |
 | `KM_C_ROOTS` | 16 | 4 B each | `kmicro_root()` slots: objects that C code holds |
-| `KM_STABLE_REFS` | 16 | 8 B each | StableRefs alive at once |
+| `KM_STABLE_REFS` | 16 | 8 B each | StableRefs alive at once, and Cleaners whose actions have not run |
 | `KM_EH_DEPTH` | 4 | 104 B each | exceptions between their throw and the end of their catch at once: one for the thread code, one for each interrupt handler that throws while it has interrupted another throw |
 | `KM_TLS_KEYS` | 8 | 12 B each | modules with thread-local globals |
 | `KM_TLS_SLOTS` | 64 | 4 B each | thread-local reference slots, all modules together |

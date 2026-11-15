@@ -99,7 +99,8 @@ void kmicro_random_bytes(void *buf, size_t n);       /* n bytes from a true entr
 
 /* Provided by the runtime, for the board and any C code. */
 void kmicro_init(void);                              /* = Kotlin_initRuntimeIfNeeded for the single thread */
-void kmicro_gc(void);                                /* full collection now (never from an interrupt handler) */
+void kmicro_gc(void);                                /* full collection now (never from an interrupt handler), then
+                                                        the actions of the Cleaners it found dead */
 void kmicro_put_int(int32_t v);                      /* decimal, through kmicro_puts */
 __attribute__((noreturn)) void kmicro_panic(const char *what);   /* "kmicro panic: <what>[ at 0x...]", exit 98 */
 extern void *km_fault_pc;                            /* set before a panic: the return address of the faulting call,
