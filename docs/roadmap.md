@@ -37,17 +37,17 @@ each. A core without an FPU uses the soft-float calling convention.
 
 | `--cpu` | Architecture | FPU | Tested on QEMU's | Checked | selftest: flash | RAM |
 |---|---|---|---|---|---|---|
-| `cortex-m0` | ARMv6-M | none | `b-l475e-iot01a` (an STM32L475), a Cortex-M4F | the selftest | 121.0 KB | 18.5 KB |
-| `cortex-m0plus` | ARMv6-M | none | `b-l475e-iot01a`, a Cortex-M4F | run_all | 121.0 KB | 18.5 KB |
-| `cortex-m1` | ARMv6-M | none | `b-l475e-iot01a`, a Cortex-M4F | the selftest | 121.0 KB | 18.5 KB |
-| `cortex-m3` | ARMv7-M | none | `mps2-an385`, a Cortex-M3 | run_all | 130.6 KB | 18.5 KB |
-| `cortex-m4` | ARMv7E-M | none | `b-l475e-iot01a`, a Cortex-M4F | run_all | 130.6 KB | 18.5 KB |
-| `cortex-m4f`, the default | ARMv7E-M | FPv4, single precision | `b-l475e-iot01a`, a Cortex-M4F | run_all, also under GC stress; difftest; an STM32L431 board | 130.2 KB | 18.5 KB |
-| `cortex-m7` | ARMv7E-M | FPv5, double precision | `mps2-an500`, a Cortex-M7 | run_all | 129.1 KB | 18.5 KB |
-| `cortex-m7-sp` | ARMv7E-M | FPv5, single precision | `mps2-an500`, a Cortex-M7 | the selftest | 130.0 KB | 18.5 KB |
-| `cortex-m23` | ARMv8-M Baseline | none | `mps2-an505`, a Cortex-M33 | run_all | 120.1 KB | 18.5 KB |
-| `cortex-m33` | ARMv8-M Mainline | none | `mps2-an505`, a Cortex-M33 | run_all | 130.6 KB | 18.5 KB |
-| `cortex-m33f` | ARMv8-M Mainline | FPv5, single precision | `mps2-an505`, a Cortex-M33 | run_all | 130.2 KB | 18.5 KB |
+| `cortex-m0` | ARMv6-M | none | `b-l475e-iot01a` (an STM32L475), a Cortex-M4F | the selftest | 121.9 KB | 18.5 KB |
+| `cortex-m0plus` | ARMv6-M | none | `b-l475e-iot01a`, a Cortex-M4F | run_all | 121.9 KB | 18.5 KB |
+| `cortex-m1` | ARMv6-M | none | `b-l475e-iot01a`, a Cortex-M4F | the selftest | 121.9 KB | 18.5 KB |
+| `cortex-m3` | ARMv7-M | none | `mps2-an385`, a Cortex-M3 | run_all | 131.6 KB | 18.5 KB |
+| `cortex-m4` | ARMv7E-M | none | `b-l475e-iot01a`, a Cortex-M4F | run_all | 131.5 KB | 18.5 KB |
+| `cortex-m4f`, the default | ARMv7E-M | FPv4, single precision | `b-l475e-iot01a`, a Cortex-M4F | run_all, also under GC stress; difftest; an STM32L431 board | 131.2 KB | 18.5 KB |
+| `cortex-m7` | ARMv7E-M | FPv5, double precision | `mps2-an500`, a Cortex-M7 | run_all | 130.1 KB | 18.5 KB |
+| `cortex-m7-sp` | ARMv7E-M | FPv5, single precision | `mps2-an500`, a Cortex-M7 | the selftest | 131.0 KB | 18.5 KB |
+| `cortex-m23` | ARMv8-M Baseline | none | `mps2-an505`, a Cortex-M33 | run_all | 121.1 KB | 18.5 KB |
+| `cortex-m33` | ARMv8-M Mainline | none | `mps2-an505`, a Cortex-M33 | run_all | 131.5 KB | 18.5 KB |
+| `cortex-m33f` | ARMv8-M Mainline | FPv5, single precision | `mps2-an505`, a Cortex-M33 | run_all | 131.1 KB | 18.5 KB |
 
 - **run_all** means that `python tests/run_all.py --cpu CORE` passes: every test program and example, with the
   checks the tools make on the images. The two tests of the large-memory machine, `mps2-an386`, are skipped for a

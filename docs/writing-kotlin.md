@@ -24,17 +24,17 @@ compared with the same program without it.
 
 | Feature | Flash (`--size`) | Heap kept | Heap peak | Stack |
 |---|---|---|---|---|
-| one `Regex`: `Regex("[a-z]+[0-9]").containsMatchIn("abc1")` | 315.8 KB (198.5 KB) | 11,768 B | 13,360 B | 4,684 B |
-| three small `Regex` patterns | 317.0 KB (198.9 KB) | 12,080 B | 16,344 B: out of memory on the default 16 KB heap, runs at 20 KB | 4,748 B |
-| `"3.14".toDouble()` | 48.6 KB (42.6 KB), and 1 KB of RAM for the native-memory arena | 48 B | 136 B | 1,348 B |
-| `"Grüße".uppercase()`, `"ÉCOLE".lowercase()`; ASCII text takes the same flash | 44.0 KB (34.3 KB) | 0 B | 56 B: the result strings | 444 B |
+| one `Regex`: `Regex("[a-z]+[0-9]").containsMatchIn("abc1")` | 317.8 KB (199.2 KB) | 11,768 B | 13,360 B | 4,684 B |
+| three small `Regex` patterns | 318.9 KB (199.7 KB) | 12,080 B | 16,344 B: out of memory on the default 16 KB heap, runs at 20 KB | 4,748 B |
+| `"3.14".toDouble()` | 49.2 KB (42.7 KB), and 1 KB of RAM for the native-memory arena | 48 B | 136 B | 1,348 B |
+| `"Grüße".uppercase()`, `"ÉCOLE".lowercase()`; ASCII text takes the same flash | 44.6 KB (34.4 KB) | 0 B | 56 B: the result strings | 452 B |
 | `Char.isLetter()` on `'é'` and `'ж'` | 3.6 KB (3.4 KB) | 0 B | 0 B | 148 B |
 | `Char.category` | 31.0 KB (23.9 KB) | 984 B: the 30 `CharCategory` entries | 984 B | 844 B |
 | `val buf = ByteArray(4096)` in a function | 0.4 KB (0.1 KB) | 0 B | 0 B | 4,148 B |
-| one `throw`, caught in the same function | 0.5 KB (0.3 KB) | 0 B | 112 B: the exception and its stack trace | 1,056 B |
+| one `throw`, caught in the same function | 0.5 KB (0.4 KB) | 0 B | 112 B: the exception and its stack trace | 1,056 B |
 
 - **Flash** is the growth of the image, without and with `kbuild.py --size`. Parts are shared: the features do not
-  add up. A program that uses one `Regex` is 366 KB of flash (242 KB with `--size`), against the STM32L431's 256 KB.
+  add up. A program that uses one `Regex` is 369 KB of flash (243 KB with `--size`), against the STM32L431's 256 KB.
 - **Heap kept** is still live after the call and a full collection: tables the standard library keeps for good.
 - **Heap peak** is the most live data during the call, measured with `-D KM_GC_STRESS=1` (a collection before every
   allocation). A heap needs more than that, because free memory comes in pieces: three `Regex` patterns peak at
@@ -81,7 +81,7 @@ compared with the same program without it.
    A local array of constant size that never leaves its function lives on the stack (Kotlin/Native, up to 64 KB per function). Keep a big buffer in a top-level val or a class field; --stack-array-limit sets the limit. tools/frames.py shows the frames after linking.
    build\buf\k.o
    $ python tools/qbuild.py build/buf/buf.elf targets/common/kotlin_main.c build/buf/k.o
-   qbuild: buf.elf  text 49948  data 80  bss 18732  stack 40960
+   qbuild: buf.elf  text 50588  data 80  bss 18732  stack 40960
    $ python tools/frames.py build/buf/buf.elf --top 3
    largest stack frames of buf.elf (bytes a call takes, LTO-merged):
        4160  run_main
@@ -202,7 +202,7 @@ Allocations hide in these places:
     instructions: 7,200 to create the exception with its message and stack trace, 2,800 from the throw to the
     catch. The catch costs more in a large function: the unwinder reads the function's table of calls from its
     start to the call that threw, and in the selftest, whose checks are all inlined into one `main`, the same
-    throw takes 7,600 instructions from the throw to the catch. The unwinder reads its tables from flash.
+    throw takes 7,400 instructions from the throw to the catch. The unwinder reads its tables from flash.
 13. **Hoist globals and arrays into locals before a loop,** and check the size once before it. LLVM then drops the
     bounds check of every element.
 14. **Mark small per-element helpers `inline`.**

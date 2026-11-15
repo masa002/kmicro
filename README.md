@@ -30,7 +30,7 @@ kotlinc-native: compiling 1 file...
 single-core: 113 init-state loads made plain
 build\hello\k.o
 $ python tools/qbuild.py build/hello/hello.elf targets/common/kotlin_main.c build/hello/k.o --run
-qbuild: hello.elf  text 72092  data 80  bss 18740  stack 40960
+qbuild: hello.elf  text 72996  data 80  bss 18740  stack 40960
 Hello from Kotlin #1, Kotlin #2, Kotlin #3 on a bare Cortex-M
 qemu: exit 0
 ```
@@ -74,7 +74,7 @@ The short list; [docs/kotlin-support.md](docs/kotlin-support.md) has every case.
 
 - **Regex is big:** the first pattern keeps 11.5 KB of the heap, three small patterns need a 20 KB heap, and a
   program that creates about 30 patterns in one function runs out of memory even at 64 KB. A program that uses
-  `Regex` is about 366 KB of flash (242 KB with `--size`), against the STM32L431's 256 KB
+  `Regex` is about 369 KB of flash (243 KB with `--size`), against the STM32L431's 256 KB
   ([what features cost](docs/writing-kotlin.md#memory)). Deep backtracking over long input overflows the stack.
   `RegexOption.CANON_EQ` throws `IllegalArgumentException`.
 - **Running out of memory stops the program:** heap exhaustion ends with an out-of-memory report, not a catchable

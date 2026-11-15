@@ -129,7 +129,7 @@ The files are `runtime/*.c`, `runtime/*.cpp` and `runtime/dtoa/*.cpp`.
 | `-ffunction-sections -fdata-sections` | `--gc-sections` drops what the program does not use |
 | `-fexceptions -funwind-tables` | a Kotlin exception unwinds through runtime functions (`ThrowException`, the array functions). Without unwind tables they get `[cantunwind]` entries, the unwinder stops there, and every exception is reported as uncaught, exit 98. `runtime/eh.c` stops the build without `-fexceptions` |
 | `-std=c++17 -fno-rtti` | the `.cpp` files only |
-| `-g` (optional) | debug information, which takes no flash: with `kbuild.py --kotlinc -g`, `tools/symbolize.py` then names the Kotlin functions that LTO inlined into C functions, with file and line ([how-it-works.md](how-it-works.md#reading-a-stack-trace)). The exceptions test below, its Kotlin built with `--kotlinc -g`, is 56,756 bytes of text with or without `-g` on the C side |
+| `-g` (optional) | debug information, which takes no flash: with `kbuild.py --kotlinc -g`, `tools/symbolize.py` then names the Kotlin functions that LTO inlined into C functions, with file and line ([how-it-works.md](how-it-works.md#reading-a-stack-trace)). The exceptions test below, its Kotlin built with `--kotlinc -g`, is 57,436 bytes of text with or without `-g` on the C side |
 | `-I runtime` | `kmicro.h` |
 | `-D KM_HEAP_BYTES=32768`, ... | the sizes ([how-it-works.md](how-it-works.md#sizes)) |
 
@@ -299,9 +299,9 @@ build\board\k.o
 exception checks failed mask = 0  OK   (gcs=6)
 now an uncaught one (expected to stop with a report):
 Uncaught Kotlin exception: PanelError: panel error -5
-    at 0x08009f20
-    at 0x08005380
-    at 0x0800433e
+    at 0x0800a154
+    at 0x08005468
+    at 0x080043a2
 kmicro panic: uncaught Kotlin exception
 exit 98
 ```

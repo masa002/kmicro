@@ -509,7 +509,7 @@ def check_regex(ll_text):
         return
     names = ', '.join(users[:3]) + (f' and {len(users) - 3} more' if len(users) > 3 else '')
     print(f'kmicro: warning: {names} use{"s" if len(users) == 1 else ""} Regex: a program with the Regex engine is at '
-          'least 320 KB of flash, or 233 KB with --size (the STM32L431 has 256 KB)\n'
+          'least 322 KB of flash, or 240 KB with --size (the STM32L431 has 256 KB)\n'
           'split(","), indexOf, startsWith or a matcher written by hand need no Regex engine. '
           'docs/writing-kotlin.md lists what features cost.', file=sys.stderr)
 
