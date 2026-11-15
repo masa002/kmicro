@@ -8,8 +8,8 @@ usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--
     FILE       C (.c), C++ (.cpp) and assembly (.s, .S) files, compiled with the runtime's flags, and objects (.o, .a)
                linked as they are: the k.o (and bridges.o) that tools/kbuild.py prints. Several C files are fine, e.g.
                main.c support/hw.c
-    -D, -I     a definition or include folder for every C file, e.g. -D KM_HEAP_BYTES=32768 (runtime/ and support/
-               are always on the include path)
+    -D, -I     a definition or include folder for every C file, e.g. -D KM_HEAP_BYTES=32768 (runtime/, support/
+               and the target's folder, for its tick.h, are always on the include path)
     --cpu      the core to compile for (toolchain/paths.py CORES; default cortex-m4f, or KMICRO_CPU). The objects
                from kbuild must be built for the same core, and the target must be one that runs its code:
                qbuild stops when it is not
@@ -270,7 +270,7 @@ def main():
         fail(f'qbuild: --target {target} (QEMU {machine}) does not run {cpu} code: it runs ' + ', '.join(RUNS[target])
              + f'. Without --target, {cpu} runs on {DEFAULT_TARGET.get(cpu, "l475")}')
     defs = [f'-D{d}' for d in args.defs]
-    incs = [f'-I{i}' for i in args.incs]
+    incs = [*[f'-I{i}' for i in args.incs], f'-I{tdir}']
     out = args.out
     bdir = out.parent / (out.stem + '.obj')
     bdir.mkdir(parents=True, exist_ok=True)

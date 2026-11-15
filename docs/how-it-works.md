@@ -46,7 +46,8 @@ python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--cpu COR
 
 The files are any number of C, C++ and assembly files and the objects kbuild printed (`k.o`, and `bridges.o` when
 the Kotlin code calls C). `-D` applies to every C file and to the runtime, which is compiled once per set of `-D`
-values, and `-I` to every C file; `runtime/` and `support/` are always on the include path. `--cpu` names the core,
+values, and `-I` to every C file; `runtime/`, `support/` and the folder of the target's start code (for its
+`tick.h`, the periodic interrupt the tests use) are always on the include path. `--cpu` names the core,
 as for kbuild, whose objects must be built for the same one. qbuild links for the QEMU machine that runs the code
 of that core: the STM32L475 (`--target l475`) for the default core and the cores below it, `mps2-an385` for the
 Cortex-M3, `mps2-an500` for the Cortex-M7 and `mps2-an505` for the cores of ARMv8-M (`--target an385`, `an500`,

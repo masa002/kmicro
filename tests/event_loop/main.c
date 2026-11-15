@@ -1,8 +1,9 @@
 /* Copyright 2026 the kmicro authors (NOTICE).
  * SPDX-License-Identifier: Apache-2.0 */
-/* The C side of the event loop (event_loop.kt) on QEMU: a 1 kHz SysTick clock, injected button presses, WFI between
- * steps. */
+/* The C side of the event loop (event_loop.kt) on QEMU: a 1 kHz clock from the target's periodic interrupt (tick.h),
+ * injected button presses, WFI between steps. */
 #include "kmicro.h"
+#include "tick.h"
 #include <stdint.h>
 
 void kt_start(void);                            /* Kotlin: @CName("kt_start") fun startApp() */
@@ -11,23 +12,17 @@ int32_t kt_result(void);                        /* Kotlin: @CName("kt_result") f
 
 static volatile uint32_t s_ms;
 static volatile uint32_t s_events;
-void SysTick_Handler(void)
+void TICK_HANDLER(void)
 {
     s_ms++;
     if (s_ms == 1200 || s_ms == 2300)           /* the "button" presses */
         s_events |= 1u;
 }
 
-#define SYST_CSR (*(volatile uint32_t *)0xE000E010)
-#define SYST_RVR (*(volatile uint32_t *)0xE000E014)
-#define SYST_CVR (*(volatile uint32_t *)0xE000E018)
-
 int main(void)
 {
     kmicro_init();
-    SYST_RVR = 4000u - 1u;                       /* 1 ms at the 4 MHz clock (MSI) the STM32L4 and QEMU's model start with */
-    SYST_CVR = 0;
-    SYST_CSR = 7u;                               /* enable, interrupt, processor clock */
+    tick_start(4000u);                  /* 1 ms at the 4 MHz clock (MSI) the STM32L4 and QEMU's model start with */
     kt_start();
     uint32_t steps = 0, sleeps = 0;
     while (s_ms < 3000u) {

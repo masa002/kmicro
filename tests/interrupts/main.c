@@ -1,12 +1,14 @@
 /* Copyright 2026 the kmicro authors (NOTICE).
  * SPDX-License-Identifier: Apache-2.0 */
 /* Kotlin code in an interrupt handler: what the runtime refuses, and what works. run_all builds this file once per test
- * case, with one TEST_* macro defined; SysTick_Handler then calls that case's Kotlin function (isr.h). */
+ * case, with one TEST_* macro defined; the handler of the target's periodic interrupt (tick.h) then calls that
+ * case's Kotlin function (isr.h). */
 #include "kmicro.h"
 #include "isr.h"
+#include "tick.h"
 
 #ifndef RVR
-#define RVR 4000u                       /* SysTick reload: 1 ms at the 4 MHz clock QEMU's STM32L475 starts with */
+#define RVR 4000u                       /* the tick's period: 1 ms at the 4 MHz clock QEMU's STM32L475 starts with */
 #endif
 #ifndef ROUNDS
 #define ROUNDS 2000
@@ -14,7 +16,7 @@
 
 static volatile int s_done, s_ticks, s_handled;
 
-void SysTick_Handler(void)
+void TICK_HANDLER(void)
 {
     s_ticks++;
 #if defined(TEST_ALLOC)
@@ -41,18 +43,11 @@ void SysTick_Handler(void)
 #endif
 }
 
-static void systick(uint32_t reload)
-{
-    *(volatile uint32_t *)0xE000E014 = reload - 1u;     /* LOAD */
-    *(volatile uint32_t *)0xE000E018 = 0;               /* VAL */
-    *(volatile uint32_t *)0xE000E010 = reload ? 7u : 0u;/* CTRL: processor clock, interrupt, enable */
-}
-
 static void wait_for_handler(void)
 {
     for (volatile int i = 0; i < 50000000 && !s_done; i++) {
     }
-    systick(0);
+    tick_stop();
 }
 
 int main(void)
@@ -61,7 +56,7 @@ int main(void)
     kmicro_stats_t a, b;
 #if defined(TEST_SCHEDULE)
     kmicro_stats(&a);
-    systick(RVR);
+    tick_start(RVR);
     wait_for_handler();
     kmicro_stats(&b);
     kmicro_puts("collections by GC.schedule(): in a handler ");
@@ -75,7 +70,7 @@ int main(void)
 #elif defined(TEST_INIT_ALL)
     kt_init_all();                      /* every global of package isr: objects, sub-packages, @ThreadLocal */
     kmicro_stats(&a);
-    systick(RVR);
+    tick_start(RVR);
     wait_for_handler();
     int32_t settings = read_settings();
     kmicro_stats(&b);
@@ -87,13 +82,13 @@ int main(void)
     return settings == 258 && b.alloc_count == a.alloc_count ? 0 : 1;
 #elif defined(TEST_THROW)
     kt_init_all();                      /* creates the exception the handler throws */
-    systick(RVR);
+    tick_start(RVR);
     int32_t thrown = 0, caught = 0;
     while (s_ticks < 20 && thrown < 200000) {   /* until 20 handler calls came, most of them during a throw */
         caught += throw_in_thread(500);
         thrown += 500;
     }
-    systick(0);
+    tick_stop();
     int ok = caught == thrown && s_ticks >= 20 && s_handled == s_ticks;
     kmicro_puts("thread code: thrown ");
     kmicro_put_int(thrown);
@@ -107,13 +102,13 @@ int main(void)
     return !ok;
 #elif defined(TEST_SWAP_FIELDS) || defined(TEST_SWAP_SLOTS)
     swap_setup();
-    systick(RVR);
+    tick_start(RVR);
 #if defined(TEST_SWAP_FIELDS)
     int32_t bad = check_fields(ROUNDS);
 #else
     int32_t bad = check_slots(ROUNDS);
 #endif
-    systick(0);
+    tick_stop();
     kmicro_stats(&a);
     kmicro_puts("swapped in ");
     kmicro_put_int(s_ticks);
@@ -126,9 +121,9 @@ int main(void)
 #elif defined(TEST_COPY)
     (void)b;
     int32_t size = copy_setup() - 40;   /* four arrays of 8 */
-    systick(RVR);
+    tick_start(RVR);
     int32_t torn = copy_rotate(ROUNDS, size / 4);
-    systick(0);
+    tick_stop();
     kmicro_stats(&a);
     kmicro_puts("copied and filled under ");
     kmicro_put_int(s_ticks);
@@ -139,7 +134,7 @@ int main(void)
 #else                                   /* the cases the runtime must stop */
     (void)a;
     (void)b;
-    systick(RVR);
+    tick_start(RVR);
     wait_for_handler();
     kmicro_puts("the handler returned\n");
     return 1;
