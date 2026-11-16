@@ -228,8 +228,14 @@ handler written in Kotlin that touches registers and keeps its state in `@Volati
 
 Allocations hide in these places:
 
-7. **`==` and `!=` on `UInt`, `UByte`, `UShort` box their operands.** Compare `a.toInt() == b.toInt()`.
-8. **Nullable unsigned types (`UInt?`) are boxed.** Use a sentinel value instead.
+7. **`==` and `!=` on `UInt`, `UByte`, `UShort`, `ULong` box their operands.** Compare `a.toInt() == b.toInt()`
+   (`toLong()` for a `ULong`). A range check on an unsigned value, `x in 10u..20u`, builds a `UIntRange`: on the
+   stack, so it does not allocate, but `x >= 10u && x <= 20u` costs nothing.
+8. **Nullable unsigned types (`UInt?`) are boxed.** Use a sentinel value instead. **So is the old value of `x++`
+   as the last expression of a `when` branch** (or of a `try` or `catch` block that ends one): it becomes the value
+   of the `when`, which has the type `Any` when another branch gives `Unit`, and it is boxed although nothing uses
+   it, also in a `when` that is a statement: an allocation from 128 on. Write `x += 1`.
+   `python tools/isr_check.py app.elf --boxing` lists every such box outside the standard library.
 9. **`throw` allocates the exception, and `IntArray.fill()` can allocate too.** Return an error code, and write a loop.
 10. **`toLong()` on a nullable `CPointer`** initialises the `NativePtr` companion object. Keep pointers non-null.
 11. **The first use of a file's globals initialises the whole file.** Generate a boot-time initialiser
