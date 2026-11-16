@@ -84,7 +84,7 @@ class After(unittest.TestCase):
     def test_frames(self):
         f = frames.frames(DISASM)
         self.assertEqual(f['Reset_Handler'], 9 * 4 + 56064 + 52)
-        self.assertEqual(f['small'], 2 * 4 + 2 * 8 + 5000)     # stops at the call: the later sub is not counted
+        self.assertEqual(f['small'], 2 * 4 + 2 * 8 + 5000 + 400)       # a constant taken after the call too
         self.assertEqual(f['leaf'], 0)
         self.assertEqual(f['early_return'], 4 * 4 + 4096)     # the prologue after the early returns
 
