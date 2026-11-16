@@ -53,7 +53,12 @@ body:
         - cortex-m85
         - cortex-m85-nomve
         - cortex-m85-nofp
+        - cortex-a5
         - cortex-a7
+        - cortex-a7-nofp
+        - cortex-a8
+        - cortex-a9
+        - cortex-a15
         - cortex-r52
         - cortex-r5
         - cortex-r5f

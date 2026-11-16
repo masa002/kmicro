@@ -76,10 +76,11 @@ TARGETS = {   # start code and linker script, QEMU machine (and its -cpu, where 
 # else the STM32L475, whose Cortex-M4F runs the code of every core below it. QEMU has no Cortex-M23: its code, ARMv8-M
 # Baseline, runs on the Cortex-M33. It has no Cortex-M85 either: its code runs on the Cortex-M55, which has every
 # instruction of that core but those of PACBTI, and kmicro builds none of them (paths.py).
+_A7 = ('cortex-a5', 'cortex-a7', 'cortex-a7-nofp', 'cortex-a8', 'cortex-a9', 'cortex-a15')
 _M55 = ('cortex-m55', 'cortex-m55-nomve', 'cortex-m55-nofp', 'cortex-m85', 'cortex-m85-nomve', 'cortex-m85-nofp')
 DEFAULT_TARGET = {'cortex-m3': 'an385', 'cortex-m7': 'an500', 'cortex-m7-sp': 'an500', 'cortex-m23': 'an505',
                   'cortex-m33': 'an505', 'cortex-m33f': 'an505', **dict.fromkeys(_M55, 'an547'),
-                  'cortex-a7': 'virt', 'cortex-r52': 'an536',
+                  **dict.fromkeys(_A7, 'virt'), 'cortex-r52': 'an536',
                   'cortex-r5': 'an536', 'cortex-r5f': 'an536'}
 # The cores whose code each machine runs. A machine does not run code for an FPU or for instructions its core lacks.
 # And the start code is compiled for the core: its stack and null guards are written for the MPU of ARMv8-M or for the
@@ -88,7 +89,7 @@ _M3 = ('cortex-m0', 'cortex-m0plus', 'cortex-m1', 'cortex-m3')
 _M4F = (*_M3, 'cortex-m4', 'cortex-m4f')
 _M33F = ('cortex-m23', 'cortex-m33', 'cortex-m33f')
 RUNS = {'l475': _M4F, 'an386': _M4F, 'an385': _M3, 'an500': (*_M4F, 'cortex-m7', 'cortex-m7-sp'), 'an505': _M33F,
-        'an547': (*_M33F, *_M55), 'virt': ('cortex-a7',),
+        'an547': (*_M33F, *_M55), 'virt': _A7,
         'an536': ('cortex-r52', 'cortex-r5', 'cortex-r5f')}
 
 
