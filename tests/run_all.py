@@ -19,7 +19,9 @@ mps2-an505, mps3-an547, virt or mps3-an536; or on mps2-an386, for a test that sa
 - the exit code;
 - the output, line by line against tests/expected/<name>.txt (tests/expected/<architecture>/<name>.txt, for example
   thumbv6m, when that file exists: the output of an architecture can differ, as a stack trace does with other
-  inlining). There {N} stands for a number, {X} for hex digits and
+  inlining; and before both, for a test with Kotlin code, tests/expected/kotlin-<release>/<name>.txt, for example
+  kotlin-2.5 for Kotlin/Native 2.5.0-RC: the standard library of another release than the tested one can give another
+  output, as the class of the exception for a failed initializer). There {N} stands for a number, {X} for hex digits and
   {*} for any text within a line, and a line {...} for any number of lines: they mark what differs between runs or
   under --stress, such as heap statistics, addresses and times;
 - that qbuild stubbed no runtime native (a board link would fail on it);
@@ -347,12 +349,22 @@ def pattern(expected):
     return re.compile(''.join(parts))
 
 
-def compare(name, got, log_name):
-    """got against tests/expected/<name>.txt; raises Failed with a diff when they differ."""
-    # an architecture's own expectation, where its output differs (an ARMv6-M trace has one more frame)
-    path = EXPECTED / paths.arch() / f'{name}.txt'
-    if not path.exists():
-        path = EXPECTED / f'{name}.txt'
+def expected_file(name, kotlin=False):
+    """tests/expected/<name>.txt, or the file of that name in the first of these folders that has one: an
+    architecture's own expectation, where its output differs (an ARMv6-M trace has one more frame); before it, for a
+    test with Kotlin code (`kotlin`), the expectation for the feature release of the compiler in use, kotlin-2.5 for
+    Kotlin/Native 2.5.0-RC, where its standard library gives another output than that of the tested release."""
+    folders = [EXPECTED / paths.arch(), EXPECTED]
+    release = re.match(r'\d+\.\d+', paths.kotlin_native_version() or '') if kotlin else None
+    if release:
+        folders = [EXPECTED / f'kotlin-{release.group(0)}' / paths.arch(), EXPECTED / f'kotlin-{release.group(0)}',
+                   *folders]
+    return next((f / f'{name}.txt' for f in folders if (f / f'{name}.txt').exists()), EXPECTED / f'{name}.txt')
+
+
+def compare(name, got, log_name, kotlin=False):
+    """got against expected_file(name, kotlin); raises Failed with a diff when they differ."""
+    path = expected_file(name, kotlin)
     shown = path.relative_to(ROOT).as_posix()
     if not path.exists():
         raise Failed(f'{shown} is missing (the output is in {log_name})')
@@ -450,7 +462,7 @@ def run_check(t, c, d, args):
     if r.returncode != c.exit:
         raise Failed(f'{c.name}: exit {r.returncode}, expected {c.exit}\n' + out[-3000:])
     try:
-        compare(f'{t.name}.{c.name}', out, f'build/t/{d.name}/{c.name}.log')
+        compare(f'{t.name}.{c.name}', out, f'build/t/{d.name}/{c.name}.log', bool(t.kotlin))
     except Failed as e:
         raise Failed(f'{c.name}: {e}') from None
     if c.same:
@@ -515,7 +527,7 @@ def run_test(t, args):
         print(indented(''.join(log) + got), end='')
     if rc != t.exit:
         raise Failed(f'exit {rc}, expected {t.exit}\n' + '\n'.join(got.splitlines()[-15:]))
-    compare(t.name, got, log_name)
+    compare(t.name, got, log_name, bool(t.kotlin))
     checks = [] if args.stress else t.checks       # they look at the image users get, not the stress build
     for c in checks:
         run_check(t, c, d, args)
