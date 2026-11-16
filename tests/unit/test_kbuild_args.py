@@ -61,6 +61,13 @@ class Args(unittest.TestCase):
         self.assertIn('--kotlinc -l: kbuild takes a klib with its own -l: -l x.klib',
                       error('--kotlinc', '-l', 'x.klib'))
 
+    def test_kotlinc_option_read_as_a_klib(self):
+        self.assertIn('-l ist-targets: not found (-list-targets is read as -l ist-targets; a kotlinc-native option '
+                      'goes through --kotlinc: --kotlinc -list-targets)', error('-list-targets'))
+        self.assertTrue(error('-lnope.klib').endswith('-l nope.klib: not found'))
+        self.assertTrue(error('-l', 'ist-targets').endswith('-l ist-targets: not found'))
+        self.assertEqual(parse('--kotlinc', '-list-targets').kotlinc_args, ['-list-targets'])
+
     def test_options_between_sources(self):
         a = kbuild.parse(['build/x', HELLO, '--package', 'hello', '--c-api', HEADER, HELLO])
         self.assertEqual(len(a.sources), 2)

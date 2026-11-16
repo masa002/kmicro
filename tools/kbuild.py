@@ -13,6 +13,7 @@ A program with a `fun main()` needs no C code of its own: link targets/common/ko
     python tools/qbuild.py build/app/app.elf targets/common/kotlin_main.c build/app/k.o --run
 """
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -134,6 +135,10 @@ def parse(argv):
     for flag, files in (('-l', args.libs), ('--def', args.defs), ('--c-api', args.c_api), ('-I', args.include_dirs)):
         for f in files:
             if not f.exists():
+                word = f'{flag}{f}'             # typed as one word, it may be meant as an option: -list-targets
+                if flag == '-l' and word in joined and re.fullmatch('-[a-z]+(-[a-z]+)*', word):
+                    p.error(f'{flag} {f}: not found ({word} is read as {flag} {f}; a kotlinc-native option goes '
+                            f'through --kotlinc: --kotlinc {word})')
                 p.error(f'{flag} {f}: not found')
     for s in args.sources:
         if not s.exists():
