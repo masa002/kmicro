@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Language probe 6: Nothing/TODO/error/require/check/assert, numeric semantics, annotations, newer Kotlin 2.x features.
 // difftest: heap 32768 -- one long main: its frame keeps the objects of every check alive until it returns
+// difftest: frame -- one long main: its frame has a slot for every object of the test, 3.5 KB on the default core
+// and a little over 4 KB on a core with a double-precision FPU, taken once at the top of the stack
 
 annotation class Marker(val why: String = "", val level: Int = 0)
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.CLASS) @Retention(AnnotationRetention.SOURCE) annotation class Src
