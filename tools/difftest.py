@@ -8,7 +8,8 @@ usage: python tools/difftest.py [NAME ...] [--cpu CORE] [--stress] [--size]
     NAME      a program in tests/diff (d_strings, d_collections ...). Default: every tests/diff/d_*.kt except the
               d_known_* ones, which show what kmicro does not support yet and run only when named
     --cpu     the core of the kmicro side (toolchain/paths.py CORES; default cortex-m4f); each core has its own
-              build folder, build/diff-<core>
+              build folder, build/diff-<core>. The host side is the same for every core and is built once, in
+              build/diff/host
     --stress  the kmicro side collects garbage at every allocation (KM_GC_STRESS)
     --size    the kmicro side is built for size, as tools/kbuild.py --size does
 
@@ -57,6 +58,7 @@ import frames  # noqa: E402
 import qbuild  # noqa: E402
 
 OUT = ROOT / 'build/diff'
+HOST = OUT / 'host'                             # the host side does not depend on --cpu: one build for every core
 DIFF = ROOT / 'tests/diff'
 FLASH, RAM = 256 * 1024, 64 * 1024              # the STM32L431
 STATS = re.compile(rb'kmicro-difftest: heap (\d+) peak (\d+) live (\d+)\n\Z')   # driver.c's last line
@@ -114,7 +116,7 @@ def frameless(out):
 
 
 def host(name, src, uncaught=False):
-    d = OUT / 'host' / name
+    d = HOST / name
     exe = d / (name + ('.exe' if paths.WINDOWS else '.kexe'))   # what kotlinc-native -p program writes
     if not exe.exists() or exe.stat().st_mtime < src.stat().st_mtime:
         kotlinc([src.as_posix(), '-target', host_target(), '-p', 'program', '-opt', '-o', (d / name).as_posix()], d)

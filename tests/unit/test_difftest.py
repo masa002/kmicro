@@ -1,13 +1,16 @@
 # Copyright 2026 the kmicro authors (NOTICE).
 # SPDX-License-Identifier: Apache-2.0
-"""tools/difftest.py: the `// difftest: ...` lines of a program (no compiler needed).
+"""tools/difftest.py: the `// difftest: ...` lines of a program, the comparison of floating-point numbers, and
+where the host side is built (no compiler needed).
 
 python -m unittest discover -s tests/unit
 """
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
 import difftest  # noqa: E402
@@ -51,6 +54,22 @@ class Frameless(unittest.TestCase):
         self.assertEqual(difftest.frameless(host), text)
         self.assertEqual(difftest.frameless(kmicro), text)
         self.assertEqual(difftest.frameless(host.replace(b'\n', b'\r\n')), text.replace(b'\n', b'\r\n'))
+
+
+class HostSide(unittest.TestCase):
+    def test_the_host_program_is_built_in_one_place_whatever_the_core(self):
+        ran = subprocess.CompletedProcess([], 0, b'reference\r\n', b'')
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / 'd_program.kt'
+            src.write_text('fun main() {}\n', encoding='utf-8')
+            with mock.patch.object(difftest, 'HOST', Path(d) / 'diff/host'), \
+                    mock.patch.object(difftest, 'OUT', Path(d) / 'diff-cortex-m0plus'), \
+                    mock.patch.object(difftest, 'host_target', return_value='linux_x64'), \
+                    mock.patch.object(difftest, 'kotlinc') as kotlinc, \
+                    mock.patch.object(difftest.subprocess, 'run', return_value=ran) as run:
+                self.assertEqual(difftest.host('d_program', src), b'reference\n')
+            self.assertEqual(kotlinc.call_args.args[1], Path(d) / 'diff/host/d_program')
+            self.assertEqual(Path(run.call_args.args[0][0]).parent, Path(d) / 'diff/host/d_program')
 
 
 class UlpTolerance(unittest.TestCase):
