@@ -104,6 +104,25 @@ class IsrCheck(unittest.TestCase):
         lines, bad, _ = self.run_check(0x08000400, funcs)
         self.assertEqual(bad, 0, lines)
 
+    def test_the_exception_of_native_memory_is_not_followed(self):
+        # nativeHeap's allocation throws OutOfMemoryError from its own body when the arena is full: a throw path
+        raw = 'kfun:kotlinx.cinterop.nativeMemUtils#allocRaw(kotlin.Long;kotlin.Int){}kotlin.native.internal.NativePtr'
+        oom = 'kfun:kotlin.OutOfMemoryError#<init>(kotlin.String?){}'
+        funcs = FUNCS + [(0x08000400, 'kfun:irq#buffer(){}', [raw]),
+                         (0x08000440, raw, ['Kotlin_interop_malloc', 'AllocInstance', oom]),
+                         (0x08000480, oom, ['alloc_block']), (0x080004c0, 'Kotlin_interop_malloc', [])]
+        lines, bad, _ = self.run_check(0x08000400, funcs)
+        self.assertEqual(bad, 0, lines)
+        # an allocation behind the same function that is not its exception is still found
+        funcs[-1] = (0x080004c0, 'Kotlin_interop_malloc', ['alloc_block'])
+        lines, bad, _ = self.run_check(0x08000400, funcs)
+        self.assertEqual(bad, 1, lines)
+        self.assertIn(f'ALLOC  kfun:irq#buffer(){{}}: kfun:irq#buffer(){{}} -> {raw} -> Kotlin_interop_malloc -> '
+                      'alloc_block', lines)
+        # and so is the same exception created by another function
+        funcs = FUNCS + [(0x08000400, 'kfun:irq#buffer(){}', [oom]), (0x08000480, oom, ['alloc_block'])]
+        self.assertEqual(self.run_check(0x08000400, funcs)[1], 1)
+
     def test_a_user_function_named_like_a_throw_helper_is_followed(self):
         for name in ('kfun:irq#sendOrThrow(kotlin.Int){}kotlin.Int', 'kfun:irq#ThrowAway(){}',
                      'kfun:kotlin#getOrThrow(){}'):

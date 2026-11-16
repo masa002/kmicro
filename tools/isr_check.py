@@ -30,7 +30,9 @@ reports each path that ends in the Kotlin allocator (AllocInstance, AllocArrayIn
 functions) or in a boxing function. The heap is not reentrant, so a handler that allocates can corrupt it (kmicro
 also stops at run time with "allocation inside an interrupt handler"). Paths through the throw helpers of the
 runtime and the standard library (ThrowException, kfun:kotlin.native.internal#Throw...) are not followed: those only
-run on a bug (an index out of bounds, a null), and the run-time guard covers them.
+run on a bug (an index out of bounds, a null), and the run-time guard covers them. The same holds for the exception
+that nativeHeap's allocation creates itself when the native-memory arena is full (kotlinx.cinterop.nativeMemUtils
+allocRaw): a handler may use native memory, and a full arena stops it at run time.
 Indirect calls (function pointers, virtual calls) cannot be followed here and are counted per handler: a handler
 that has one is not proven clean. --callback names the functions such a call reaches.
 
@@ -67,6 +69,17 @@ def throw_helper(name):
     function such as sendOrThrow is followed like any other."""
     return name.startswith('Throw') or (name.startswith(('kfun:kotlin.', 'kfun:kotlin#')) and
                                         name.split('#')[-1].startswith('Throw'))
+
+
+# Functions of the standard library that create the exception they throw in their own body, with no throw helper
+# in between. toolchain/retarget.py keeps them from being inlined, so that they are found here by name.
+THROWS_ITSELF = re.compile(r'kfun:kotlinx\.cinterop\.nativeMemUtils#allocRaw\(')
+EXCEPTION_INIT = re.compile(r'kfun:kotlin\.\w+(?:Error|Exception)#<init>\(')
+
+
+def own_throw(f, g):
+    """The call f -> g belongs to the exception that f throws itself: its allocation or its constructor."""
+    return bool(THROWS_ITSELF.match(f)) and (g in ALLOC or bool(EXCEPTION_INIT.match(g)))
 
 
 def parse_disassembly(text):
@@ -146,7 +159,7 @@ def walk(root, calls, indirect):
         f = q.popleft()
         ind += indirect.get(f, 0)
         for g in sorted(calls.get(f, ())):
-            if g in prev or throw_helper(g):
+            if g in prev or throw_helper(g) or own_throw(f, g):
                 continue
             prev[g] = f
             if g in ALLOC:

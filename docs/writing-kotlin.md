@@ -127,7 +127,8 @@ Native memory (`nativeHeap`, `memScoped`, `cstr`) comes from its own arena of `K
 `toDouble` also uses for scratch. Freed blocks are reused in any order and merged with free neighbours. A request that
 does not fit throws `OutOfMemoryError("unable to allocate native memory")`; an alignment above 8 bytes is not
 supported and stops the program, and so does freeing a block twice, unless the block was handed out again in
-between.
+between. Inside an interrupt handler the `OutOfMemoryError` cannot be created: a request that does not fit stops
+the program there with the allocation panic (isr_check leaves this one path out of its report).
 
 The runtime's other tables have fixed sizes too, each settable with `-D`; a full one stops the program with a panic
 that names its macro, such as `too many globals (raise KM_GLOBALS, now 160)`.

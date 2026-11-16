@@ -27,7 +27,7 @@ usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot
 - the stdlib's Unicode tables stay in flash instead of being copied to the heap on first use, and a table file
   whose initialiser has nothing else to do starts as initialised: its globals point at the tables from the start
 - the functions that box an Int, Long, Short or Byte are never inlined: tools/isr_check.py --boxing finds a box by
-  the call
+  the call. Nor is nativeMemUtils.allocRaw, whose out-of-memory exception isr_check leaves out by the function's name
 - one of these three rewrites that matches nothing in a module that defines the code it rewrites prints a warning
   (stderr): the sign of the IR of another compiler version
 Debug information (kotlinc-native -g) passes through intact: every rewrite keeps or drops whole !dbg attachments.
@@ -179,6 +179,11 @@ if '--size' in args:  # optimize for size: LLVM's minsize/optsize on every Kotli
 # AllocInstance is left there, like that of any other object.
 BOX_RE = re.compile(r'^(define [^@\n]*@"kfun:kotlin#<U?(?:Int|Long|Short|Byte)-box>\([^\n]*\) )(#\d+ )', re.M)
 text = BOX_RE.sub(r'\1noinline \2', text)
+# nativeHeap's allocation creates its OutOfMemoryError in its own body. isr_check does not count that allocation
+# against a handler (a full arena stops the handler at run time), and knows the function by its name.
+ALLOC_RAW_RE = re.compile(r'^(define [^@\n]*@"kfun:kotlinx\.cinterop\.nativeMemUtils#allocRaw\([^\n]*\) )(#\d+ )',
+                          re.M)
+text = ALLOC_RAW_RE.sub(r'\1noinline \2', text)
 if '--no-tls' in args:
     text = TLS_RE.sub(r'\1', text)
 if '--single-core' in args:
@@ -242,7 +247,8 @@ for fn, ty in (('kmicro_hex_to_double', 'double'), ('kmicro_hex_to_float', 'floa
 # An initialiser that then only points the file's globals at such constants has nothing left to do at run time: the
 # globals get the constants as their initial values and the file starts as initialised. There is no first use, so an
 # interrupt handler may be the first to classify a character above U+007F (the runtime refuses a first use there).
-# The files are the generated ones, _*.kt, and CharNative.kt, whose table of digits digitToInt() and String.toInt() read.
+# The files are the generated ones, _*.kt, and CharNative.kt, whose table of digits digitToInt() and String.toInt()
+# read.
 COPY = re.compile(r'call ptr @"kfun:kotlin\.collections#copyOf__at__[^"]*"\((ptr @[0-9]+), ptr %[0-9]+\)')
 TABLE_FILE = (r'^define internal void (@"kfun:kotlin\.text\.\$init_global\$(?:_\w+|CharNative)\.kt#internal")\(\)'
               r'[^\n]*\{$.*?^\}$')

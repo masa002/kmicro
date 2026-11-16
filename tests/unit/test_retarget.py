@@ -450,6 +450,15 @@ class RetargetTest(unittest.TestCase):
             self.assertEqual(kept, ['Int', 'ULong'], opts)
             self.assertNotIn('noinline', body(text, 'kfun:app#boxed(kotlin.Int){}kotlin.Any'))
 
+    def test_the_allocation_of_native_memory_is_never_inlined(self):
+        # tools/isr_check.py leaves out the exception this function throws itself, and finds it by its name
+        raw = '"kfun:kotlinx.cinterop.nativeMemUtils#allocRaw(kotlin.Long;kotlin.Int){}kotlin.native.internal.NativePtr"'
+        (OUT / 'raw.ll').write_text(MODULE + f'\ndefine ptr @{raw}(ptr %0, i64 %1, i32 %2) #0 {{\nentry:\n'
+                                    '  ret ptr null\n}\n', encoding='utf-8')
+        r, text = self.retarget(src='raw.ll')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(f'define ptr @{raw}(ptr %0, i64 %1, i32 %2) noinline #', text)
+
     def test_hot(self):
         for regex, hot in (('^kfun:demo#', 4), ('^kfun:demo#fast', 1), (r'kotlin\.Int$', 1), ('§', 1)):
             r, text = self.retarget('--size', '--hot', regex)
