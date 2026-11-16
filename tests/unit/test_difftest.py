@@ -62,14 +62,51 @@ class HostSide(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             src = Path(d) / 'd_program.kt'
             src.write_text('fun main() {}\n', encoding='utf-8')
+
+            def build(args, where):                  # kotlinc-native makes the folder; no program is needed here
+                where.mkdir(parents=True)
             with mock.patch.object(difftest, 'HOST', Path(d) / 'diff/host'), \
                     mock.patch.object(difftest, 'OUT', Path(d) / 'diff-cortex-m0plus'), \
                     mock.patch.object(difftest, 'host_target', return_value='linux_x64'), \
-                    mock.patch.object(difftest, 'kotlinc') as kotlinc, \
+                    mock.patch.object(difftest.kn, '_compiler_key', return_value=['kotlin-native kn 2.4.21']), \
+                    mock.patch.object(difftest, 'kotlinc', side_effect=build) as kotlinc, \
                     mock.patch.object(difftest.subprocess, 'run', return_value=ran) as run:
                 self.assertEqual(difftest.host('d_program', src), b'reference\n')
             self.assertEqual(kotlinc.call_args.args[1], Path(d) / 'diff/host/d_program')
             self.assertEqual(Path(run.call_args.args[0][0]).parent, Path(d) / 'diff/host/d_program')
+
+    def test_the_host_program_is_built_again_for_another_compiler_or_source(self):
+        ran = subprocess.CompletedProcess([], 0, b'reference\n', b'')
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / 'd_program.kt'
+            src.write_text('fun main() {}\n', encoding='utf-8')
+            exe = Path(d) / 'diff/host/d_program' / ('d_program' + ('.exe' if difftest.paths.WINDOWS else '.kexe'))
+            compiler = ['kotlin-native kn 2.4.21']
+
+            def build(args, where):                  # kotlinc-native: the program appears, or the build fails
+                if 'fails' in src.read_text(encoding='utf-8'):
+                    raise difftest.Failure('kotlinc-native failed (host)')
+                where.mkdir(parents=True, exist_ok=True)
+                exe.write_bytes(b'program')
+            with mock.patch.object(difftest, 'HOST', Path(d) / 'diff/host'), \
+                    mock.patch.object(difftest, 'host_target', return_value='linux_x64'), \
+                    mock.patch.object(difftest.kn, '_compiler_key', side_effect=lambda: compiler), \
+                    mock.patch.object(difftest, 'kotlinc', side_effect=build) as kotlinc, \
+                    mock.patch.object(difftest.subprocess, 'run', return_value=ran):
+                difftest.host('d_program', src)
+                difftest.host('d_program', src)
+                self.assertEqual(kotlinc.call_count, 1)             # nothing changed: the program is kept
+                compiler = ['kotlin-native kn-next 2.5.0-RC']
+                difftest.host('d_program', src)
+                self.assertEqual(kotlinc.call_count, 2)             # another compiler: its own stock runtime
+                difftest.host('d_program', src)
+                self.assertEqual(kotlinc.call_count, 2)
+                src.write_text('fun main() { fails() }\n', encoding='utf-8')
+                with self.assertRaises(difftest.Failure):
+                    difftest.host('d_program', src)
+                src.write_text('fun main() { println() }\n', encoding='utf-8')
+                difftest.host('d_program', src)                     # the old program is not taken for the new source
+                self.assertEqual(kotlinc.call_count, 4)
 
 
 class UlpTolerance(unittest.TestCase):

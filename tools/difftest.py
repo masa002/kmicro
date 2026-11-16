@@ -118,8 +118,13 @@ def frameless(out):
 def host(name, src, uncaught=False):
     d = HOST / name
     exe = d / (name + ('.exe' if paths.WINDOWS else '.kexe'))   # what kotlinc-native -p program writes
-    if not exe.exists() or exe.stat().st_mtime < src.stat().st_mtime:
-        kotlinc([src.as_posix(), '-target', host_target(), '-p', 'program', '-opt', '-o', (d / name).as_posix()], d)
+    args = [src.as_posix(), '-target', host_target(), '-p', 'program', '-opt', '-o', (d / name).as_posix()]
+    # Built again when the arguments, the compiler or the source changed, as kn.compile_ir keeps the kmicro side:
+    # the reference must come from the stock runtime of the compiler that built the kmicro side.
+    key = '\n'.join(['[arguments]', *args, '[compiler]', *kn._compiler_key(), '[inputs]', *kn._stamps([src])])
+    if not exe.exists() or not kn._up_to_date(d / 'key.txt', key):
+        kotlinc(args, d)
+        (d / 'key.txt').write_text(key, encoding='utf-8')
     r = subprocess.run([str(exe)], capture_output=True, timeout=300)  # the runtime writes UTF-8 bytes (::write)
     if uncaught:
         if r.returncode == 0:
