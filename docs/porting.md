@@ -346,7 +346,9 @@ different:
   more than the guards of the other targets do: a wild pointer anywhere outside the program's memory faults, and
   so does a write to the code. A board lists its own memory in the same way.
 - **The interrupt controller is a GIC of version 3** on this machine: its interface to the core is system registers
-  (ICC_IAR1, ICC_EOIR1), and an interrupt has to be put into group 1 to arrive as an IRQ.
+  (ICC_IAR1, ICC_EOIR1), and an interrupt has to be put into group 1 to arrive as an IRQ. The start code does
+  that for every interrupt, those of the core (in the redistributor) and those of the machine's devices (in the
+  distributor): after reset each is in group 0.
 - **The libraries are those of ARMv7.** The xPack GCC has no multilib of ARMv8-R, and gives this core
   `thumb/v7+fp/hard`: ARMv7 code with VFPv3-D16 and the hard-float calling convention, which the core runs and
   which links with code built for its own FPU.

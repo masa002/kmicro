@@ -20,6 +20,8 @@ void kmicro_exit(int code);
 #define ARM_ENTRY __attribute__((naked, target("arm"), used))
 #define NULL_GUARD (1u << 16)                                   /* the first 64 KB of the address space */
 #define GICD_CTLR     (*(volatile uint32_t *)0xF0000000u)      /* the GIC (version 3) of the machine: distributor */
+#define GICD_TYPER    (*(volatile uint32_t *)0xF0000004u)
+#define GICD_IGROUPR  ((volatile uint32_t *)0xF0000080u)
 #define GICR_WAKER    (*(volatile uint32_t *)0xF0100014u)      /* and the redistributor of this core */
 #define GICR_IGROUPR0 (*(volatile uint32_t *)0xF0110080u)
 
@@ -143,13 +145,18 @@ static void mpu_guards(void)
 }
 
 /* The interrupt controller passes on what a program enables in it, at any priority, as interrupts of group 1,
- * which the core takes as IRQs. Its interface to the core is system registers, not memory. */
+ * which the core takes as IRQs. Every interrupt is put into that group: after reset each is in group 0, which is
+ * not turned on here and would arrive as an FIQ. The core's own interrupts (0 to 31) have their group in the
+ * redistributor, those of the machine's devices (32 and up) in the distributor, 32 to a register, as many as
+ * GICD_TYPER says. The controller's interface to the core is system registers, not memory. */
 static void gic_on(void)
 {
     GICR_WAKER &= ~2u;                                          /* this core is awake */
     while (GICR_WAKER & 4u) {
     }
-    GICR_IGROUPR0 = 0xFFFFFFFFu;                                /* the core's own interrupts (0 to 31): group 1 */
+    GICR_IGROUPR0 = 0xFFFFFFFFu;
+    for (uint32_t i = 1u; i <= (GICD_TYPER & 0x1Fu); i++)
+        GICD_IGROUPR[i] = 0xFFFFFFFFu;
     GICD_CTLR = 0x12u;                                          /* ARE, group 1 on */
     __asm volatile("mcr p15, 0, %0, c12, c12, 5\n"              /* ICC_SRE: the system registers */
                    "isb\n"
