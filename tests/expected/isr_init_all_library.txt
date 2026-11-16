@@ -1,0 +1,1 @@
+native memory, pointers, an unsigned range, Random and Duration first used in a handler: 25 of 25 checks; allocations after kt_init_all: 0

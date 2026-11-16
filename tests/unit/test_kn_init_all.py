@@ -62,8 +62,32 @@ IR = ('define void @"kfun:loop#step(){}"() {\n'
       + ''.join(kclass(n, '@1', private=n == 'hidden') for n in ROOT_OBJECTS) + kclass('cfg.Settings', '@2'))
 
 
+def function(name, *lines):
+    return f'define void @"kfun:{name}"() {{\n' + ''.join(lines) + '  ret void\n}\n'
+
+
+# A package that reaches objects of the standard library and of a cinterop package: by a call, and through a class
+# it names, whose record lists the member functions. Nothing of the package drv refers to kotlin.random.Random.
+LIBRARY_IR = (
+    function('drv#poll(){}', init('drv$C:/src/drv.kt', 'drv.$init_global$drv.kt#internal'),
+             '  call void @"kfun:kotlinx.cinterop.IntVarOf#<get-$companion>#static(){}"()\n',
+             '  %1 = call ptr @AllocInstance(ptr @"kclass:kotlin.ranges.UIntRange", ptr null)\n')
+    + function('kotlinx.cinterop.IntVarOf#<get-$companion>#static(){}',
+               init('kotlinx.cinterop.IntVarOf', 'kotlinx.cinterop.IntVarOf.$init_global#internal'))
+    + '@"kclass:kotlin.ranges.UIntRange" = constant { ptr, [1 x ptr] } { ptr null, [1 x ptr] '
+      '[ptr @"kfun:kotlin.ranges.UIntRange#contains(){}"] }\n'
+    + function('kotlin.ranges.UIntRange#contains(){}',
+               init('kotlin.ranges.UIntRange', 'kotlin.ranges.UIntRange.$init_global#internal'),
+               init('kotlin.collections.ArrayList', 'kotlin.collections.ArrayList.$init_global#internal'),
+               init('kotlin.native.internal.NativePtr', 'kotlin.native.internal.NativePtr.$init_global#internal'),
+               '  call void @"kfun:dev.point#<get-$companion>#static(){}"()\n')
+    + function('dev.point#<get-$companion>#static(){}', init('dev.point', 'dev.point.$init_global#internal'))
+    + function('other#unused(){}', init('kotlin.random.Random', 'kotlin.random.Random.$init_global#internal')))
+
+
 def states(lines):
-    return [l.split('"state_global$')[1].split('"')[0] for l in lines if '@CallInitGlobalPossiblyLock(' in l]
+    return [l.split('"state_global$')[1].split('"')[0] for l in lines
+            if '@CallInitGlobalPossiblyLock(' in l and '"state_global$' in l]
 
 
 def local_states(lines):
@@ -115,6 +139,58 @@ class InitAll(unittest.TestCase):
 
     def test_package_with_thread_local_globals_only(self):
         self.assertEqual(local_states(kn.add_init_all(IR, 'tls')), ['tls$C:/src/tls.kt'])
+
+    def test_library_objects_come_from_a_table(self):
+        # one entry per global of LIBRARY_GLOBALS that the module uses, tied to its state: the link drops the entry
+        # with the state. Not the ArrayList companion, which is not in the list. The package's own calls follow.
+        lines = kn.add_init_all(LIBRARY_IR, 'drv')
+        entries = [l for l in lines if l.startswith('@"km_init$')]
+        self.assertEqual([l.split('"')[1] for l in entries],
+                         ['km_init$kotlin.native.internal.NativePtr', 'km_init$kotlin.random.Random',
+                          'km_init$kotlin.ranges.UIntRange', 'km_init$kotlinx.cinterop.IntVarOf'])
+        self.assertEqual(entries[2], '@"km_init$kotlin.ranges.UIntRange" = internal constant { ptr, ptr, ptr } '
+                         '{ ptr @"state_global$kotlin.ranges.UIntRange", '
+                         'ptr @"kfun:kotlin.ranges.UIntRange.$init_global#internal", ptr null }, section "km_init", '
+                         'align 4, !associated !{ptr @"state_global$kotlin.ranges.UIntRange"}')
+        # the compiler keeps each entry, and each state as a global of its own (--size would merge the states)
+        used = [l for l in lines if l.startswith('@llvm.compiler.used = ')][0]
+        self.assertIn('appending global [8 x ptr] [ptr @"km_init$kotlin.native.internal.NativePtr", '
+                      'ptr @"state_global$kotlin.native.internal.NativePtr", ', used)
+        self.assertTrue(used.endswith('ptr @"state_global$kotlinx.cinterop.IntVarOf"], section "llvm.metadata"'))
+        body = lines[lines.index('define void @kt_init_all() {'):]
+        self.assertIn('  %entry = phi ptr [ @__start_km_init, %0 ], [ %next, %create ]', body)
+        self.assertIn('  call void @CallInitGlobalPossiblyLock(ptr %state, ptr %init)', body)
+        self.assertEqual(states(body), ['drv$C:/src/drv.kt'])
+        self.assertLess(body.index('own:'), body.index('  call void @CallInitGlobalPossiblyLock('
+                                                       'ptr @"state_global$drv$C:/src/drv.kt", '
+                                                       'ptr @"kfun:drv.$init_global$drv.kt#internal")'))
+
+    def test_objects_of_the_cinterop_packages(self):
+        # the companion of a C struct, when the .def file's package is given
+        lines = kn.add_init_all(LIBRARY_IR, 'drv', packages=['dev'])
+        self.assertIn('km_init$dev.point', [l.split('"')[1] for l in lines if l.startswith('@"km_init$')])
+
+    def test_no_table_without_library_objects(self):
+        lines = kn.add_init_all(IR, 'loop')
+        self.assertEqual(lines[0], 'define void @kt_init_all() {')
+        self.assertNotIn('km_init', ''.join(lines))
+
+    def test_calls_with_the_class_in_the_table(self):
+        # Kotlin/Native 2.5: the class is the third field of an entry and the third argument of the call
+        ir = LIBRARY_IR.replace('@CallInitGlobalPossiblyLock(', '@kmicro_init_global(').replace(
+            '.$init_global#internal")\n', '.$init_global#internal", ptr noundef @"kclass:any")\n')
+        lines = kn.add_init_all(ir, 'drv')
+        self.assertIn('ptr @"kfun:kotlin.ranges.UIntRange.$init_global#internal", ptr @"kclass:any" }, ',
+                      ''.join(lines))
+        self.assertIn('  call void @kmicro_init_global(ptr %state, ptr %init, ptr %class)', lines)
+
+    def test_def_package(self):
+        d = Path(__file__).resolve().parents[2] / 'build/unit/init_all'
+        d.mkdir(parents=True, exist_ok=True)
+        (d / 'board.def').write_text('headers = board.h\npackage = hw.board\n', encoding='utf-8')
+        (d / 'plain.def').write_text('headers = plain.h\n', encoding='utf-8')
+        self.assertEqual(kn.def_package(d / 'board.def'), 'hw.board')
+        self.assertEqual(kn.def_package(d / 'plain.def'), 'plain')
 
     def test_function_shape(self):
         lines = kn.add_init_all(IR, 'loop', 'boot_init')

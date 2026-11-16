@@ -179,6 +179,10 @@ _sidata = LOADADDR(.data);
 - `.init_array` holds the module initializers. `KEEP` stops `--gc-sections` from dropping them, and the start code
   runs them from `__init_array_start` to `__init_array_end`.
 - The start code copies `.data` from `_sidata` to `_sdata` .. `_edata` and clears `_sbss` .. `_ebss`.
+- A program built with `kbuild.py --init-all` may have a section `km_init`, the table of standard-library objects
+  that the generated function creates. The script does not name it: ld.lld places it with the read-only data and
+  defines `__start_km_init` and `__stop_km_init`. Do not `KEEP` it: `--gc-sections` drops the entries of objects the
+  program does not use.
 - The Kotlin heap is a static array in `.bss` (`KM_HEAP_BYTES`), so there is no heap section. The stack is the RAM
   above `.bss`, up to `_estack`. qbuild prints that size (`stack N` in its size line; on `qemu-l475`, without the
   stack guard and the unused bytes around it), and [stm32l431.ld](../examples/selftest/stm32l431/stm32l431.ld) stops

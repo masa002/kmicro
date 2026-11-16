@@ -15,6 +15,7 @@
 #endif
 
 static volatile int s_done, s_ticks, s_handled;
+static int32_t s_word = 1234;            /* TEST_LIBRARY: read by Kotlin through a pointer made of its address */
 
 void TICK_HANDLER(void)
 {
@@ -42,6 +43,9 @@ void TICK_HANDLER(void)
     copy_read();
 #elif defined(TEST_WEAK)
     weak_read();
+#elif defined(TEST_LIBRARY)
+    if (s_ticks <= 5) s_handled += library_in_handler((int32_t)(intptr_t)&s_word, s_ticks);
+    if (s_ticks == 5) s_done = 1;
 #elif defined(TEST_CHARS)
     if (s_ticks <= 64) s_handled += classify(s_ticks);
     if (s_ticks == 64) s_done = 1;
@@ -154,6 +158,18 @@ int main(void)
     kmicro_put_int(bad);
     kmicro_puts(ok ? "  OK\n" : "  BROKEN\n");
     return !ok;
+#elif defined(TEST_LIBRARY)
+    kt_init_all();                      /* with the objects of the standard library that package isr refers to */
+    kmicro_stats(&a);
+    tick_start(RVR);
+    wait_for_handler();
+    kmicro_stats(&b);
+    kmicro_puts("native memory, pointers, an unsigned range, Random and Duration first used in a handler: ");
+    kmicro_put_int(s_handled);
+    kmicro_puts(" of 25 checks; allocations after kt_init_all: ");
+    kmicro_put_int((int32_t)(b.alloc_count - a.alloc_count));
+    kmicro_puts("\n");
+    return s_handled == 25 && b.alloc_count == a.alloc_count ? 0 : 1;
 #elif defined(TEST_CHARS)
     (void)a;
     (void)b;

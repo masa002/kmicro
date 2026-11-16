@@ -256,6 +256,10 @@ TESTS = [
     isr('isr_schedule', 'TEST_SCHEDULE', exit=0),
     isr('isr_lazy_globals', 'TEST_LAZY'),
     isr('isr_init_all', 'TEST_INIT_ALL', exit=0),
+    isr('isr_init_all_library', 'TEST_LIBRARY', exit=0),
+    # (with --size the backend merges small globals, which must not happen to the states the table is tied to)
+    Test('isr_init_all_library_size', Kotlin('interrupts', INTERRUPTS.srcs, dict(INTERRUPTS.opts, size=True)),
+         ['tests/interrupts/main.c'], exit=0, case={'TEST_LIBRARY': 1}, tick=True),
     isr('isr_throw', 'TEST_THROW', exit=0),
     isr('isr_chars', 'TEST_CHARS', exit=0),
     Test('isr_init_window', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98, m_profile=PENDS),

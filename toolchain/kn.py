@@ -573,12 +573,76 @@ def root_classes(ll_text):
         if m.group(2) in empty]
 
 
-def add_init_all(ll_text, package, name='kt_init_all'):
+# The objects of the standard library that kt_init_all() creates with the package's own globals, when the program
+# uses them: what cinterop pointers and native memory, range checks on unsigned values, Random and Duration need.
+# Their first use allocates, so an interrupt handler must not be the first to use them, and their initialisers do
+# nothing else: no clock, no thread. (The rest of the standard library is left to its first use: some of its objects
+# cannot be created at boot, as the one that asks for the thread's id.)
+LIBRARY_GLOBALS = ('kotlin.native.internal.NativePtr', 'kotlinx.cinterop.', 'kotlin.ranges.UIntRange',
+                   'kotlin.ranges.ULongRange', 'kotlin.random.', 'kotlin.time.Duration', 'kotlin.time.DurationUnit')
+INIT_TABLE = 'km_init'                         # the section of the table; a C name, so the linker defines its ends
+
+
+def def_package(def_file):
+    """The Kotlin package cinterop gives the declarations of a .def file: its `package =` line, else its name."""
+    m = re.search(r'^\s*package\s*=\s*([\w.]+)\s*$', Path(def_file).read_text(encoding='utf-8', errors='replace'),
+                  re.M)
+    return m.group(1) if m else Path(def_file).stem
+
+
+def library_globals(ll_text, packages=()):
+    """[(function, state, initialiser, class)] of the first-use calls the module makes for the globals of
+    LIBRARY_GLOBALS and of `packages` (the cinterop packages of the program: the companion of a C struct), as
+    add_init_all() reads the package's own."""
+    names = '|'.join(re.escape(n) + (r'[^"]*' if n.endswith('.') else '') for n in
+                     (*LIBRARY_GLOBALS, *(p + '.' for p in packages)))
+    return sorted(set(re.findall(
+        r'call void @(CallInitGlobalPossiblyLock|kmicro_init_global)\(ptr noundef (@"state_global\$(?:' + names
+        + r')"), ptr noundef (@"kfun:[^"]*\$init_global[^"]*")((?:, ptr noundef (?:null|@"kclass:[^"]*"))?)\)',
+        ll_text)), key=lambda t: t[1])
+
+
+def init_table(ll_text, library):
+    """The IR of the table kt_init_all() walks: one entry { state, initialiser, class } per library global, in the
+    section INIT_TABLE. An entry is tied to its state with !associated: the link (--gc-sections) keeps it only when
+    the program still uses that state, so an object the program never uses is not created, and its code is not
+    kept. Returns (lines, the lines of the loop over the table)."""
+    if not library:
+        return [], []
+    if '@llvm.compiler.used' in ll_text:
+        sys.exit('kmicro: init_all (--init-all): the module defines @llvm.compiler.used, which kn.py does not expect')
+    f, with_class = library[0][0], bool(library[0][3])
+    entries = [st.replace('@"state_global$', f'@"{INIT_TABLE}$', 1) + ' = internal constant { ptr, ptr, ptr } '
+               f'{{ ptr {st}, ptr {fn}, ptr {c.rsplit(" ", 1)[-1] if c else "null"} }}, section "{INIT_TABLE}", '
+               f'align 4, !associated !{{ptr {st}}}' for _, st, fn, c in library]
+    # The compiler must keep the entries, which nothing refers to, and must leave each state a global of its own:
+    # with minsize (--size) the ARM backend merges small globals into one, and an entry tied to a part of that one
+    # is dropped by the link. A global in @llvm.compiler.used is not merged; the link may still drop it.
+    used = ', '.join(f'ptr {x}' for e, (_, st, _, _) in zip(entries, library) for x in (e.split(' = ', 1)[0], st))
+    lines = [f'@__start_{INIT_TABLE} = extern_weak hidden global ptr',          # null when no entry is left
+             f'@__stop_{INIT_TABLE} = extern_weak hidden global ptr', *entries,
+             f'@llvm.compiler.used = appending global [{2 * len(entries)} x ptr] [{used}], section "llvm.metadata"']
+    loop = ['  br label %library', 'library:',
+            f'  %entry = phi ptr [ @__start_{INIT_TABLE}, %0 ], [ %next, %create ]',
+            f'  %done = icmp eq ptr %entry, @__stop_{INIT_TABLE}', '  br i1 %done, label %own, label %create',
+            'create:', '  %state = load ptr, ptr %entry, align 4',
+            '  %init.p = getelementptr { ptr, ptr, ptr }, ptr %entry, i32 0, i32 1',
+            '  %init = load ptr, ptr %init.p, align 4',
+            '  %class.p = getelementptr { ptr, ptr, ptr }, ptr %entry, i32 0, i32 2',
+            '  %class = load ptr, ptr %class.p, align 4',
+            f'  call void @{f}(ptr %state, ptr %init{", ptr %class" if with_class else ""})',
+            '  %next = getelementptr { ptr, ptr, ptr }, ptr %entry, i32 1', '  br label %library', 'own:']
+    return lines, loop
+
+
+def add_init_all(ll_text, package, name='kt_init_all', packages=()):
     """`void <name>(void)`: the globals of `package` and its sub-packages created now, file-level ones and those of
     object declarations (and companion objects), @ThreadLocal ones included. Kotlin initialises each on first use;
     called at boot (thread context, before interrupts), no interrupt handler ever does that allocation. A package with
     no Kotlin code is an error. The calls are those of the compiled code, as retarget.py left them: with
-    Kotlin/Native 2.5 they go to kmicro_init_global and kmicro_init_thread_local and end with the class."""
+    Kotlin/Native 2.5 they go to kmicro_init_global and kmicro_init_thread_local and end with the class.
+    The objects of the standard library and of the cinterop `packages` that the program uses come first, from a table
+    (library_globals, init_table): the package's own initialisers may use them."""
     if package:
         mine = re.escape(package) + r'[.$][^"]*'
     else:                                      # the root package: its files, and classes outside any package
@@ -596,7 +660,8 @@ def add_init_all(ll_text, package, name='kt_init_all'):
     if not pairs and not local and not re.search(r'^define [^\n]*@"kfun:' + re.escape(package) + r'[#.]', ll_text,
                                                  re.M):
         sys.exit(f'kmicro: init_all (--init-all): no Kotlin code in package {package or "<root>"} (--package)')
-    return [f'define void @{name}() {{',
+    table, loop = init_table(ll_text, library_globals(ll_text, packages))
+    return [*table, f'define void @{name}() {{', *loop,
             *[f'  call void @{f}(ptr {st}, ptr {fn}{c.replace(" noundef", "")})' for f, st, fn, c in pairs],
             *[f'  call void @{f}(ptr {gl}, ptr {st}, ptr {fn}{c.replace(" noundef", "")})'
               for f, gl, st, fn, c in local],
@@ -720,7 +785,7 @@ def build(srcs, out, libs=(), deps=(), c_api=(), package=None, init_all=None, si
             sys.exit(f'kmicro: no Kotlin function in package {package or "<root>"} for: '
                      + ', '.join(f'{c} (expected {camel(c)})' for c in missing))
         if init_all:
-            lines += add_init_all(text, package, init_all)
+            lines += add_init_all(text, package, init_all, [def_package(d) for d in defs])
     check_stack_arrays(text, stack_array_limit, stack_array_error)
     check_regex(text)
     if main is not False:

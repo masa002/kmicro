@@ -196,8 +196,9 @@ What a handler may do:
   type. They are atomic against handlers: 32-bit values and references with LDREX/STREX (an interrupt in between
   makes the update retry), 64-bit values with interrupts masked. ARMv6-M (Cortex-M0, M0+, M1) has no LDREX/STREX:
   there the runtime masks interrupts for the smaller values too.
-- **Use native memory** with `nativeHeap.alloc` and `nativeHeap.free`: the arena masks interrupts. Not `memScoped` or
-  `cstr`, which may create Kotlin objects.
+- **Use native memory** with `nativeHeap.alloc` and `nativeHeap.free`: the arena masks interrupts. Their first use
+  creates objects of the standard library, which `kt_init_all()` does at boot (rule 11). Not `memScoped` or `cstr`,
+  which may create Kotlin objects.
 - **Classify and convert characters**: `isLetter()`, `isDigit()`, `isUpperCase()`, `isLowerCase()`,
   `isWhitespace()`, `uppercaseChar()`, `lowercaseChar()`, `digitToInt()`. Their tables are constants in flash, in
   place from the start: a handler may be the first code to read them, also for a character above U+007F. Not
@@ -229,10 +230,16 @@ Allocations hide in these places:
 7. **`==` and `!=` on `UInt`, `UByte`, `UShort` box their operands.** Compare `a.toInt() == b.toInt()`.
 8. **Nullable unsigned types (`UInt?`) are boxed.** Use a sentinel value instead.
 9. **`throw` allocates the exception, and `IntArray.fill()` can allocate too.** Return an error code, and write a loop.
-10. **`toLong()` on a nullable `CPointer`** initialises the `NativePtr` companion object. Keep pointers non-null.
+10. **Every conversion between a `CPointer` and an address** (`toLong()`, `toCPointer()`, also on a pointer that is
+    not null) uses the `NativePtr` companion object, which is created on first use. `kt_init_all()` creates it at
+    boot (rule 11).
 11. **The first use of a file's globals initialises the whole file.** Generate a boot-time initialiser
     (`kbuild.py --init-all kt_init_all`; the `--c-api` header may declare it) and call it before enabling
-    interrupts.
+    interrupts. It creates the globals of the package, and the objects of the standard library that these calls
+    need, those of them the linked program uses: conversions between pointers and addresses and `nativeHeap` (with
+    the variable types of cinterop and of the `--def` files), a range check on an unsigned value (`x in 10u..20u`),
+    `Random` and `Duration`. Every other object of the standard library is created by its first use, as
+    `Char.category` or a collection's companion: the main code has to be the first to use it.
 
 ## Speed
 

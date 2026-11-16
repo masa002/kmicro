@@ -58,8 +58,10 @@ def parser():
     p.add_argument('--init-all', metavar='NAME',
                    help='generate `void NAME(void)`, which initialises the globals of --package and its sub-packages '
                         '(file-level ones and those of objects); call it at boot, before interrupts are enabled, and '
-                        'no interrupt handler runs a first-use initialisation of that code (the standard library '
-                        'still initialises its own objects on first use)')
+                        'no interrupt handler runs a first-use initialisation of that code. It also creates the '
+                        'objects of the standard library that the program uses for cinterop pointers and native '
+                        'memory, unsigned ranges, Random and Duration; the rest of the standard library is still '
+                        'created on first use')
     paths.add_cpu_option(p)
     p.add_argument('--size', action='store_true', help='optimise all Kotlin code for size (minsize)')
     p.add_argument('--hot', metavar='REGEX', help='with --size: keep full speed for the functions whose symbol '

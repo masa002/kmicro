@@ -145,7 +145,7 @@ from the Cortex-M0 to the Cortex-M85, and what was checked on each.
 | **Build and tools** | | |
 | a Kotlin-only program with `fun main()` | works | link [targets/common/kotlin_main.c](../targets/common/kotlin_main.c) as the C main |
 | interrupt handlers written in Kotlin | works | the allocation guard covers the runtime's own allocations and collections; isr_check reads the vector table; [examples/irq](../examples/irq) |
-| --init-all | works | file-level globals, objects, companions and sub-packages, `@ThreadLocal` ones included |
+| --init-all | works | file-level globals, objects, companions and sub-packages, `@ThreadLocal` ones included; and the standard-library objects of cinterop pointers, native memory, unsigned ranges, Random and Duration that the program uses |
 | --size --hot | works | |
 | board build | works | [porting.md](porting.md): the board contract, start-up, runtime flags, linker script and libraries; [examples/selftest/stm32l431](../examples/selftest/stm32l431) is a complete one |
 | Windows paths with spaces or non-ASCII characters | partly | folders work; a file name outside the ANSI code page fails in the xPack tools |
