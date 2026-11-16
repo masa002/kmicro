@@ -28,10 +28,12 @@ usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--
                default for the cortex-m55 and cortex-m85 cores: QEMU has no Cortex-M85). It runs the code of the
                three ARMv8-M cores as well. QEMU gives this machine 2 GB of memory, which a Windows host commits when
                the machine starts
-               virt: QEMU virt with a Cortex-A7 (targets/qemu-virt), the default for cortex-a7 and the only
-               machine for it. The image is loaded into the machine's RAM and gets the same amounts of it
-               an536: QEMU mps3-an536, a Cortex-R52 (targets/qemu-an536), the default for cortex-r52 and the
-               only machine for it, with the image in its RAM in the same way
+               virt: QEMU virt with a Cortex-A7 (targets/qemu-virt), the default and the only machine for
+               cortex-a7 and for the other Cortex-A entries, whose code that core runs. The image is loaded into
+               the machine's RAM and gets the same amounts of it
+               an536: QEMU mps3-an536, a Cortex-R52 (targets/qemu-an536), the default and the only machine for
+               cortex-r52 and for cortex-r5 and cortex-r5f, whose code that core runs, with the image in its RAM
+               in the same way
     --large    l475, an385, an500, an505, an547, virt and an536 give a program the memory of the STM32L431 kmicro
                aims at, 256 KB of flash and 64 KB of RAM: one that does not fit fails to link, and the stack ends
                where it would end on that chip. With --large the program gets the memory of the STM32L475: 1 MB of

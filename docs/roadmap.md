@@ -32,11 +32,11 @@ what the next compiler changes before anyone depends on it.
 
 ## Targets
 
-kmicro builds for the Cortex-M cores from the Cortex-M0 to the Cortex-M85, and for one core each of the A and the R
-profile, the Cortex-A7 and the Cortex-R52, in their 32-bit state. `--cpu CORE` on kbuild, qbuild, run_all and
-difftest, or the environment variable `KMICRO_CPU`, chooses the core; the default is `cortex-m4f`. `CORES` in
-[toolchain/paths.py](../toolchain/paths.py) holds the clang target, the flags and the newlib and libgcc multilib of
-each. A core without an FPU uses the soft-float calling convention.
+kmicro builds for the Cortex-M cores from the Cortex-M0 to the Cortex-M85, and for cores of the A and the R profile
+in their 32-bit state: the Cortex-A7 and the Cortex-R52, and others whose code those two run. `--cpu CORE` on
+kbuild, qbuild, run_all and difftest, or the environment variable `KMICRO_CPU`, chooses the core; the default is
+`cortex-m4f`. `CORES` in [toolchain/paths.py](../toolchain/paths.py) holds the clang target, the flags and the
+newlib and libgcc multilib of each. A core without an FPU uses the soft-float calling convention.
 
 | `--cpu` | Architecture | FPU | Tested on QEMU's | Checked | selftest: flash | RAM |
 |---|---|---|---|---|---|---|
@@ -57,15 +57,24 @@ each. A core without an FPU uses the soft-float calling convention.
 | `cortex-m85` | ARMv8.1-M Mainline | FPv5, double precision; MVE | `mps3-an547`, a Cortex-M55 | the selftest | 127.7 KB | 18.5 KB |
 | `cortex-m85-nomve` | ARMv8.1-M Mainline | FPv5, double precision | `mps3-an547`, a Cortex-M55 | the selftest | 129.8 KB | 18.5 KB |
 | `cortex-m85-nofp` | ARMv8.1-M Mainline | none | `mps3-an547`, a Cortex-M55 | the selftest | 131.0 KB | 18.5 KB |
-| `cortex-r52` | ARMv8-R, built as Thumb-2 code | FP-ARMv8 and NEON | `mps3-an536`, a Cortex-R52 | run_all; difftest for 16 of its programs | 117.1 KB | 18.2 KB |
-| `cortex-a7` | ARMv7-A, built as Thumb-2 code | VFPv4 and NEON | `virt`, with a Cortex-A7 | run_all; difftest for 16 of its programs | 116.2 KB | 18.2 KB |
+| `cortex-a5` | ARMv7-A, built as Thumb-2 code | VFPv4 and NEON | `virt`, a Cortex-A7 | the selftest | 117.0 KB | 18.2 KB |
+| `cortex-a7` | ARMv7-A, built as Thumb-2 code | VFPv4 and NEON | `virt`, a Cortex-A7 | run_all, also under GC stress; difftest | 116.2 KB | 18.2 KB |
+| `cortex-a7-nofp` | ARMv7-A, built as Thumb-2 code | none | `virt`, a Cortex-A7 | run_all | 115.2 KB | 18.2 KB |
+| `cortex-a8` | ARMv7-A, built as Thumb-2 code | VFPv3 and NEON | `virt`, a Cortex-A7 | the selftest | 116.9 KB | 18.2 KB |
+| `cortex-a9` | ARMv7-A, built as Thumb-2 code | VFPv3-D16 | `virt`, a Cortex-A7 | the selftest | 115.6 KB | 18.2 KB |
+| `cortex-a15` | ARMv7-A, built as Thumb-2 code | VFPv4 and NEON | `virt`, a Cortex-A7 | the selftest | 114.7 KB | 18.2 KB |
+| `cortex-r5` | ARMv7-R, built as Thumb-2 code | none | `mps3-an536`, a Cortex-R52 | run_all | 116.1 KB | 18.2 KB |
+| `cortex-r5f` | ARMv7-R, built as Thumb-2 code | VFPv3-D16 | `mps3-an536`, a Cortex-R52 | the selftest | 115.2 KB | 18.2 KB |
+| `cortex-r52` | ARMv8-R, built as Thumb-2 code | FP-ARMv8 and NEON | `mps3-an536`, a Cortex-R52 | run_all, also under GC stress; difftest for 16 of its programs | 117.1 KB | 18.2 KB |
 
 - **run_all** means that `python tests/run_all.py --cpu CORE` passes: every test program and example, with the
   checks the tools make on the images. The three tests of the large-memory machine, `mps2-an386`, are skipped for a
-  core whose code its Cortex-M4F does not run: the Cortex-M7, the cores of ARMv8-M and ARMv8.1-M, the Cortex-A7 and
-  the Cortex-R52. For those last two three more are skipped, whose Kotlin code programs the System Control Block or
-  the SysTick of a Cortex-M: `isr_init_window`, `isr_init_window_tls` and the example `irq`.
-- **The selftest** means that `python tests/run_all.py --cpu CORE selftest` passes and nothing else was run.
+  core whose code its Cortex-M4F does not run: the Cortex-M7, the cores of ARMv8-M and ARMv8.1-M, and those of
+  the A and R profiles. For the A and R profiles three more are skipped, whose Kotlin code programs the System
+  Control Block or the SysTick of a Cortex-M: `isr_init_window`, `isr_init_window_tls` and the example `irq`.
+- **The selftest** means that `python tests/run_all.py --cpu CORE selftest` passes and nothing else was run. The
+  Cortex-A and Cortex-R cores with this word differ from the core of their machine in the `-mcpu` value, the FPU
+  and its multilib.
   `cortex-m0` and `cortex-m1` differ from `cortex-m0plus` only in the `-mcpu` value, and `cortex-m7-sp` from
   `cortex-m7` in the FPU and its multilib. Of the six entries of ARMv8.1-M (below), run_all ran for `cortex-m55`.
 - **The sizes** are those of [examples/selftest](../examples/selftest) as that test builds it, with the default
@@ -108,23 +117,36 @@ each. A core without an FPU uses the soft-float calling convention.
   ([targets/qemu-virt](../targets/qemu-virt)): the program runs in Supervisor mode with the MMU on and a flat map,
   and its interrupt handlers in IRQ mode, called through the machine's interrupt controller (a GIC, version 2).
   The Kotlin code and the runtime are built as for a Cortex-M, as Thumb-2 code with the hard-float calling
-  convention. difftest was run for 16 of its programs, chosen across the language, the strings, the numbers, the
-  atomics and the stack traces, and all gave the output of the stock runtime; it was not run for the others or
-  under GC stress. What else was not checked: nothing ran on a board or on another QEMU machine; QEMU does not model
-  the caches, which the start code leaves off; there is no build as ARM code and none without the FPU; and one
+  convention. run_all also passes under GC stress, and difftest gave the output of the stock runtime for all 47 of
+  its programs (both once, on Windows; CI runs neither for this core). In three of those programs (`d_arrays`,
+  `d_lang_6`, `d_stdlib_misc`) `main` has a stack frame of 4176 to 4280 bytes on this core, more than the 4 KB of
+  the stack guard, which such a frame could step over without a fault; difftest marks them FRAME for it. What was
+  not checked: nothing ran on a board or on another QEMU machine; QEMU does not model
+  the caches, which the start code leaves off; there is no build as ARM code; and one
   core runs, the machine's default. [porting.md](porting.md#a-cortex-a-core) says what a board with such a core
   does.
 - **The Cortex-R52 is a core of the R profile,** with the exceptions, the modes and the interrupt controller of the
-  A profile and an MPU in place of the MMU. Its start code ([targets/qemu-an536](../targets/qemu-an536)) leaves
-  Hyp mode, in which this core starts, for Supervisor mode, and runs the program there, its handlers in IRQ mode,
-  called through the machine's GIC (version 3, reached through system registers). The MPU has a region for each
-  piece of memory the program has and no default map behind them, so every other address faults: address 0 and
-  the 4 KB below each stack among them. The same 16 differential tests as for the Cortex-A7 gave the output of
-  the stock runtime. What was not checked: nothing ran on a board; the program never uses Hyp mode again; the
-  xPack GCC has no newlib and libgcc for ARMv8-R, so the libraries are those of ARMv7 with VFPv3-D16, which this
-  core runs, next to Kotlin and runtime code built for its own FPU; there is no build without the FPU; difftest
-  was not run in full or under GC stress. [porting.md](porting.md#a-cortex-r-core) says what differs from a
-  Cortex-A core.
+  A profile and an MPU in place of the MMU. Its start code ([targets/qemu-an536](../targets/qemu-an536)) leaves Hyp
+  mode, in which this core starts, for Supervisor mode, and runs the program there, its handlers in IRQ mode, called
+  through the machine's GIC (version 3, reached through system registers). The MPU has a region for each piece of
+  memory the program has and no default map behind them, so every other address faults: address 0 and the 4 KB below
+  each stack among them. run_all also passes under GC stress (once, on Windows), and 16 differential tests, chosen
+  across the language, the strings, the numbers, the atomics and the stack traces, gave the output of the stock
+  runtime. What was not checked: nothing ran on a board; the program never uses Hyp mode again; the xPack GCC has no
+  newlib and libgcc for ARMv8-R, so the libraries are those of ARMv7 with VFPv3-D16, which this core runs, next to
+  Kotlin and runtime code built for its own FPU; there is no build without the FPU; difftest was not run in full or
+  under GC stress. [porting.md](porting.md#a-cortex-r-core) says what differs from a Cortex-A core.
+- **Cortex-A and Cortex-R code that is tested on a larger core.** QEMU's `virt` runs the code of five more entries
+  on its Cortex-A7, which has every instruction they use: `cortex-a5`, `cortex-a8`, `cortex-a9` and `cortex-a15`,
+  each built with its own `-mcpu`, its FPU and the libraries of its multilib, and `cortex-a7-nofp`, the Cortex-A7
+  without its FPU, in the soft-float calling convention. `cortex-r5` (no FPU) and `cortex-r5f` are code of ARMv7-R,
+  which the Cortex-R52 of `mps3-an536` runs. The start code is that of the machine in both cases. So what was
+  tested is the compiler's code for the core, its libraries and the runtime, and nothing that belongs to the core:
+  its reset state, its vectors, its MPU or MMU, its interrupt controller. For the Cortex-R5 that is much: it has
+  the MPU of ARMv7-R, no VBAR (its vectors are at address 0 or 0xFFFF0000) and no Hyp mode, so a board needs start
+  code that this repository does not have. QEMU 9.2.4 has models of the Cortex-A8, A9 and A15 on other machines,
+  for which there is no start code here, and of the Cortex-R5F on `xlnx-zcu102` (in `qemu-system-aarch64`, next to four
+  64-bit Cortex-A53), where a trial did not get an image to run: the two Cortex-R5F cores stayed off.
 - **On a board,** only the Cortex-M4F has run: an STM32L431, in
   [the recorded run](../examples/selftest/stm32l431-report.txt), which predates release 0.1.0.
   [porting.md](porting.md#another-core) says what a board with another core changes.
@@ -134,9 +156,9 @@ Not supported:
 
 - **PACBTI on the Cortex-M85:** the code is built without pointer authentication and branch target
   identification, and the libraries GCC has for them are not linked.
-- **The other Cortex-R cores and 32-bit Cortex-A cores:** there is no entry in `CORES` and no start code for them,
-  and nothing ran. A core of ARMv7-R, such as the Cortex-R5, has another MPU than the Cortex-R52 and its vectors
-  at a fixed address; the runtime's files were compiled for it, and no more than that.
+- **The other Cortex-R cores and 32-bit Cortex-A cores:** there is no entry in `CORES` for them, and nothing ran.
+- **Start code for a Cortex-R5 or for a Cortex-A core other than the Cortex-A7:** the entries of those cores build
+  code, and only the machines of the Cortex-A7 and the Cortex-R52 have start code.
 - **64-bit ARM:** out of reach of this approach, which reads the IR of the compiler's 32-bit ARM target.
 - **Threads:** the runtime is single-threaded, and interrupt handlers follow
   [the rules](writing-kotlin.md#interrupt-handlers).

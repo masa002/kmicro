@@ -37,7 +37,7 @@ qemu: exit 0
 
 kbuild compiles the Kotlin code for the Cortex-M4F, the default core; qbuild links it with the kmicro runtime and
 runs it on QEMU's emulated STM32L475. `--cpu` on both chooses another core, from the Cortex-M0 to the Cortex-M85,
-the Cortex-A7 or the Cortex-R52:
+a Cortex-A or a Cortex-R core:
 [docs/roadmap.md](docs/roadmap.md#targets) lists them with what was checked on each.
 [examples/hello](examples/hello) does the same from a C `main`, the way a firmware written in C starts calling
 Kotlin.

@@ -278,7 +278,9 @@ Cortex-M4F, these parts of a board build change:
 
 ## A Cortex-A core
 
-`--cpu cortex-a7` builds for the Cortex-A7, a core of the A profile, in its 32-bit state. Nothing of it has run on a
+`--cpu cortex-a7` builds for the Cortex-A7, a core of the A profile, in its 32-bit state (`cortex-a5`,
+`cortex-a8`, `cortex-a9` and `cortex-a15` build for those cores, and `cortex-a7-nofp` without the FPU: their code
+was tested on the Cortex-A7, [roadmap.md](roadmap.md#targets)). Nothing of it has run on a
 board. What this section says was checked on QEMU's `virt` machine, with the start code and the linker script of
 [targets/qemu-virt](../targets/qemu-virt) (`start.c`, `virt.ld`) standing in for a board's.
 
@@ -351,8 +353,9 @@ different:
   `thumb/v7+fp/hard`: ARMv7 code with VFPv3-D16 and the hard-float calling convention, which the core runs and
   which links with code built for its own FPU.
 
-A core of ARMv7-R, such as the Cortex-R5, is not supported: it has the MPU of ARMv7 and no VBAR, so its vectors
-are at address 0 or 0xFFFF0000.
+`--cpu cortex-r5` and `--cpu cortex-r5f` build code for the Cortex-R5 (ARMv7-R), and that code was tested on the
+Cortex-R52 ([roadmap.md](roadmap.md#targets)). There is no start code for that core: it has the MPU of ARMv7-R,
+no Hyp mode and no VBAR, so its vectors are at address 0 or 0xFFFF0000, and a board has to write all of that.
 
 ## A check on QEMU
 
