@@ -84,8 +84,9 @@ CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every pull req
 and `run_all.py --stress` on Linux for the default core, `run_all.py --cpu CORE` for each of the other cores
 (cortex-m0plus, cortex-m3, cortex-m4, cortex-m7, cortex-m23, cortex-m33, cortex-m33f, cortex-m55,
 cortex-a7, cortex-r52), and the unit
-tests and `run_all.py` on Windows. It runs difftest with and without `--stress` on main and once a week. A weekly
-job runs the unit tests and `run_all.py` with the newest Kotlin release; it may fail, and that fails nothing else.
+tests and `run_all.py` on Windows. It runs difftest with and without `--stress` on main and once a week; the
+weekly run also runs it for cortex-m0plus, cortex-m33 and cortex-m55. A weekly job runs the unit tests and
+`run_all.py` with the newest Kotlin release; it may fail, and that fails nothing else.
 
 ## Documentation
 

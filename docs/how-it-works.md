@@ -486,7 +486,7 @@ call.
 - CI ([.github/workflows/ci.yml](../.github/workflows/ci.yml)) runs the unit tests and run_all, also with `--stress`,
   on every pull request, on Linux and (without `--stress`) on Windows, and run_all for some of the other cores
   (`--cpu`; [CONTRIBUTING.md](../CONTRIBUTING.md#tests) names them); it runs difftest on main and
-  once a week. Once a week it also runs the unit tests and run_all with the newest Kotlin release, in a job that
-  may fail without failing the others.
+  once a week, then for three other cores too. Once a week it also runs the unit tests and run_all with the newest
+  Kotlin release, in a job that may fail without failing the others.
 - `python tools/missing_natives.py` lists the standard library's runtime functions that kmicro implements, does not
   support, or lacks.

@@ -225,10 +225,11 @@ newlib and libgcc multilib of each. A core without an FPU uses the soft-float ca
   [porting.md](porting.md#another-core) says what a board with another core changes.
 - **difftest** means that `python tools/difftest.py --cpu CORE` passes: every program of
   [tests/diff](../tests/diff) prints on kmicro what it prints on the stock runtime. CI runs that for the default
-  core only, after every merge and also under GC stress. For `cortex-m0plus`, `cortex-m33` and `cortex-m55` the
-  whole suite was run by hand, without GC stress: for `cortex-m0plus` when its unaligned-access trap went in, for
-  the other two after the ARMv8.1-M cores were added. Nothing differed. For `cortex-m55` one program, `d_lang_6`,
-  had a frame of its `main` above the stack guard, and now says so in its source, as two others did.
+  core after every merge, also under GC stress, and once a week for `cortex-m0plus`, `cortex-m33` and
+  `cortex-m55`, without GC stress. Before CI did, the whole suite was run by hand for these three: for
+  `cortex-m0plus` when its unaligned-access trap went in, for the other two after the ARMv8.1-M cores were added.
+  Nothing differed. For `cortex-m55` one program, `d_lang_6`, had a frame of its `main` above the stack guard, and
+  now says so in its source, as two others did.
 - CI runs run_all under GC stress for the default core only.
 
 Not supported:

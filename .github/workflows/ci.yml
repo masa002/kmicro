@@ -5,7 +5,7 @@
 #   cores     tests/run_all.py for each of the other cores (--cpu), on the QEMU machine that runs its code
 #   windows   the unit tests and tests/run_all.py on Windows
 #   difftest  tools/difftest.py, as is and under GC stress (long), and missing_natives --check on the IR of its
-#             programs: on pushes to main, by hand and weekly
+#             programs: on pushes to main, by hand and weekly. By hand and weekly also for three other cores
 #   next-kotlin  the tool tests and tests/run_all.py with the newest Kotlin release instead of the tested one: by
 #             hand and weekly. It may fail without failing the run
 name: CI
@@ -259,12 +259,25 @@ jobs:
         run: python tools/missing_natives.py --check --ir 'build/diff/kmicro/*/m4.ll'
       - name: python tools/difftest.py --stress
         run: python tools/difftest.py --stress
+      # One core of each other architecture: ARMv6-M, ARMv8-M and ARMv8.1-M (with a double-precision FPU and MVE).
+      # The host side is built by now, so each core costs its kmicro side only. Not after a merge: once a week and
+      # by hand. Every core runs, and the step fails when one of them did.
+      - name: python tools/difftest.py --cpu CORE (cortex-m0plus, cortex-m33, cortex-m55)
+        if: github.event_name != 'push'
+        run: |
+          failed=0
+          for cpu in cortex-m0plus cortex-m33 cortex-m55; do
+            python tools/difftest.py --cpu "$cpu" || failed=1
+          done
+          exit "$failed"
       - name: Keep the outputs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: difftest-outputs
-          path: build/diff/*.txt
+          path: |
+            build/diff/*.txt
+            build/diff-*/*.txt
           if-no-files-found: ignore
           retention-days: 14
 
