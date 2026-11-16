@@ -9,7 +9,8 @@
     --allow  a function whose computed size --limit accepts
 
 A frame is what a function's prologue takes from the stack: the registers it pushes (push/stmdb, vpush) and the
-space it reserves (sub sp). This is counted after linking because LTO inlines functions into their callers and
+space it reserves (sub sp), and a constant it takes later (GCC's alloca() of constant size). This is counted after
+linking because LTO inlines functions into their callers and
 merges their frames: a Kotlin `fun main()` with a local `IntArray(14000)` shows up as a 56 KB frame of whatever it
 was inlined into, often the start code's run_main. kbuild warns about such arrays by function name before linking
 (--stack-array-limit); a frame is the stack a call needs, on top of its callers' frames.
@@ -42,7 +43,7 @@ def reg_count(regs):
 def frames(disasm, dynamic=None):
     """objdump -d text -> {function: bytes its prologue takes from the stack}. dynamic: a set that gets the functions
     that take more by an amount they compute (a variable-length array, alloca)."""
-    out, name, seen, imm, held = {}, None, 0, {}, {}
+    out, name, seen, imm, held, last = {}, None, 0, {}, {}, None
     # literal pools: ARMv6-M code loads a frame size that no instruction can hold from one (ldr r7, [pc, #N])
     words = {int(a, 16): int(v, 16)
              for a, v in re.findall(r'^\s*([0-9a-f]+):\s+\.word\s+0x([0-9a-f]+)', disasm, re.M)}
@@ -58,8 +59,10 @@ def frames(disasm, dynamic=None):
         op, args = m.group(1), m.group(2).split('@')[0].split(';')[0].strip()
         # Stack taken by an amount the function computes, anywhere in it: sp is set from a register that holds sp
         # less something (`sub.w r4, sp, r0; mov sp, r4`, on ARMv6-M `mov r2, sp; subs r4, r2, r0; mov sp, r4`), or a
-        # register is taken from sp. held: a register -> 'sp' when it is a copy of sp, 'below' when it is sp less
-        # something. The frame pointer is neither: `mov sp, r7` gives the stack back.
+        # register is taken from sp. A constant that no subtract instruction holds is loaded as a negative number and
+        # added: `ldr r0, [pc, #24]; mov r2, sp; adds r0, r2, r0; mov sp, r0`, or `add r0, sp; mov sp, r0`. held: a
+        # register -> 'sp' when it is a copy of sp, 'below' when it is sp less something or sp plus a register. The
+        # frame pointer is neither: `mov sp, r7` gives the stack back.
         a = [x.strip() for x in args.split(',')]
         if dynamic is not None and len(a) >= 2 and not op.startswith(READS):
             if op.startswith('sub') and a[0] == 'sp':
@@ -72,9 +75,27 @@ def frames(disasm, dynamic=None):
                 held[a[0]] = held.get(a[1], 'sp')
             elif op.startswith('sub') and (a[len(a) > 2] == 'sp' or a[len(a) > 2] in held):
                 held[a[0]] = 'below'                   # `sub.w r4, sp, r0`, `subs r4, r2, r0`, `subs r4, #8`
+            elif (op.startswith('add') and a[0] != 'sp' and not a[-1].startswith('#')
+                  and any(x == 'sp' or x in held for x in a[len(a) > 2:])):
+                held[a[0]] = 'below'                   # `adds r0, r2, r0`, `add r0, sp`, `add.w r0, sp, r1`
             else:
                 held.pop(a[0], None)
+        loaded, last = last, None                      # last: (register, word) of a load from a literal pool
+        if op == 'ldr' and re.match(r'^(\w+), \[pc, ', args) and '@ (' in m.group(2):
+            literal = int(m.group(2).split('@ (')[1].split()[0].rstrip(')'), 16)
+            if literal in words:
+                last = (args.split(',')[0], words[literal])
+        elif loaded and op == 'mov' and args.endswith(', ' + loaded[0]):
+            last = (args.split(',')[0], loaded[1])     # GCC -O0: `ldr r3, [pc, #36]; mov ip, r3; add sp, ip`
         if seen >= PROLOGUE:
+            # After the prologue only a constant is counted: GCC takes an alloca() of constant size where the call
+            # stands (`sub.w sp, sp, #8192`; on ARMv6-M `ldr r3, [pc, #12]; add sp, r3` with -8192 in the pool), and
+            # a frame can be set up after more than PROLOGUE instructions.
+            late = re.match(r'^sp,\s*(?:sp,\s*)?(?:#(\d+)|(\w+))$', args)
+            if late and late.group(1) and op in ('sub', 'sub.w', 'subw'):
+                out[name] += int(late.group(1))
+            elif late and op == 'add' and loaded and loaded[0] == late.group(2) and loaded[1] >= 1 << 31:
+                out[name] += (1 << 32) - loaded[1]
             continue
         seen += 1
         if op in ('push', 'push.w') or (op in ('stmdb', 'stmdb.w', 'stmfd') and args.startswith('sp!')):
@@ -85,10 +106,8 @@ def frames(disasm, dynamic=None):
         elif op in ('movw', 'mov.w', 'mov', 'movs') and re.match(r'^(\w+), #(\d+)$', args):
             r, v = re.match(r'^(\w+), #(\d+)$', args).groups()
             imm[r] = int(v)
-        elif op == 'ldr' and re.match(r'^(\w+), \[pc, ', args) and '@ (' in m.group(2):
-            literal = int(m.group(2).split('@ (')[1].split()[0].rstrip(')'), 16)
-            if literal in words:
-                imm[args.split(',')[0]] = words[literal]
+        elif last:
+            imm[last[0]] = last[1]
         elif op == 'add' and re.match(r'^sp,\s*(?:sp,\s*)?(\w+)$', args):
             v = imm.get(re.match(r'^sp,\s*(?:sp,\s*)?(\w+)$', args).group(1), 0)
             if v >= 1 << 31:                   # add sp, rN with a negative size from a literal pool

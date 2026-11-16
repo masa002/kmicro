@@ -121,6 +121,131 @@ DYNAMIC = """
  80000b4:	pop	{r4, r6, r7, pc}
 """
 
+# An alloca() of constant size that is not taken in the prologue (in an `if`, in a loop). clang sets sp from a
+# register: a size that no subtract instruction holds is loaded as a negative number and added (every size above 255
+# for ARMv6-M, one above 65535 for ARMv8-M Baseline).
+ADDED = """
+08000000 <clang_armv6m>:
+ 8000000:	push	{r4, r6, r7, lr}
+ 8000002:	add	r7, sp, #8
+ 8000004:	mov	r6, sp
+ 8000006:	cmp	r0, #0
+ 8000008:	beq.n	8000014 <clang_armv6m+0x14>
+ 800000a:	ldr	r0, [pc, #24]	@ (8000024 <clang_armv6m+0x24>)
+ 800000c:	mov	r2, sp
+ 800000e:	adds	r0, r2, r0
+ 8000010:	mov	sp, r0
+ 8000014:	bl	8000200 <use>
+ 8000018:	subs	r6, r7, #7
+ 800001a:	subs	r6, #1
+ 800001c:	mov	sp, r6
+ 800001e:	pop	{r4, r6, r7, pc}
+ 8000024:	.word	0xffffe000
+
+08000030 <clang_armv6m_in_a_loop>:
+ 8000030:	push	{r1, r2, r3, r4, r5, r6, r7, lr}
+ 8000032:	add	r7, sp, #24
+ 8000034:	mov	r6, sp
+ 8000036:	mov	r4, sp
+ 8000038:	ldr	r0, [pc, #32]	@ (800005c <clang_armv6m_in_a_loop+0x2c>)
+ 800003a:	adds	r0, r4, r0
+ 800003c:	mov	sp, r0
+ 800003e:	bl	8000200 <use>
+ 8000042:	b.n	8000036 <clang_armv6m_in_a_loop+0x6>
+ 800005c:	.word	0xfffffda8
+
+08000060 <clang_added_to_sp>:
+ 8000060:	push	{r4, r6, r7, lr}
+ 8000062:	add	r7, sp, #8
+ 8000064:	cbz	r0, 800006c <clang_added_to_sp+0xc>
+ 8000066:	ldr	r0, [pc, #16]	@ (8000078 <clang_added_to_sp+0x18>)
+ 8000068:	add	r0, sp
+ 800006a:	mov	sp, r0
+ 800006c:	bl	8000200 <use>
+ 8000070:	sub.w	r4, r7, #8
+ 8000074:	mov	sp, r4
+ 8000076:	pop	{r4, r6, r7, pc}
+ 8000078:	.word	0xfffe7958
+
+08000080 <clang_for_size>:
+ 8000080:	push	{r4, r6, r7, lr}
+ 8000082:	add	r7, sp, #8
+ 8000084:	cbz	r0, 800008e <clang_for_size+0xe>
+ 8000086:	sub.w	r0, sp, #8192	@ 0x2000
+ 800008a:	mov	sp, r0
+ 800008e:	bl	8000200 <use>
+ 8000092:	sub.w	r4, r7, #8
+ 8000096:	mov	sp, r4
+ 8000098:	pop	{r4, r6, r7, pc}
+
+080000a0 <an_address_in_the_frame>:
+ 80000a0:	push	{r4, r6, r7, lr}
+ 80000a2:	add	r7, sp, #8
+ 80000a4:	sub	sp, #64
+ 80000a6:	mov	r4, sp
+ 80000a8:	adds	r0, r4, r1
+ 80000aa:	add	r2, sp, #4
+ 80000ac:	bl	8000200 <use>
+ 80000b0:	sub.w	r4, r7, #8
+ 80000b4:	mov	sp, r4
+ 80000b6:	pop	{r4, r6, r7, pc}
+"""
+
+# GCC takes it from sp where the call stands, here after the first call: with an immediate, with a negative number
+# from the literal pool on ARMv6-M, and at -O0 through a second register. The bytes are added to the frame. A frame
+# from the literal pool that is given back the same way is counted once.
+LATE = """
+08000100 <gcc_thumb2>:
+ 8000100:	push	{r7, lr}
+ 8000102:	add	r7, sp, #0
+ 8000104:	bl	8000200 <get>
+ 8000108:	cbz	r0, 8000110 <gcc_thumb2+0x10>
+ 800010a:	sub.w	sp, sp, #8192	@ 0x2000
+ 800010e:	mov	r0, sp
+ 8000110:	bl	8000200 <use>
+ 8000114:	mov	sp, r7
+ 8000116:	pop	{r7, pc}
+
+08000120 <gcc_armv6m>:
+ 8000120:	push	{r7, lr}
+ 8000122:	add	r7, sp, #0
+ 8000124:	bl	8000200 <get>
+ 8000128:	cmp	r1, #0
+ 800012a:	beq.n	8000132 <gcc_armv6m+0x12>
+ 800012c:	ldr	r3, [pc, #12]	@ (800013c <gcc_armv6m+0x1c>)
+ 800012e:	add	sp, r3
+ 8000130:	mov	r0, sp
+ 8000132:	bl	8000200 <use>
+ 8000136:	mov	sp, r7
+ 8000138:	pop	{r7, pc}
+ 800013c:	.word	0xffffe000
+
+08000140 <gcc_armv6m_O0>:
+ 8000140:	push	{r7, lr}
+ 8000142:	sub	sp, #16
+ 8000144:	add	r7, sp, #0
+ 8000146:	bl	8000200 <get>
+ 800014a:	ldr	r3, [pc, #36]	@ (8000170 <gcc_armv6m_O0+0x30>)
+ 800014c:	mov	ip, r3
+ 800014e:	add	sp, ip
+ 8000150:	bl	8000200 <use>
+ 8000154:	mov	sp, r7
+ 8000156:	add	sp, #16
+ 8000158:	pop	{r7, pc}
+ 8000170:	.word	0xffffe000
+
+08000180 <given_back_from_the_pool>:
+ 8000180:	push	{r4, r5, r6, lr}
+ 8000182:	ldr	r6, [pc, #20]	@ (8000198 <given_back_from_the_pool+0x18>)
+ 8000184:	add	sp, r6
+ 8000186:	bl	8000200 <use>
+ 800018a:	ldr	r6, [pc, #16]	@ (800019c <given_back_from_the_pool+0x1c>)
+ 800018c:	add	sp, r6
+ 800018e:	pop	{r4, r5, r6, pc}
+ 8000198:	.word	0xffffe890
+ 800019c:	.word	0x00001770
+"""
+
 # `ld.lld --strip-all`, `arm-none-eabi-strip`: one label per section
 STRIPPED = """
 Disassembly of section .text:
@@ -147,6 +272,19 @@ class Frames(unittest.TestCase):
         f = frames.frames(DYNAMIC + THUMB2 + THUMB1, dynamic)
         self.assertEqual(dynamic, {'vla_thumb2', 'vla_thumb1', 'vla_after_a_call', 'alloca_in_a_loop'})
         self.assertEqual((f['vla_thumb2'], f['frame_pointer'], f['big']), (16, 8 + 24, 32 + 16 + 56000))
+
+    def test_a_constant_added_as_a_negative_number(self):
+        dynamic = set()
+        f = frames.frames(ADDED + THUMB1, dynamic)
+        self.assertEqual(dynamic, {'clang_armv6m', 'clang_armv6m_in_a_loop', 'clang_added_to_sp', 'clang_for_size'})
+        self.assertEqual(f['an_address_in_the_frame'], 16 + 64)
+
+    def test_a_constant_taken_after_the_prologue_is_counted(self):
+        dynamic = set()
+        f = frames.frames(LATE, dynamic)
+        self.assertEqual(f, {'gcc_thumb2': 8 + 8192, 'gcc_armv6m': 8 + 8192, 'gcc_armv6m_O0': 8 + 16 + 8192,
+                             'given_back_from_the_pool': 16 + 6000})
+        self.assertEqual(dynamic, set())
 
     def image(self, disasm):
         """frames.of_image() for an image with this disassembly."""
