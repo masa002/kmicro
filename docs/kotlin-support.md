@@ -60,7 +60,7 @@ from the Cortex-M0 to the Cortex-M85, and what was checked on each.
 | exceptions from init blocks, lazy, toString, sequences, file initializers | works | |
 | stack trace of a single exception (getStackTrace, stackTraceToString) | partly | addresses, at most 12 frames; `tools/symbolize.py` names them (with file:line under `-g`); LTO folds inlined functions into their callers |
 | printStackTrace()/stackTraceToString() with cause or suppressed | works | |
-| uncaught exception report | works | what `printStackTrace()` prints: `toString()` of each exception, its frames (addresses, as above), its suppressed exceptions and every cause (`d_uncaught_report`); at most 16 exceptions; inside an interrupt handler a class's own `toString()` is not called |
+| uncaught exception report | works | what `printStackTrace()` prints: `toString()` of each exception, its frames (addresses, as above), its suppressed exceptions and every cause (`d_uncaught_report`); at most 16 exceptions. A class's own `toString()` is Kotlin code that may allocate: on a full heap the report then ends in the out-of-memory report, and inside an interrupt handler it is not called (the line is the class and the message) |
 | setUnhandledExceptionHook | works | not for an exception that escapes an interrupt handler; the C hook `kmicro_on_uncaught` runs in every case |
 | processUnhandledException | works | |
 | terminateWithUnhandledException | works | |
@@ -76,10 +76,10 @@ from the Cortex-M0 to the Cortex-M85, and what was checked on each.
 | garbage collection, cyclic garbage, wide graphs | works | precise non-moving mark-sweep |
 | GC.collect / collectCyclic | works | not inside an interrupt handler |
 | GC.schedule | partly | collects at once (and does nothing inside an interrupt handler) |
-| GC.lastGCInfo | partly | the last collection: its number, its start and end (the one pause), the roots, the objects marked, kept and swept, and the heap in use before and after, under the name `heap` (`d_gc_info`). Collections are timed with the board hook `kmicro_time_ns` from the first read on: the first read is null, and so is every read on a board without the hook. The second pause and `postGcCleanupTimeNs` are null |
+| GC.lastGCInfo | partly | the last collection: its number, its start and end (the one pause), the roots, the objects marked, kept and swept, and the heap in use before and after, under the name `heap` (`d_gc_info`). Collections are timed with the board hook `kmicro_time_ns` from the first read on: a read is null until a collection has run after the first read, and always on a board without the hook. The second pause and `postGcCleanupTimeNs` are null |
 | GC heap tuning (autotune, targetHeapBytes, ...), Debugging.dumpMemory, ImmutableBlob, MemoryUsageInfo.peakResidentSetSizeBytes, the settings of GC.MainThreadFinalizerProcessor | not supported | the program stops with '... is not supported on kmicro'; GC.MainThreadFinalizerProcessor.available is false |
 | WeakReference | works | `get()` is null from the collection that finds the object dead; each one takes 16 B of heap besides itself; an interrupt handler may call `get()` |
-| createCleaner | works | the action runs once, on the one thread there is: at the next allocation after the collection that found the object dead, or before `GC.collect()` returns; a Cleaner holds one of the `KM_STABLE_REFS` (16) slots until then ([the rules](writing-kotlin.md#cleaners-and-weak-references)) |
+| createCleaner | works | the action runs once, on the one thread there is: at the next allocation after the collection that found the object dead, or before `GC.collect()` returns; never inside an interrupt handler; a Cleaner holds one of the `KM_STABLE_REFS` (16) slots until then, and a full table collects first ([the rules](writing-kotlin.md#cleaners-and-weak-references)) |
 | @ThreadLocal objects and properties | works | |
 | dead objects referenced by frame slots | partly | stay alive until the function returns; matters on a small heap |
 | **Concurrency** | | |
