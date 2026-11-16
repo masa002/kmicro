@@ -222,8 +222,8 @@ Kotlin/Native stdlib: 261 implemented, 52 unsupported, 40 Objective-C, 0 missing
 
 ## Another core
 
-kmicro builds for the cores from the Cortex-M0 to the Cortex-M85, and for the Cortex-A7, which has
-[a section of its own](#a-cortex-a-core). [roadmap.md](roadmap.md#targets) lists them with
+kmicro builds for the cores from the Cortex-M0 to the Cortex-M85, and for the Cortex-A7 and the Cortex-R52, which have
+[sections of their own](#a-cortex-a-core). [roadmap.md](roadmap.md#targets) lists them with
 what was checked on each: all of it on QEMU, and only the Cortex-M4F on a board. For a Cortex-M core other than the
 Cortex-M4F, these parts of a board build change:
 
@@ -319,6 +319,37 @@ core and this core leaves to the board:
   [the Cortex-M start code does with the MPU](#optional-a-fault-report-and-mpu-guards). It leaves the caches off;
   QEMU does not model them.
 - **Semihosting**, if the board's `kmicro_puts` uses it, is `svc 0xAB` in Thumb state, not `bkpt 0xAB`.
+
+## A Cortex-R core
+
+`--cpu cortex-r52` builds for the Cortex-R52 (ARMv8-R, in its 32-bit state). Nothing of it has run on a board; what
+this section says was checked on QEMU's `mps3-an536` machine, with [targets/qemu-an536](../targets/qemu-an536)
+(`start.c`, `an536.ld`). Everything in [A Cortex-A core](#a-cortex-a-core) holds for it but the guards: the
+vectors, a stack for each mode, the interrupt entry and its three duties, the table of handlers, the masking. The
+flags are `--target=thumbv8r-none-eabihf -mthumb -mcpu=cortex-r52 -mfpu=neon-fp-armv8 -mfloat-abi=hard`. What is
+different:
+
+- **The core starts in Hyp mode.** An interrupt that is taken to Hyp mode is handled in Hyp mode, the mode of the
+  code it interrupts, and the runtime tells a handler from thread code by the mode. So the reset entry leaves Hyp
+  mode before anything else: it turns off every trap to it (HCR, HCPTR for the FPU), opens the system registers of
+  the interrupt controller to the level below (ICC_HSRE), sets the offset of the virtual timer to 0, and returns
+  (`eret`) to the rest of the entry in Supervisor mode. An exception that reaches Hyp mode after that ends in a
+  fault report of its own.
+- **An MPU, and no permission that refuses a privileged read.** The MPU of ARMv8-R gives a region a base and a
+  limit in steps of 64 bytes. The start code makes one region for each piece of memory the program has (code and
+  constants, read-only; the RAM below the stack guard; the stack; each exception stack; the peripherals) and turns
+  the default map off (SCTLR.BR), so an access to any other address is a data abort or a prefetch abort. The
+  report calls it a null pointer access below 64 KB and a stack overflow in the 4 KB below a stack. This checks
+  more than the guards of the other targets do: a wild pointer anywhere outside the program's memory faults, and
+  so does a write to the code. A board lists its own memory in the same way.
+- **The interrupt controller is a GIC of version 3** on this machine: its interface to the core is system registers
+  (ICC_IAR1, ICC_EOIR1), and an interrupt has to be put into group 1 to arrive as an IRQ.
+- **The libraries are those of ARMv7.** The xPack GCC has no multilib of ARMv8-R, and gives this core
+  `thumb/v7+fp/hard`: ARMv7 code with VFPv3-D16 and the hard-float calling convention, which the core runs and
+  which links with code built for its own FPU.
+
+A core of ARMv7-R, such as the Cortex-R5, is not supported: it has the MPU of ARMv7 and no VBAR, so its vectors
+are at address 0 or 0xFFFF0000.
 
 ## A check on QEMU
 

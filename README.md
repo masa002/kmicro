@@ -37,7 +37,7 @@ qemu: exit 0
 
 kbuild compiles the Kotlin code for the Cortex-M4F, the default core; qbuild links it with the kmicro runtime and
 runs it on QEMU's emulated STM32L475. `--cpu` on both chooses another core, from the Cortex-M0 to the Cortex-M85,
-or the Cortex-A7:
+the Cortex-A7 or the Cortex-R52:
 [docs/roadmap.md](docs/roadmap.md#targets) lists them with what was checked on each.
 [examples/hello](examples/hello) does the same from a C `main`, the way a firmware written in C starts calling
 Kotlin.
@@ -100,9 +100,10 @@ Limits by design:
 - **One compiler version.** kmicro reads the IR of Kotlin/Native 2.4.21. It builds on the `linux_arm32_hfp` target,
   which JetBrains has deprecated, so a later compiler may not offer it.
 - **32-bit ARM, and mostly Cortex-M.** kmicro builds for the cores from the Cortex-M0 to the Cortex-M85, with or
-  without an FPU, and for one core of the A profile, the Cortex-A7, which has run on QEMU only (`--cpu`;
-  [the cores and what was checked on each](docs/roadmap.md#targets)). Cortex-R cores and the other 32-bit Cortex-A
-  cores are not supported. 64-bit ARM is out of reach: kmicro reads the IR of the compiler's 32-bit ARM target.
+  without an FPU, and for one core each of the A and the R profile, the Cortex-A7 and the Cortex-R52, which have run
+  on QEMU only (`--cpu`; [the cores and what was checked on each](docs/roadmap.md#targets)). The other Cortex-R and
+  32-bit Cortex-A cores are not supported. 64-bit ARM is out of reach: kmicro reads the IR of the compiler's 32-bit
+  ARM target.
 - **One thread.** Interrupts are fine, with the rules in [docs/writing-kotlin.md](docs/writing-kotlin.md). There are
   no threads: `Worker` is not supported.
 - **The standard library only.** kotlinx libraries are untested.

@@ -3,7 +3,8 @@
 Kotlin/Native has no target for a microcontroller without an operating system. It does have `linux_arm32_hfp`:
 32-bit ARM, hard-float, EABI. The LLVM data layout of that target is identical, character for character, to the
 one of every Cortex-M target, from `thumbv6m-none-eabi` (Cortex-M0) to `thumbv8.1m.main-none-eabihf` (Cortex-M85),
-and to the one of `thumbv7-none-eabihf`, the Thumb-2 target of the Cortex-A7:
+and to the one of `thumbv7-none-eabihf` and `thumbv8r-none-eabihf`, the Thumb-2 targets of the Cortex-A7 and the
+Cortex-R52:
 
     e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64
 
@@ -48,21 +49,21 @@ python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--cpu COR
 The files are any number of C, C++ and assembly files and the objects kbuild printed (`k.o`, and `bridges.o` when
 the Kotlin code calls C). `-D` applies to every C file and to the runtime, which is compiled once per set of `-D`
 values, and `-I` to every C file; `runtime/`, `support/` and the folder of the target's start code (for its
-`tick.h`, the periodic interrupt the tests use) are always on the include path. `--cpu` names the core,
-as for kbuild, whose objects must be built for the same one. qbuild links for the QEMU machine that runs the code
-of that core: the STM32L475 (`--target l475`) for the default core and the cores below it, `mps2-an385` for the
-Cortex-M3, `mps2-an500` for the Cortex-M7, `mps2-an505` for the cores of ARMv8-M and `mps3-an547` for those of
-ARMv8.1-M. `--target an385`, `an500`, `an505` and `an547` name these machines: each is the start code of
-`qemu-l475` with the linker script of the machine. `--target an386` links for QEMU's
-`mps2-an386` (4 MB of code, 16 MB of RAM) instead, for a program that needs more memory than a microcontroller
-has. The Cortex-A7 runs on QEMU's `virt` machine (`--target virt`, its only one), with the start code of
-`targets/qemu-virt`. qbuild stops when the `--target` does not run the code of the core: the machine lacks its FPU
-or its instructions, or has the other kind of MPU, and the guards of the start code, compiled for the core, would
-then do nothing. `--run` runs the image and exits with its exit code, 124 after `--timeout` seconds (120
-by default). With `--icount` the emulator's clock is the number of instructions the program has run, one nanosecond
-each, instead of the host's clock: a timer interrupt then lands on the same instruction in every run. qbuild prints
-a size line, `qbuild: app.elf  text N  data N  bss N  stack N`, where the stack is the RAM above `.bss`, without the
-stack guard on a target that has one (`qemu-l475`); `bss` leaves the guard out too.
+`tick.h`, the periodic interrupt the tests use) are always on the include path. `--cpu` names the core, as for
+kbuild, whose objects must be built for the same one. qbuild links for the QEMU machine that runs the code of that
+core: the STM32L475 (`--target l475`) for the default core and the cores below it, `mps2-an385` for the Cortex-M3,
+`mps2-an500` for the Cortex-M7, `mps2-an505` for the cores of ARMv8-M and `mps3-an547` for those of ARMv8.1-M.
+`--target an385`, `an500`, `an505` and `an547` name these machines: each is the start code of `qemu-l475` with the
+linker script of the machine. `--target an386` links for QEMU's `mps2-an386` (4 MB of code, 16 MB of RAM) instead,
+for a program that needs more memory than a microcontroller has. The Cortex-A7 runs on QEMU's `virt` machine
+(`--target virt`, its only one), with the start code of `targets/qemu-virt`, and the Cortex-R52 on `mps3-an536`
+(`--target an536`), with that of `targets/qemu-an536`. qbuild stops when the `--target` does not run the code of the
+core: the machine lacks its FPU or its instructions, or has the other kind of MPU, and the guards of the start code,
+compiled for the core, would then do nothing. `--run` runs the image and exits with its exit code, 124 after
+`--timeout` seconds (120 by default). With `--icount` the emulator's clock is the number of instructions the program
+has run, one nanosecond each, instead of the host's clock: a timer interrupt then lands on the same instruction in
+every run. qbuild prints a size line, `qbuild: app.elf  text N  data N  bss N  stack N`, where the stack is the RAM
+above `.bss`, without the stack guard on a target that has one (`qemu-l475`); `bss` leaves the guard out too.
 
 The STM32L475 has 1 MB of flash and 96 KB of RAM, but qbuild links a program into the memory of the STM32L431,
 256 KB of flash and 64 KB of RAM: a program that does not fit fails to link, and one that needs more stack than
@@ -212,17 +213,17 @@ implementation moves to Kotlin one module at a time.
 
 Kotlin has no volatile memory access (`@Volatile` applies to properties only) and no inline assembly.
 [support/hw.h](../support/hw.h) provides what is missing, one instruction each after LTO: `hw_rd32` / `hw_wr32`
-(volatile register access), `mem_*` (plain memory shared with C), barriers, `WFI`, `PRIMASK` / `BASEPRI`, and the DWT
-cycle counter (`hw_cycles_enable()`, `hw_cycles()`). `hw_cycles_enable()` returns false where there is no counter
-and `hw_cycles()` stays 0, so check it before a loop that waits for cycles: on QEMU, which does not model the DWT, on
-ARMv6-M and ARMv8-M Baseline (Cortex-M0, M0+, M1, M23), whose DWT has no cycle counter, and on a chip built without
-one. Those four cores have no `BASEPRI` either: the three `hw_basepri` functions are not defined there, and a
-program that calls them does not link. On the Cortex-A7 `hw_irq_save` and `hw_irq_restore` work on the CPSR, and
-`hw_ipsr`, the `hw_basepri` functions and the cycle counter are not there.
+(volatile register access), `mem_*` (plain memory shared with C), barriers, `WFI`, `PRIMASK` / `BASEPRI`, and the
+DWT cycle counter (`hw_cycles_enable()`, `hw_cycles()`). `hw_cycles_enable()` returns false where there is no
+counter and `hw_cycles()` stays 0, so check it before a loop that waits for cycles: on QEMU, which does not model
+the DWT, on ARMv6-M and ARMv8-M Baseline (Cortex-M0, M0+, M1, M23), whose DWT has no cycle counter, and on a chip
+built without one. Those four cores have no `BASEPRI` either: the three `hw_basepri` functions are not defined
+there, and a program that calls them does not link. On the Cortex-A7 and the Cortex-R52 `hw_irq_save` and
+`hw_irq_restore` work on the CPSR, and `hw_ipsr`, the `hw_basepri` functions and the cycle counter are not there.
 Kotlin reaches them through cinterop: `kbuild.py --def support/hw.def` makes them the package `c` (`import c.*`).
 `support/hw.c` is linked with the program: on QEMU it is one of qbuild's C files, on a board it is compiled with the
-runtime's flags ([porting.md](porting.md#compiling-the-runtime)). A call such as `hw_wr32(RCC.CR, v)` becomes a single
-`STR` in the Kotlin function that made it.
+runtime's flags ([porting.md](porting.md#compiling-the-runtime)). A call such as `hw_wr32(RCC.CR, v)` becomes a
+single `STR` in the Kotlin function that made it.
 
 [tools/gen_regs.py](../tools/gen_regs.py) turns CMSIS device headers into Kotlin constants: register addresses
 (`RCC.CR`), bit fields (`RCC_CR_HSION`) and IRQ numbers, only those the sources use. The addresses are computed from
@@ -237,20 +238,20 @@ generated by gen_regs.py and a SysTick handler written in Kotlin.
 
 A Kotlin function can be an interrupt handler: name it after the vector (`fun usart1IrqHandler()`) and alias it with
 `--c-api`. The names are those of the board's vector table. The QEMU start code has `SysTick_Handler` and
-`IRQ0_Handler` to `IRQ99_Handler` for the external interrupts, numbered as the NVIC numbers them; one that is enabled
-without a handler ends in the fault report (`interrupt 37 without a handler`). A Cortex-A core has one IRQ vector
-and no table of handlers: the start code of QEMU's `virt` calls `IRQ0_Handler` to `IRQ99_Handler` from its interrupt
-entry, numbered as the machine's interrupt controller numbers them
+`IRQ0_Handler` to `IRQ99_Handler` for the external interrupts, numbered as the NVIC numbers them; one that is
+enabled without a handler ends in the fault report (`interrupt 37 without a handler`). A Cortex-A or Cortex-R core
+has one IRQ vector and no table of handlers: the start code of QEMU's `virt` and `mps3-an536` calls `IRQ0_Handler`
+to `IRQ99_Handler` from its interrupt entry, numbered as the machine's interrupt controller numbers them
 ([porting.md](porting.md#a-cortex-a-core)). An interrupt can arrive while the collector is running, so a handler
-must not allocate. The runtime
-stops with a panic when a handler allocates or collects, the runtime's own allocations included. A handler may read
-and store references and use the atomics. [tools/isr_check.py](../tools/isr_check.py) finds allocation, boxing and
-lazy initialisation on the paths from the handlers before the code runs. It takes the handlers from the vector
-table; `--callback` adds functions reached through a pointer, and `--boxing` also fails on every call outside the
-standard library that boxes an `Int`, `Long`, `Short` or `Byte`, in any code. It exits 0 when no handler reaches an
-allocation, 1 when one does (or `--boxing` finds a box), and 2 when the image cannot be read or has no handler.
-[examples/irq](../examples/irq) is a worked example, and [writing-kotlin.md](writing-kotlin.md#interrupt-handlers)
-has the rules and the Kotlin constructs that allocate where it is not obvious.
+must not allocate. The runtime stops with a panic when a handler allocates or collects, the runtime's own
+allocations included. A handler may read and store references and use the atomics.
+[tools/isr_check.py](../tools/isr_check.py) finds allocation, boxing and lazy initialisation on the paths from the
+handlers before the code runs. It takes the handlers from the vector table; `--callback` adds functions reached
+through a pointer, and `--boxing` also fails on every call outside the standard library that boxes an `Int`, `Long`,
+`Short` or `Byte`, in any code. It exits 0 when no handler reaches an allocation, 1 when one does (or `--boxing`
+finds a box), and 2 when the image cannot be read or has no handler. [examples/irq](../examples/irq) is a worked
+example, and [writing-kotlin.md](writing-kotlin.md#interrupt-handlers) has the rules and the Kotlin constructs that
+allocate where it is not obvious.
 
 ## Reading a stack trace
 
