@@ -75,7 +75,10 @@ A program that shows a feature that does not work is named `d_known_<topic>.kt`;
 
 **A test for run_all** is an entry in `TESTS` in `tests/run_all.py`: its Kotlin sources (a file or a folder under
 `tests/`), its C driver (or `targets/common/kotlin_main.c` for `fun main()`) and its exit code. Run it, read
-`build/t/<name>/run.log` and copy that to `tests/expected/<name>.txt`, with `{N}` where a number may vary.
+`build/t/<name>/run.log` and copy that to `tests/expected/<name>.txt`, with `{N}` where a number may vary. An
+output that only another Kotlin release than the tested one gives goes to `tests/expected/kotlin-<release>/<name>.txt`
+(`kotlin-2.5`), which run_all reads first with a compiler of that release
+([docs/roadmap.md](docs/roadmap.md#kotlin-25)).
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every pull request: the unit tests, `run_all.py`
 and `run_all.py --stress` on Linux for the default core, `run_all.py --cpu CORE` for each of the other cores

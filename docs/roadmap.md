@@ -30,6 +30,80 @@ the version in [BUILDING.md](../BUILDING.md) is the only supported one. Once a w
 and runs the unit tests and run_all with the newest Kotlin release, pre-releases included, and may fail: it shows
 what the next compiler changes before anyone depends on it.
 
+### Kotlin 2.5
+
+Kotlin 2.5.0 is not released, and kmicro does not support it. What its release candidate changes for kmicro was
+checked with Kotlin/Native 2.5.0-RC: the IR of the test programs was compared with that of 2.4.21, and the suites
+were run with `KMICRO_KOTLIN_NATIVE` set to it, on Windows and for the default core.
+
+**The same as in 2.4.21:** the target `linux_arm32_hfp` and its triple, the data layout, the LLVM the compiler
+downloads, and the layouts the runtime shares with the compiled code (the `TypeInfo`, the object and array headers).
+The standard library declares 353 runtime functions, as before: six for parsing and printing floating-point numbers
+are gone, because it does that in Kotlin now, and six array accessors that the runtime already has are new.
+`python tools/missing_natives.py` finds none missing.
+
+**Different, and handled for both versions:**
+
+- The two functions that initialise globals on first use take the class as one more argument, and a failed
+  initializer is reported through another function of the standard library. The runtime has both forms
+  ([runtime/init_cxx.cpp](../runtime/init_cxx.cpp)), and retarget.py, `--init-all` and isr_check know both.
+- The standard library's `HexStringParser` moved from `kotlin.native.internal` to `kotlin.text`; retarget.py finds
+  it under both names.
+- The constructor of `Throwable` stays a function of its own in more programs. That showed a defect in how a
+  stack trace leaves the constructor's frame out, which a 2.4.21 program could meet too; it is fixed.
+- A failed initializer throws `kotlin.ExceptionInInitializerError` (2.4.21:
+  `kotlin.native.internal.FileFailedToInitializeException`), and `"abc".uppercase()` keeps 16 bytes of heap for
+  good, the companion object of the new `kotlin.text.unicode.CodePoint` (2.4.21: none). Two tests of run_all print
+  these; their expected outputs for 2.5 are in `tests/expected/kotlin-2.5`.
+
+With that, `python tests/run_all.py` passes with 2.5.0-RC, and so do the unit tests, on Windows and, in the CI
+job `next-kotlin`, on Linux. `python tools/difftest.py` gives the output of the stock runtime of 2.5.0-RC for 45 of
+its 47 programs (Windows); items 1 and 4 below are the other two. Not run with it: `--stress`, the other cores, a
+board.
+
+**Open: what the change to 2.5 needs.** None of it is done, because each item would change what 2.4.21 programs
+do or measure. [Issue #149](https://github.com/masa002/kmicro/issues/149) has the list as a checklist for the day
+2.5.0 is released:
+
+1. `1.0.pow(Double.NaN)` and `1.0f.pow(Float.NaN)` are `NaN` in 2.5, as the documentation of `pow` says, and `1.0`
+   in 2.4.21. `Kotlin_math_Double_pow` and `Kotlin_math_Float_pow` in [runtime/kmath.c](../runtime/kmath.c) follow
+   2.4.21; they need the stock runtime's new line (`if (isnan(x)) return NAN;`). `d_math` of difftest prints it.
+2. The version itself: `KOTLIN_NATIVE_VERSION` in [toolchain/paths.py](../toolchain/paths.py), the rows of
+   [toolchain/versions.txt](../toolchain/versions.txt) (2.5 has no prebuilt compiler for Intel Macs, so the
+   `macos-x64` rows go), [BUILDING.md](../BUILDING.md), the README and the other texts that name the version (the
+   selftest prints it), and the files of `tests/expected/kotlin-2.5` in the place of the two they stand for.
+3. What only 2.4.21 needs can go: the two-argument forms of the initialisation functions and the rename in
+   retarget.py (the runtime's functions can then have the compiler's names), the old name of `HexStringParser`, and
+   the six runtime functions the standard library no longer calls. Those six are all of `runtime/dtoa/`, which
+   goes with what serves only it: its scratch memory in `runtime/interop.c`, `km_dtoa_utf8` in `runtime/strings.c`,
+   `tools/port_dtoa.py`, and its lines in qbuild, [porting.md](porting.md) and NOTICE.
+4. Every size in the documents is measured again. Programs are larger with 2.5: the selftest is 137.7 KB of flash
+   and 18.7 KB of RAM (2.4.21: 121.1 KB and 18.5 KB), `hello` 82.2 KB (72.0 KB). The standard library of 2.5
+   initialises a class's static state as the JVM does, the superclasses first, so more of its functions check an
+   initialisation state (in `tests/diff/d_init.kt`, 463 checks where 2.4.21 has 122). One program of difftest,
+   `d_lang_2`, no longer fits the 256 KB of the STM32L431 (265.0 KB; 2.4.21: 230.1 KB) and needs its
+   `// difftest: large` line; linked so, it gives the stock runtime's output.
+5. In 2.5 a function that uses such a class reads the state of its globals twice, the second time with a volatile
+   load, which `retarget.py --single-core` leaves as it is. A trial that made it a plain load too passed the three
+   tests it was run on (`selftest`, `hello`, `isr_init_window_tls`) and made their images larger, not smaller (the
+   selftest 139.0 KB instead of 137.7 KB), so it was not kept. What it does to speed was not measured.
+
+**One supported version at a time (a proposal).** When 2.5.0 is released, kmicro changes from 2.4.21 to 2.5.0 in
+one minor release, and that release supports 2.5.0 only; the last release before it remains the one for 2.4.21. The
+reasons:
+
+- kmicro is tied to things a compiler release is free to change and that no option selects: the signatures of
+  runtime functions, names inside the standard library, what a standard-library call allocates, what an exception is
+  called. 2.5 changed one of each. Supporting two versions means two forms of each in the runtime and the tools for
+  as long as both are supported, and item 1 above cannot have two forms at all: one runtime function has to give
+  two results.
+- Every number in the documents and every expected output holds for one compiler. Two versions double the tables,
+  the expected files that differ, and the CI time of every pull request.
+- What does cost little is being ready: the tools and the runtime accept the next version's IR beside the
+  supported one where that takes a second name or a second form, as above, so that the weekly `next-kotlin` job
+  stays green and shows the next difference when it appears, and the change of version is the short list above.
+  After the change, the forms of the old version are removed (item 3).
+
 ## Targets
 
 kmicro builds for the Cortex-M cores from the Cortex-M0 to the Cortex-M85, and for one core each of the A and the R
