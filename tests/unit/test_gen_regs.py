@@ -280,6 +280,38 @@ typedef enum {
             'gen_regs: warning: UART_IRQn left out: the header gives it more than one value, a preprocessor '
             'condition decides which, at more.h line 8'])
 
+    def test_a_macro_given_twice_is_left_out(self):
+        (self.d / 'src/sub/uart.kt').write_text('val n = UARTX.MODER + UARTX_BASE + UARTX_DR + SPIX.MODER',
+                                                encoding='utf-8')
+        more = self.more("""#if defined(CHIP_A)
+#define UARTX_BASE 0x40004400UL
+#define SPIX_BASE  0x40013000UL
+#define SPIX       ((GPIO_TypeDef *) SPIX_BASE)
+#else
+#define UARTX_BASE 0x40011000UL
+#define SPIX_BASE  0x40013000UL
+#define SPIX       ((GPIO_TypeDef *) GPIOA_BASE)
+#endif
+#define UARTX_DR   (UARTX_BASE + 4)
+#define UARTX      ((GPIO_TypeDef *) UARTX_BASE)
+#define GPIOB_BASE (AHB2PERIPH_BASE + 0x0800UL)
+""")
+        r, lines = self.gen('--all', *more)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('internal const val SPIX_BASE: UInt = 0x40013000u', lines)     # the same text on both sides
+        self.assertIn('    const val BSRR: UInt = 0x48000814u', lines)   # GPIOB: a later header gives its base anew
+        for name in ('UARTX', 'SPIX {'):                                 # 0x40004400 or 0x40011000: never one of them
+            self.assertFalse(any(name in line for line in lines), name)
+        r, lines = self.gen('--sources', self.d / 'src', *more)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stderr.splitlines(), [
+            'gen_regs: warning: SPIX left out: the header gives it more than one value, a preprocessor condition '
+            'decides which, at more.h line 8',
+            'gen_regs: warning: UARTX left out: its address UARTX_BASE is no integer constant, at more.h line 11',
+            'gen_regs: warning: UARTX_BASE left out: the header gives it more than one value, a preprocessor '
+            'condition decides which, at more.h line 6',
+            'gen_regs: warning: UARTX_DR left out: (UARTX_BASE + 4) is no integer constant, at more.h line 10'])
+
     def test_pin_map_ports_and_pin_expressions(self):
         more = self.more('#define GPIOI_BASE (AHB2PERIPH_BASE + 0x2000UL)\n'
                          '#define GPIOI      ((GPIO_TypeDef *) GPIOI_BASE)\n')

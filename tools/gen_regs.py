@@ -12,7 +12,8 @@ Registers are `object RCC { const val CR: UInt = 0x40021000u ... }`: reading RCC
 (the object is never created). Kotlin reads and writes them through hw_rd32 / hw_wr32 (support/hw.h). With
 --sources only the names the Kotlin files in that folder and its subfolders use are emitted (the full set is 13,000
 lines and slow to compile), and a warning names each of them that the headers define but that is left out, with the
-reason: a struct with a union or a bit field, a macro or an interrupt number that is no integer constant.
+reason: a struct with a union or a bit field, a macro or an interrupt number that is no integer constant, or one
+that a header defines twice with different values (under `#if` and again under `#else`).
 examples/irq shows the whole flow.
 """
 import re
@@ -20,6 +21,7 @@ import sys
 from pathlib import Path
 
 SIZES = {'uint32_t': 4, 'uint16_t': 2, 'uint8_t': 1, 'int32_t': 4, 'int16_t': 2, 'int8_t': 1}
+TWICE = 'the header gives it more than one value, a preprocessor condition decides which'
 
 
 def strip_comments(s):
@@ -58,14 +60,21 @@ def layout(body, defines, types):
 
 def parse(text, header, defines, types, instances, irqs, where, unknown):
     """Adds what the header defines to the tables. where: a macro, a struct or an interrupt number -> 'header line N',
-    and for a struct that is not understood also the declaration that is the reason. unknown: an interrupt number
-    without a value -> the reason."""
+    and for a struct that is not understood also the declaration that is the reason. unknown: a macro or an interrupt
+    number without a value -> the reason."""
+    texts = {}                                          # the macros of this header -> their text, None for two texts
     for n, line in enumerate(text.splitlines(), 1):     # the macros first: a struct may size an array with one
         d = re.match(r'\s*#define\s+(\w+)\s+(.+?)\s*$', line)
         if not d:
             continue
         name, val = d.group(1), d.group(2)
         where[name] = f'{header} line {n}'
+        defines.pop(name, None)                         # a later header defines it anew
+        instances.pop(name, None)
+        unknown.pop(name, None)
+        if texts.setdefault(name, val) != val:          # the name once more, as under `#if` and again under `#else`
+            texts[name], unknown[name] = None, TWICE    # what is computed from it is left out too
+            continue
         inst = re.match(r'\(\(\s*(\w+)\s*\*\s*\)\s*(\w+)\s*\)$', val)
         if inst:
             instances[name] = (inst.group(1), inst.group(2))
@@ -229,7 +238,7 @@ def enumerators(text, header, defines, irqs, where, unknown):
                 why = gap
             v = nxt
             if seen.setdefault(name, v) != v:           # the name once more, as under `#if` and again under `#else`
-                v, why = None, 'the header gives it more than one value, a preprocessor condition decides which'
+                v, why = None, TWICE
             seen[name] = v
             if name.endswith('_IRQn'):
                 where[name] = f'{header} line {line}'
