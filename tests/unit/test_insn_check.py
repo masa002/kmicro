@@ -373,7 +373,7 @@ class Assembler(unittest.TestCase):
         self.assertEqual(sorted(self.needs), list(range(len(SAMPLES))))
 
     def test_the_tool_and_the_assembler_agree_for_every_core(self):
-        for cpu in paths.CORES:
+        for cpu in (c for c in paths.CORES if c.startswith('cortex-m')):     # the profile the tool knows
             with self.subTest(cpu=cpu):
                 r = self.assemble(cpu, Path(self.tmp.name) / f'{cpu}.o')
                 refused = set()
@@ -409,6 +409,9 @@ class CommandLine(unittest.TestCase):
             r = subprocess.run([*tool[:2], str(Path(d) / 'none.elf')], capture_output=True, text=True)
             self.assertEqual(r.returncode, 2)
             self.assertIn('not found', r.stderr)
+            r = subprocess.run([*tool, '--cpu', 'cortex-a7'], capture_output=True, text=True)     # not a Cortex-M
+            self.assertEqual((r.returncode, r.stdout), (2, ''), r.stderr)
+            self.assertIn('cortex-a7 is not a Cortex-M core', r.stderr)
 
 
 if __name__ == '__main__':
