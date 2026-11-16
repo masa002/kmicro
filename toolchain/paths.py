@@ -78,6 +78,9 @@ CORES = {
                   'thumb/v7ve+simd/hard'),
     'cortex-r52': ('thumbv8r-none-eabihf', ['-mthumb', '-mcpu=cortex-r52', '-mfpu=neon-fp-armv8', '-mfloat-abi=hard'],
                    'thumb/v7+fp/hard'),
+    'cortex-r5': ('thumbv7r-none-eabi', ['-mthumb', '-mcpu=cortex-r5', *_SOFT], 'thumb/v7/nofp'),
+    'cortex-r5f': ('thumbv7r-none-eabihf', ['-mthumb', '-mcpu=cortex-r5', '-mfpu=vfpv3-d16', '-mfloat-abi=hard'],
+                   'thumb/v7+fp/hard'),
 }
 DEFAULT_CPU = 'cortex-m4f'
 

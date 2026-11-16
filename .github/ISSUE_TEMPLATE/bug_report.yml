@@ -55,6 +55,8 @@ body:
         - cortex-m85-nofp
         - cortex-a7
         - cortex-r52
+        - cortex-r5
+        - cortex-r5f
     validations:
       required: true
   - type: dropdown

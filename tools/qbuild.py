@@ -79,7 +79,8 @@ TARGETS = {   # start code and linker script, QEMU machine (and its -cpu, where 
 _M55 = ('cortex-m55', 'cortex-m55-nomve', 'cortex-m55-nofp', 'cortex-m85', 'cortex-m85-nomve', 'cortex-m85-nofp')
 DEFAULT_TARGET = {'cortex-m3': 'an385', 'cortex-m7': 'an500', 'cortex-m7-sp': 'an500', 'cortex-m23': 'an505',
                   'cortex-m33': 'an505', 'cortex-m33f': 'an505', **dict.fromkeys(_M55, 'an547'),
-                  'cortex-a7': 'virt', 'cortex-r52': 'an536'}
+                  'cortex-a7': 'virt', 'cortex-r52': 'an536',
+                  'cortex-r5': 'an536', 'cortex-r5f': 'an536'}
 # The cores whose code each machine runs. A machine does not run code for an FPU or for instructions its core lacks.
 # And the start code is compiled for the core: its stack and null guards are written for the MPU of ARMv8-M or for the
 # one of the older cores, and on a machine with the other MPU the program runs with no guard at all.
@@ -88,7 +89,7 @@ _M4F = (*_M3, 'cortex-m4', 'cortex-m4f')
 _M33F = ('cortex-m23', 'cortex-m33', 'cortex-m33f')
 RUNS = {'l475': _M4F, 'an386': _M4F, 'an385': _M3, 'an500': (*_M4F, 'cortex-m7', 'cortex-m7-sp'), 'an505': _M33F,
         'an547': (*_M33F, *_M55), 'virt': ('cortex-a7',),
-        'an536': ('cortex-r52',)}
+        'an536': ('cortex-r52', 'cortex-r5', 'cortex-r5f')}
 
 
 def qemu_machine(target):

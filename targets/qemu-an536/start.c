@@ -54,10 +54,13 @@ ARM_ENTRY void hyp_vectors(void)
  * Abort and Undefined mode share one, since each of them ends in the fault report. Then the vectors, and VFP and
  * NEON before any compiled C code runs: with LTO, main and the Kotlin code it calls can be inlined into the C
  * start function, whose prologue then saves FP registers (vpush). lr is set to 0xFFFFFFFF, the address of no
- * function, where a stack trace and the search for an exception handler end. */
+ * function, where a stack trace and the search for an exception handler end.
+ * qbuild also runs code built for a Cortex-R5 on this machine (ARMv7-R, which the Cortex-R52 runs). The start code
+ * is then compiled for that core, which has no Hyp mode: its instructions are let in by hand. */
 ARM_ENTRY void Reset_Handler(void)
 {
-    __asm volatile("mrs r0, cpsr\n"
+    __asm volatile(".arch_extension virt\n"
+                   "mrs r0, cpsr\n"
                    "and r0, r0, #0x1F\n"
                    "cmp r0, #0x1A\n"                            /* Hyp mode? */
                    "bne 1f\n"
@@ -218,7 +221,8 @@ ARM_ENTRY void fault_entry(void)
 
 ARM_ENTRY void hyp_entry(void)
 {
-    __asm volatile("ldr sp, =_exc_stack\n"
+    __asm volatile(".arch_extension virt\n"
+                   "ldr sp, =_exc_stack\n"
                    "mrc p15, 4, r0, c5, c2, 0\n"                /* HSR: why */
                    "mrs r1, elr_hyp\n"                          /* and where */
                    "bl start_hyp_fault\n"                       /* never returns */
