@@ -542,7 +542,17 @@ __attribute__((weak)) void km_throwable_init(void)
     __asm__("kfun:kotlin.Throwable#<init>(kotlin.String?;kotlin.Throwable?){}");
 
 #define KM_TRACE_MAX 12
-typedef struct { uint32_t pc[KM_TRACE_MAX], last_pc, last_sp; int n; } km_trace_t;
+typedef struct { uint32_t pc[KM_TRACE_MAX], last_pc, last_sp; int n, seen; } km_trace_t;
+
+/* Whether the frame at pc, in the unwind region that starts at `region`, is that of the function fn. The region
+ * starts at fn, or before it: ld.lld leaves out the unwind entry of a function that unwinds as the function before it
+ * does, and both then share the earlier entry. So the function lies between the region's start and pc. (A function
+ * after fn that shares the entry too would pass as well: one that unwinds exactly as fn does and follows it directly.) */
+static int trace_frame_of(uint32_t region, uint32_t pc, void (*fn)(void))
+{
+    uint32_t start = (uint32_t)(uintptr_t)fn & ~1u;
+    return start != 0 && region <= start && start <= pc;
+}
 
 static _Unwind_Reason_Code trace_fn(_Unwind_Context *ctx, void *arg)
 {
@@ -552,10 +562,10 @@ static _Unwind_Reason_Code trace_fn(_Unwind_Context *ctx, void *arg)
         return _URC_END_OF_STACK;                    /* the walk did not move: never one frame twice */
     t->last_pc = pc;
     t->last_sp = sp;
-    if (t->n == 0) {
-        uint32_t fn = (uint32_t)_Unwind_GetRegionStart(ctx) & ~1u;
-        uint32_t ctor = (uint32_t)(uintptr_t)km_throwable_init & ~1u;
-        if (fn == ((uint32_t)(uintptr_t)Kotlin_getCurrentStackTrace & ~1u) || (ctor != 0 && fn == ctor))
+    if (t->n == 0 && t->seen++ < 2) {                /* the two frames are the first two of the walk, or absent */
+        uint32_t region = (uint32_t)_Unwind_GetRegionStart(ctx) & ~1u;
+        if (trace_frame_of(region, pc, (void (*)(void))Kotlin_getCurrentStackTrace)
+            || trace_frame_of(region, pc, km_throwable_init))
             return _URC_NO_REASON;
     }
     if (t->n >= KM_TRACE_MAX)
@@ -568,7 +578,7 @@ extern const TypeInfo *theNativePtrArrayTypeInfo;
 ObjHeader *Kotlin_getCurrentStackTrace(ObjHeader **result)
 {
     km_trace_t t;
-    t.n = 0;
+    t.n = t.seen = 0;
     t.last_pc = t.last_sp = 0;
     _Unwind_Backtrace(trace_fn, &t);
     ObjHeader *a = kmicro_alloc_array(theNativePtrArrayTypeInfo, t.n, result);
