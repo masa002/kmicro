@@ -123,6 +123,17 @@ memory is there, in pieces too small for the request. A single request larger th
 `OutOfMemoryError` instead, and that one can be caught: `IntArray(5000)` kept in a top-level `var` asks for 20,008
 bytes, more than the 16 KB heap.
 
+A heap gets fragmented by the objects that stay. The collector runs only when the heap is full. Until then new
+objects take the free memory from both ends, small ones from the bottom and blocks of 256 bytes and more from the
+top, and nearly all of them are garbage at the next collection. An object that stays, such as a table a library
+builds the first time it is needed, is left where the allocation had got to, and after the collection it stands
+alone in the middle of free memory. A collection puts the next allocations back at the two ends. So build what
+stays at the start (rule 1), and call `GC.collect()` (`kotlin.native.runtime.GC`) at a quiet moment after something
+long-lived was built or dropped. [tests/diff/d_regex_spread.kt](../tests/diff/d_regex_spread.kt) uses Regex
+patterns in 67 calls, one after the other, with a collection after each, and runs on a 48 KB heap. Without the
+collections it stops at the 37th, which needs one block of 16 KB, on a 64 KB heap too:
+`wanted 16080 B, live after GC 20456 of 65536 B, largest free 3024 B in 54 free blocks`.
+
 Native memory (`nativeHeap`, `memScoped`, `cstr`) comes from its own arena of `KM_INTEROP_BYTES` (1 KB), which
 `toDouble` also uses for scratch. Freed blocks are reused in any order and merged with free neighbours. A request that
 does not fit throws `OutOfMemoryError("unable to allocate native memory")`; an alignment above 8 bytes is not
