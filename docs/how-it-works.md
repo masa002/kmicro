@@ -441,7 +441,7 @@ call.
 ## Testing
 
 - [tests/run_all.py](../tests/run_all.py) builds every test program and the examples, runs them on QEMU
-  (`b-l475e-iot01a`, an emulated STM32L475; two tests on `mps2-an386`; with `--cpu CORE`, for that core on the
+  (`b-l475e-iot01a`, an emulated STM32L475; three tests on `mps2-an386`; with `--cpu CORE`, for that core on the
   machine qbuild chooses for it, in `build/t-<core>`) and compares each program's whole output with
   its file in `tests/expected/`. It also fails a program that does not fit the STM32L431 unless the test is marked
   large, and runs the tools (isr_check, symbolize, frames, gen_regs, missing_natives) on some of them. The programs
