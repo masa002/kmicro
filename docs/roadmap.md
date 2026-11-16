@@ -41,7 +41,7 @@ each. A core without an FPU uses the soft-float calling convention.
 | `--cpu` | Architecture | FPU | Tested on QEMU's | Checked | selftest: flash | RAM |
 |---|---|---|---|---|---|---|
 | `cortex-m0` | ARMv6-M | none | `b-l475e-iot01a` (an STM32L475), a Cortex-M4F | the selftest | 121.9 KB | 18.5 KB |
-| `cortex-m0plus` | ARMv6-M | none | `b-l475e-iot01a`, a Cortex-M4F | run_all | 121.9 KB | 18.5 KB |
+| `cortex-m0plus` | ARMv6-M | none | `b-l475e-iot01a`, a Cortex-M4F | run_all; difftest | 121.9 KB | 18.5 KB |
 | `cortex-m1` | ARMv6-M | none | `b-l475e-iot01a`, a Cortex-M4F | the selftest | 121.9 KB | 18.5 KB |
 | `cortex-m3` | ARMv7-M | none | `mps2-an385`, a Cortex-M3 | run_all | 131.6 KB | 18.5 KB |
 | `cortex-m4` | ARMv7E-M | none | `b-l475e-iot01a`, a Cortex-M4F | run_all | 131.5 KB | 18.5 KB |
@@ -49,9 +49,9 @@ each. A core without an FPU uses the soft-float calling convention.
 | `cortex-m7` | ARMv7E-M | FPv5, double precision | `mps2-an500`, a Cortex-M7 | run_all | 130.1 KB | 18.5 KB |
 | `cortex-m7-sp` | ARMv7E-M | FPv5, single precision | `mps2-an500`, a Cortex-M7 | the selftest | 131.0 KB | 18.5 KB |
 | `cortex-m23` | ARMv8-M Baseline | none | `mps2-an505`, a Cortex-M33 | run_all | 121.1 KB | 18.5 KB |
-| `cortex-m33` | ARMv8-M Mainline | none | `mps2-an505`, a Cortex-M33 | run_all | 131.5 KB | 18.5 KB |
+| `cortex-m33` | ARMv8-M Mainline | none | `mps2-an505`, a Cortex-M33 | run_all; difftest | 131.5 KB | 18.5 KB |
 | `cortex-m33f` | ARMv8-M Mainline | FPv5, single precision | `mps2-an505`, a Cortex-M33 | run_all | 131.1 KB | 18.5 KB |
-| `cortex-m55` | ARMv8.1-M Mainline | FPv5, double precision; MVE | `mps3-an547`, a Cortex-M55 | run_all | 126.1 KB | 18.5 KB |
+| `cortex-m55` | ARMv8.1-M Mainline | FPv5, double precision; MVE | `mps3-an547`, a Cortex-M55 | run_all; difftest | 126.1 KB | 18.5 KB |
 | `cortex-m55-nomve` | ARMv8.1-M Mainline | FPv5, double precision | `mps3-an547`, a Cortex-M55 | the selftest | 130.3 KB | 18.5 KB |
 | `cortex-m55-nofp` | ARMv8.1-M Mainline | none | `mps3-an547`, a Cortex-M55 | the selftest | 131.5 KB | 18.5 KB |
 | `cortex-m85` | ARMv8.1-M Mainline | FPv5, double precision; MVE | `mps3-an547`, a Cortex-M55 | the selftest | 127.7 KB | 18.5 KB |
@@ -92,10 +92,9 @@ each. A core without an FPU uses the soft-float calling convention.
   cores and chooses the same. A core with MVE and no FPU has no entry; `-nofp` code runs on it and leaves MVE
   unused. With MVE the compiler puts vector instructions into ordinary code: the `cortex-m55` selftest has them in
   the string functions of the runtime and of the standard library, and run_all runs every test program built that
-  way. [porting.md](porting.md#another-core) says what that means for a board. CI does not run difftest for
-  these cores. Run by hand, it gave the output of the stock runtime for 14 of its programs for `cortex-m55` (among
-  them those with floating point and 64-bit integers) and for 4 of those for `cortex-m55-nomve`, `cortex-m55-nofp`
-  and `cortex-m85`.
+  way. [porting.md](porting.md#another-core) says what that means for a board. Four programs of difftest with
+  floating point and 64-bit integers (d_math, d_numbers, d_to_double, d_long_digits) were run by hand for
+  `cortex-m55-nomve`, `cortex-m55-nofp` and `cortex-m85` and gave the output of the stock runtime.
 - **Cortex-M85 code is tested on the Cortex-M55,** because QEMU 9.2.4 has no model of the Cortex-M85. For the
   compiler the Cortex-M85 is the Cortex-M55 with PACBTI (pointer authentication and branch target identification)
   and another tuning. kmicro builds nothing with `-mbranch-protection`, and
@@ -116,7 +115,13 @@ each. A core without an FPU uses the soft-float calling convention.
 - **On a board,** only the Cortex-M4F has run: an STM32L431, in
   [the recorded run](../examples/selftest/stm32l431-report.txt), which predates release 0.1.0.
   [porting.md](porting.md#another-core) says what a board with another core changes.
-- CI runs run_all under GC stress, and difftest, for the default core only.
+- **difftest** means that `python tools/difftest.py --cpu CORE` passes: every program of
+  [tests/diff](../tests/diff) prints on kmicro what it prints on the stock runtime. CI runs that for the default
+  core only, after every merge and also under GC stress. For `cortex-m0plus`, `cortex-m33` and `cortex-m55` the
+  whole suite was run by hand, without GC stress: for `cortex-m0plus` when its unaligned-access trap went in, for
+  the other two after the ARMv8.1-M cores were added. Nothing differed. For `cortex-m55` one program, `d_lang_6`,
+  had a frame of its `main` above the stack guard, and now says so in its source, as two others did.
+- CI runs run_all under GC stress for the default core only.
 
 Not supported:
 

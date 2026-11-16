@@ -471,12 +471,16 @@ call.
   compared as a Float and every other number as a Double; integers must be equal). As run_all does, it fails an image with a stack frame larger
   than the 4 KB stack guard (`FRAME` in the report), unless the program says `// difftest: frame -- reason`.
   `--stress` collects at every allocation; the heap peak in the report is then the most the program had live at
-  once, while without it the peak is often the heap size. The `d_known_*.kt` programs show what does not work and
-  run only when named.
-- `python -m unittest discover -s tests/unit` tests the tools.
+  once, while without it the peak is often the heap size. `--cpu CORE` builds the kmicro side for another core;
+  the reference output is the same. The `d_known_*.kt` programs show what does not work and run only when named.
+- `python -m unittest discover -s tests/unit` tests the tools. Most of its tests need no toolchain. The others are
+  skipped without one: they compile or assemble for the cores (among them the table of cores, what insn_check
+  allows, the code of the runtime's array copies) or run C programs on QEMU (the start code's fault report and
+  guards, on three cores).
 - CI ([.github/workflows/ci.yml](../.github/workflows/ci.yml)) runs the unit tests and run_all, also with `--stress`,
-  on every pull request, on Linux and (without `--stress`) on Windows, and run_all for each of the other cores
-  (`--cpu`); it runs difftest on main and once a week. Once a week it also runs the unit tests and run_all with the
-  newest Kotlin release, in a job that may fail without failing the others.
+  on every pull request, on Linux and (without `--stress`) on Windows, and run_all for some of the other cores
+  (`--cpu`; [CONTRIBUTING.md](../CONTRIBUTING.md#tests) names them); it runs difftest on main and
+  once a week. Once a week it also runs the unit tests and run_all with the newest Kotlin release, in a job that
+  may fail without failing the others.
 - `python tools/missing_natives.py` lists the standard library's runtime functions that kmicro implements, does not
   support, or lacks.
