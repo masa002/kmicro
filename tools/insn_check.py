@@ -32,6 +32,9 @@ Not checked: the functions of libgcc's unwinder that save and restore FPU and iW
 they run only when an unwind table names such a register, which no code built for that core does. The data that
 the disassembly marks as data (literal pools, tables) is skipped.
 
+The instruction sets are those of the Cortex-M cores. An image for a core of another profile (cortex-a7) is not
+checked: the tool says so and exits 2.
+
 Exit status: 0 when every instruction is one of the core's, 1 when one is not, 2 when the image cannot be read.
 """
 import argparse
@@ -185,6 +188,10 @@ def main():
     p.add_argument('--all', action='store_true', help='list every instruction that is out of place')
     a = p.parse_args()
     cpu = paths.select_cpu(a.cpu)
+    if paths.profile() != 'M':
+        print(f'insn_check.py: {cpu} is not a Cortex-M core, and this check knows the instruction sets of those only',
+              file=sys.stderr)
+        sys.exit(2)
     if not a.elf.is_file():
         print(f'insn_check.py: {a.elf}: not found', file=sys.stderr)
         sys.exit(2)
