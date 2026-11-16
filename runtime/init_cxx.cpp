@@ -38,6 +38,7 @@ void kmicro_init_thread_local(volatile uintptr_t *global_state, uintptr_t *local
                               const TypeInfo *type);
 ObjHeader *kmicro_call_catching(void (*fn)(ObjHeader *), ObjHeader *arg, ObjHeader **frame, ObjHeader **slot);
 void kmicro_panic(const char *what) __attribute__((noreturn));
+extern void *km_fault_pc;                           /* runtime/mm.c: the address kmicro_panic prints */
 }
 
 /* kmicro.h's km_in_interrupt (that header is C) */
@@ -70,25 +71,35 @@ bool run_init(Frame &fr, void (*init)(void))
 } // namespace
 
 /* A file's globals are created on first use, which allocates: never in an interrupt handler. A handler that finds
- * them being created has interrupted that first use and would read them unset; it cannot wait for the thread code. */
-static void refuse_in_handler(uintptr_t st)
+ * them being created has interrupted that first use and would read them unset; it cannot wait for the thread code.
+ * The panic names the code that made the first use, as the allocation check of mm.c does: `caller` is the return
+ * address of the function the compiled code called. */
+__attribute__((noinline, cold, noreturn)) static void refused(void *caller, uintptr_t st)
 {
-    if (!km_in_interrupt())
-        return;
+    if ((uintptr_t)caller >= 0xF0000000u)            /* EXC_RETURN: the call was inlined into the handler itself, */
+        caller = (char *)__builtin_return_address(0) - 2;   /* so name the call to here */
+    km_fault_pc = caller;
     if (st == BEING_INITIALIZED)
         kmicro_panic("Kotlin globals used inside an interrupt handler while the thread code creates them");
     kmicro_panic("Kotlin globals first used inside an interrupt handler");
 }
 
+static inline void refuse_in_handler(uintptr_t st, void *caller)
+{
+    if (km_in_interrupt())
+        refused(caller, st);
+}
+
 /* The two functions, with `failed` for what throws: failed(exception) when the initializer threw it, and
- * failed(nullptr) for a later use of what it left uninitialised. failed() does not return. */
+ * failed(nullptr) for a later use of what it left uninitialised. failed() does not return. `caller` is the return
+ * address of the function the compiled code called, for the panic of a first use inside a handler. */
 template <typename Failed>
-static inline void init_global(uintptr_t *state, void (*init)(void), Failed failed)
+static inline void init_global(uintptr_t *state, void (*init)(void), void *caller, Failed failed)
 {
     uintptr_t st = *state;
     if (st == INITIALIZED)
         return;
-    refuse_in_handler(st);
+    refuse_in_handler(st, caller);
     if (st == BEING_INITIALIZED)                     /* the initializer itself uses its file's globals */
         return;
     if (st == FAILED_TO_INITIALIZE)
@@ -106,7 +117,7 @@ static inline void init_global(uintptr_t *state, void (*init)(void), Failed fail
 
 template <typename Failed>
 static inline void init_thread_local(volatile uintptr_t *global_state, uintptr_t *local_state, void (*init)(void),
-                                     Failed failed)
+                                     void *caller, Failed failed)
 {
     /* The @ThreadLocal globals of a file. The stock runtime marks them initialised before it runs the initializer;
      * kmicro keeps "being initialised" until it is done, so that a handler that interrupts it is stopped as for
@@ -114,7 +125,7 @@ static inline void init_thread_local(volatile uintptr_t *global_state, uintptr_t
     uintptr_t st = *local_state;
     if (st == INITIALIZED)
         return;
-    refuse_in_handler(st);
+    refuse_in_handler(st, caller);
     if (st == BEING_INITIALIZED)                     /* the initializer itself uses its file's thread-locals */
         return;
     if (st == FAILED_TO_INITIALIZE || (global_state != nullptr && *global_state == FAILED_TO_INITIALIZE))
@@ -132,24 +143,26 @@ static inline void init_thread_local(volatile uintptr_t *global_state, uintptr_t
 
 void CallInitGlobalPossiblyLock(uintptr_t *state, void (*init)(void))
 {
-    init_global(state, init, [](ObjHeader *reason) { ThrowFileFailedToInitializeException(reason); });
+    init_global(state, init, __builtin_return_address(0),
+                [](ObjHeader *reason) { ThrowFileFailedToInitializeException(reason); });
 }
 
 void CallInitThreadLocal(volatile uintptr_t *global_state, uintptr_t *local_state, void (*init)(void))
 {
-    init_thread_local(global_state, local_state, init,
+    init_thread_local(global_state, local_state, init, __builtin_return_address(0),
                       [](ObjHeader *reason) { ThrowFileFailedToInitializeException(reason); });
 }
 
 void kmicro_init_global(uintptr_t *state, void (*init)(void), const TypeInfo *type)
 {
-    init_global(state, init, [type](ObjHeader *reason) { StaticInitializationFailure(reason, type); });
+    init_global(state, init, __builtin_return_address(0),
+                [type](ObjHeader *reason) { StaticInitializationFailure(reason, type); });
 }
 
 void kmicro_init_thread_local(volatile uintptr_t *global_state, uintptr_t *local_state, void (*init)(void),
                               const TypeInfo *type)
 {
-    init_thread_local(global_state, local_state, init,
+    init_thread_local(global_state, local_state, init, __builtin_return_address(0),
                       [type](ObjHeader *reason) { StaticInitializationFailure(reason, type); });
 }
 

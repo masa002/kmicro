@@ -1,1 +1,1 @@
-kmicro panic: Kotlin globals used inside an interrupt handler while the thread code creates them
+kmicro panic: Kotlin globals used inside an interrupt handler while the thread code creates them at 0x{X}

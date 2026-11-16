@@ -220,7 +220,8 @@ What a handler must not do:
 - **Use a file's globals for the first time** (rule 11): that initialises them, which allocates, and stops the
   program with `Kotlin globals first used inside an interrupt handler`. A handler that interrupts the thread code
   in the middle of that first use finds the globals still unset, and the program stops with
-  `Kotlin globals used inside an interrupt handler while the thread code creates them`.
+  `Kotlin globals used inside an interrupt handler while the thread code creates them`. Both lines end with
+  `at 0x0800....`, the place of that use, which `tools/symbolize.py` names.
 
 An exception that escapes a handler is reported and stops the program (exit 98). The Kotlin hook set with
 `setUnhandledExceptionHook` does not run for it, because it may allocate; the C hook `kmicro_on_uncaught`

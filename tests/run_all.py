@@ -254,7 +254,7 @@ TESTS = [
     isr('isr_gc', 'TEST_GC'),
     isr('isr_collect', 'TEST_COLLECT'),
     isr('isr_schedule', 'TEST_SCHEDULE', exit=0),
-    isr('isr_lazy_globals', 'TEST_LAZY'),
+    isr('isr_lazy_globals', 'TEST_LAZY', checks=[SYMBOLIZE]),
     isr('isr_init_all', 'TEST_INIT_ALL', exit=0),
     isr('isr_init_all_library', 'TEST_LIBRARY', exit=0),
     # (with --size the backend merges small globals, which must not happen to the states the table is tied to)
@@ -262,7 +262,8 @@ TESTS = [
          ['tests/interrupts/main.c'], exit=0, case={'TEST_LIBRARY': 1}, tick=True),
     isr('isr_throw', 'TEST_THROW', exit=0),
     isr('isr_chars', 'TEST_CHARS', exit=0),
-    Test('isr_init_window', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98, m_profile=PENDS),
+    Test('isr_init_window', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98, m_profile=PENDS,
+         checks=[SYMBOLIZE]),
     Test('isr_init_window_tls', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98,
          case={'TEST_THREAD_LOCAL': 1}, m_profile=PENDS),
     isr('isr_swap_fields', 'TEST_SWAP_FIELDS', exit=0, heap=32768, defs=['KM_GC_STRESS=1'],

@@ -1,1 +1,1 @@
-kmicro panic: Kotlin globals first used inside an interrupt handler
+kmicro panic: Kotlin globals first used inside an interrupt handler at 0x{X}
