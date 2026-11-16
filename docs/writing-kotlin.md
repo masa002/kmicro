@@ -140,6 +140,8 @@ the program:
 
 - at the start of the next allocation after that collection, whoever allocates: the action then runs in the middle
   of that code, on its stack;
+- inside the allocation that collected, when it still finds no room: what the actions held, such as a buffer given
+  to `createCleaner`, is free after they have run and the heap is collected once more;
 - before `GC.collect()`, `GC.schedule()` or `kmicro_gc()` returns, for the objects that collection found;
 - when the StableRef table is full (below).
 

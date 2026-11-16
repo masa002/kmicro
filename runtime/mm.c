@@ -37,6 +37,9 @@
 #ifndef KM_C_ROOTS
 #define KM_C_ROOTS    16                             /* kmicro_root slots */
 #endif
+#ifndef KM_STABLE_REFS
+#define KM_STABLE_REFS 16                            /* StableRefs, and Cleaners whose actions have not run */
+#endif
 #ifndef KM_GC_REMARKS
 #define KM_GC_REMARKS 3                              /* marking passes an interrupt handler may restart (mark()) */
 #endif
@@ -228,6 +231,7 @@ static inline void isr_check(void *caller, const char *what)
 #define KM_ISR_ALLOC "allocation inside an interrupt handler"
 
 static bool s_cleaners;                              /* a collection found Cleaners dead: their actions are to run */
+static bool s_cleaning;                              /* run_cleaners is running them */
 static void run_cleaners(void);
 
 static uint32_t *alloc_block(uint32_t object_bytes)
@@ -246,6 +250,15 @@ static uint32_t *alloc_block(uint32_t object_bytes)
     if (b == NULL) {
         collect();
         b = take(bytes);
+        /* No room, and the collection found Cleaners dead. What their actions hold (a buffer given to createCleaner)
+         * is still live: it is free once the actions have run and another collection has looked. A resource may have
+         * a Cleaner of its own, so this repeats while collections find dead ones; each such Cleaner held a slot, which
+         * bounds the rounds. Not when an action itself is what allocates: its own round is still running. */
+        for (int round = 0; b == NULL && s_cleaners && !s_cleaning && round < KM_STABLE_REFS; round++) {
+            run_cleaners();
+            collect();
+            b = take(bytes);
+        }
         if (b == NULL) {
             report_oom(bytes);
             kmicro_panic("out of memory");          /* ThrowOutOfMemoryError would itself allocate */
@@ -406,9 +419,6 @@ void kmicro_unroot(ObjHeader **slot)
  * 1, dispose releases and frees the slot); at zero the slot is weak and the collector clears it once nothing else
  * keeps the object. A null object has no slot: its reference is NULL. Interrupt handlers may use these too.
  * A Cleaner keeps its action in a slot as well (createCleaner, below). */
-#ifndef KM_STABLE_REFS
-#define KM_STABLE_REFS 16
-#endif
 typedef struct { ObjHeader *obj; uint16_t rc; bool used, clean; } km_stable_ref_t;   /* clean: see run_cleaners */
 static km_stable_ref_t s_stable[KM_STABLE_REFS];
 
@@ -521,7 +531,8 @@ ObjHeader *Konan_getWeakReferenceImpl(ObjHeader *referent, ObjHeader **result)
 /* createCleaner(resource, action) returns a CleanerImpl whose only field is a retained StableRef of a lambda that
  * runs the action. When the sweep frees the CleanerImpl it marks that slot (finalize), and the lambda, still a
  * root, runs later. The stock runtime runs it on its finalizer thread. kmicro has one thread and runs it where
- * Kotlin code can run and nothing is half done: at the start of the next allocation, at the end of GC.collect() and
+ * Kotlin code can run and nothing is half done: at the start of the next allocation (and inside the one that
+ * collected, when it still finds no room: alloc_block), at the end of GC.collect() and
  * kmicro_gc(), and when the StableRef table is full. Never inside the collector, and never in an interrupt handler,
  * which reaches none of these places. The action may allocate, collect and make Cleaners; an exception it throws
  * ends inside the lambda, as in the stock runtime. */
@@ -530,12 +541,11 @@ __attribute__((weak)) ObjHeader *km_function0_invoke(ObjHeader *function, ObjHea
 
 __attribute__((noinline, cold)) static void run_cleaners(void)
 {
-    static bool s_running;
-    if (s_running)                                   /* an action that allocates or collects: the loop below goes on */
+    if (s_cleaning)                                  /* an action that allocates or collects: the loop below goes on */
         return;
     if (km_function0_invoke == NULL)
         kmicro_panic("Cleaner: no Function0.invoke");
-    s_running = true;
+    s_cleaning = true;
     struct { FrameOverlay f; ObjHeader *action, *unit; } fr = { { 0, 0, 0 }, 0, 0 };
     EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
     while (s_cleaners) {
@@ -550,7 +560,7 @@ __attribute__((noinline, cold)) static void run_cleaners(void)
             }
     }
     LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
-    s_running = false;
+    s_cleaning = false;
 }
 
 /* The sweep frees an object whose class has a finalizer. For a CleanerImpl the first field is the slot of its

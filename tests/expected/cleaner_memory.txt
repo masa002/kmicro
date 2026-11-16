@@ -1,0 +1,2 @@
+60 buffers of 4 KB, each held by a cleaner behind a second one: most actions ran true
+100 more, each held by one cleaner: most actions ran true

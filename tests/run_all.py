@@ -279,6 +279,7 @@ TESTS = [
     memory('native_oom', 'TEST_NATIVE_OOM'),
     memory('stable_refs_full', 'TEST_STABLE_REFS', exit=98),
     memory('cleaners', 'TEST_CLEANERS', exit=98),
+    memory('cleaner_memory', 'TEST_CLEANER_MEMORY'),
     memory('globals_limit', 'TEST_GLOBALS', exit=98),
     memory('globals_raised', 'TEST_GLOBALS', defs=['KM_GLOBALS=300']),
     memory('unicode_tables', 'TEST_UNICODE_TABLES'),

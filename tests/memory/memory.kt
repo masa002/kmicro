@@ -97,6 +97,36 @@ fun cleaners() {
     println("not reached: ${all.size}")
 }
 
+// A Cleaner whose resource is memory: the cleaner of a Buffered holds its 4 KB until the action has run, so three
+// dead ones fill the 16 KB heap, and the allocation that finds it full must run their actions and collect again.
+// A Wrapped holds a Buffered through a cleaner of its own: that takes two such rounds, and comes first, on a heap that
+// no collection has touched, so that the fourth one needs both rounds in one allocation.
+class Buffered {
+    val buf = ByteArray(4096)
+    val cleaner = createCleaner(buf) { returned.addAndGet(1) }
+}
+
+class Wrapped {
+    val inner = Buffered()
+    val cleaner = createCleaner(inner) { returned.addAndGet(1) }
+}
+
+fun buffered() {
+    Buffered()
+}
+
+fun wrapped() {
+    Wrapped()
+}
+
+@CName("k_cleaner_memory")
+fun cleanerMemory() {
+    repeat(60) { wrapped() }
+    println("60 buffers of 4 KB, each held by a cleaner behind a second one: most actions ran ${returned.value >= 100}")
+    repeat(100) { buffered() }
+    println("100 more, each held by one cleaner: most actions ran ${returned.value >= 100 + 90}")
+}
+
 // Case mapping and Char properties read the Unicode tables in flash: no heap kept. Char.category creates the 30
 // CharCategory entries once.
 @CName("k_uppercase")
