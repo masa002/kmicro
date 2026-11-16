@@ -218,8 +218,10 @@ if not sum(seeds):
 # Regex when it is created, which happens before the hex test, so decimal text pays too (about 19 KB of heap kept),
 # and its parse() uses more regular expressions. parseDouble/parseFloat become calls to runtime/hexfloat.c, the same
 # algorithm without them, and the companion's initialiser does nothing: a program that does not use Regex itself
-# links no Regex engine.
-HEX = 'kfun:kotlin.native.internal.HexStringParser.Companion'
+# links no Regex engine. The class is kotlin.native.internal.HexStringParser up to Kotlin/Native 2.4 and
+# kotlin.text.HexStringParser from 2.5 on, where the Kotlin code of number parsing is shared with other targets.
+HEX_PARSERS = ('kfun:kotlin.native.internal.HexStringParser.Companion', 'kfun:kotlin.text.HexStringParser.Companion')
+HEX = next((name for name in HEX_PARSERS if f'@"{name}' in text), HEX_PARSERS[0])
 REGEX_LINKED = 'String.toDouble() and toFloat() may still link the Regex engine'
 text = replace_body(text, HEX + '.<init>#internal', '(ptr %0)', '  ret void\n',
                     r'HexStringParser[^"]*Companion[^"]*<init>', REGEX_LINKED)

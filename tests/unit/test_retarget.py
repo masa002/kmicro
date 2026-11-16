@@ -418,6 +418,20 @@ class RetargetTest(unittest.TestCase):
         self.assertIn('@kmicro_hex_to_float(ptr %1)', body(text, hex_parser + '#parseFloat(kotlin.String){}kotlin.Float'))
         self.assertNotIn('regexParse', body(text, hex_parser + '#parseFloat(kotlin.String){}kotlin.Float'))
 
+    def test_hex_parser_of_kotlin_text(self):
+        # Kotlin/Native 2.5 has the class in the package kotlin.text
+        old, new = 'kfun:kotlin.native.internal.HexStringParser.', 'kfun:kotlin.text.HexStringParser.'
+        self.assertEqual(MODULE.count(old), 3)
+        self.assertEqual(self.warnings(MODULE.replace(old, new), 'hex_in_text.ll'), [])
+        text = (OUT / 'out.ll').read_text(encoding='utf-8')
+        hex_parser = new + 'Companion'
+        self.assertEqual(body(text, hex_parser + '.<init>#internal').strip(), 'ret void')
+        self.assertIn('@kmicro_hex_to_double(ptr %1)',
+                      body(text, hex_parser + '#parseDouble(kotlin.String){}kotlin.Double'))
+        parse_float = body(text, hex_parser + '#parseFloat(kotlin.String){}kotlin.Float')
+        self.assertIn('@kmicro_hex_to_float(ptr %1)', parse_float)
+        self.assertNotIn('regexParse', parse_float)
+
     def test_unicode_tables_stay_constant(self):
         _, text = self.retarget()
         table = body(text, 'kfun:kotlin.text.$init_global$_CharCategories.kt#internal')
