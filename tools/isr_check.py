@@ -59,7 +59,8 @@ INDIRECT = re.compile(r'\t(?:blx\w*\s|bx\w*\s+(?!lr\b)|mov\w*\s+pc, (?!lr\b)|ldr
 def lazy(name):
     """Kotlin create-on-first-use points: a file's globals, an object or a companion. Safe in a handler only if
     the thread code used them first; kmicro stops at run time otherwise. Listed so each one can be checked."""
-    return (name in ('CallInitGlobalPossiblyLock', 'kmicro_init_global')      # the second with Kotlin/Native 2.5
+    return (name in ('CallInitGlobalPossiblyLock', 'CallInitThreadLocal',
+                     'kmicro_init_global', 'kmicro_init_thread_local')  # kmicro names with Kotlin/Native 2.5
             or '<get-$companion>' in name or '<get-$instance>' in name)
 
 
