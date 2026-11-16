@@ -59,7 +59,7 @@ def parser():
                    help='generate `void NAME(void)`, which initialises the globals of --package and its sub-packages '
                         '(file-level ones and those of objects); call it at boot, before interrupts are enabled, and '
                         'no interrupt handler runs a first-use initialisation of that code. It also creates the '
-                        'objects of the standard library that the program uses for cinterop pointers and native '
+                        'objects of the standard library that the source code uses for cinterop pointers and native '
                         'memory, unsigned ranges, Random and Duration; the rest of the standard library is still '
                         'created on first use')
     paths.add_cpu_option(p)
@@ -138,7 +138,7 @@ def parse(argv):
         for f in files:
             if not f.exists():
                 word = f'{flag}{f}'             # typed as one word, it may be meant as an option: -list-targets
-                if flag == '-l' and word in joined and re.fullmatch('-[a-z]+(-[a-z]+)*', word):
+                if flag == '-l' and word in joined and re.fullmatch('-[a-z]+(-[a-z]+)*', word.partition('=')[0]):
                     p.error(f'{flag} {f}: not found ({word} is read as {flag} {f}; a kotlinc-native option goes '
                             f'through --kotlinc: --kotlinc {word})')
                 p.error(f'{flag} {f}: not found')
@@ -153,9 +153,9 @@ def main():
         stream.reconfigure(encoding='utf-8', errors='replace')
     a = parse(sys.argv[1:])
     paths.select_cpu(a.cpu)
-    objs = kn.build(a.sources, a.outdir, libs=a.libs, c_api=a.c_api, package=a.package, init_all=a.init_all,
-                    size=a.size, hot=a.hot, force=a.force, kotlinc_args=a.kotlinc_args, include_dirs=a.include_dirs,
-                    main=True if a.main else None, defs=a.defs, stack_array_limit=a.stack_array_limit,
+    objs = kn.build(a.sources, a.outdir, libs=a.libs, c_api=a.c_api, package=a.package, defs=a.defs, include_dirs=a.include_dirs,
+                    size=a.size, hot=a.hot, force=a.force, kotlinc_args=a.kotlinc_args,
+                    main=True if a.main else None, init_all=a.init_all, stack_array_limit=a.stack_array_limit,
                     stack_array_error=a.stack_array_error)
     print('\n'.join(str(o) for o in objs))
 
