@@ -46,7 +46,8 @@ KOTLIN_NATIVE_VERSION = '2.4.21'          # retarget.py reads this compiler's IR
 # GCC has for these cores are all Thumb-2 (thumb/v7-a..., also when it is asked for ARM code), and the tools that
 # read machine code (frames.py, isr_check.py) and the runtime's unwinding (the landing pad's Thumb bit, eh.c) were
 # written for it. clang needs -mthumb for that (its default there is ARM state) and writes the triple of ARMv7-A
-# without the profile's letter: thumbv7.
+# without the profile's letter: thumbv7. A Cortex-R core is built the same way. The xPack GCC has no multilib of
+# ARMv8-R: it gives the Cortex-R52 the one of ARMv7 with VFPv3-D16, whose code that core runs.
 _SOFT = ['-mfpu=none', '-mfloat-abi=soft']
 _FP_V81 = ['-mfpu=fp-armv8-fullfp16-d16', '-mfloat-abi=hard']
 CORES = {
@@ -75,6 +76,8 @@ CORES = {
     'cortex-m85-nofp': ('thumbv8.1m.main-none-eabi', ['-mcpu=cortex-m85', *_SOFT], 'thumb/v8-m.main/nofp'),
     'cortex-a7': ('thumbv7-none-eabihf', ['-mthumb', '-mcpu=cortex-a7', '-mfpu=neon-vfpv4', '-mfloat-abi=hard'],
                   'thumb/v7ve+simd/hard'),
+    'cortex-r52': ('thumbv8r-none-eabihf', ['-mthumb', '-mcpu=cortex-r52', '-mfpu=neon-fp-armv8', '-mfloat-abi=hard'],
+                   'thumb/v7+fp/hard'),
 }
 DEFAULT_CPU = 'cortex-m4f'
 
@@ -108,7 +111,7 @@ def triple():
 
 def arch():
     """The architecture of the core, as in its triple: thumbv6m, thumbv7m, thumbv7em, thumbv8m.base, thumbv8m.main,
-    thumbv8.1m.main, and thumbv7 for ARMv7-A."""
+    thumbv8.1m.main, thumbv7 for ARMv7-A and thumbv8r for ARMv8-R."""
     return CORES[cpu()][0].split('-')[0]
 
 

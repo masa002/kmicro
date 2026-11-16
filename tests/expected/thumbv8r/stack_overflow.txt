@@ -1,0 +1,4 @@
+depth 100: sum 5050
+depth 300: sum 45150
+kmicro fault: stack overflow (data abort) at 0x{X}
+    sp 0x{X}  lr 0x{X}  cpsr 0x{X}  dfsr 0x00000a0c  dfar 0x{X}  ifsr 0x{X}  ifar 0x{X}

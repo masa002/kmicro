@@ -54,6 +54,7 @@ body:
         - cortex-m85-nomve
         - cortex-m85-nofp
         - cortex-a7
+        - cortex-r52
     validations:
       required: true
   - type: dropdown

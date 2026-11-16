@@ -1,8 +1,8 @@
 # Copyright 2026 the kmicro authors (NOTICE).
 # SPDX-License-Identifier: Apache-2.0
 """The QEMU l475 start code: fault report, stack guard, null guard and clocks, on the default core, on an ARMv8-M
-one and on an ARMv8.1-M one, and the same probes on the start code of QEMU virt for the Cortex-A7. C programs only
-(startup_probe.c), no Kotlin compile.
+one and on an ARMv8.1-M one, and the same probes on the start code of QEMU virt for the Cortex-A7 and of QEMU
+mps3-an536 for the Cortex-R52. C programs only (startup_probe.c), no Kotlin compile.
 
 usage: python -m unittest discover tests/unit       (skipped when LLVM, arm-none-eabi-gcc or QEMU is not installed)
 """
@@ -85,11 +85,13 @@ class StartupCortexATest(StartupTest):
     """The start code of QEMU virt (targets/qemu-virt) on its Cortex-A7. The guards are memory the MMU does not map,
     and the report names the exceptions of the A profile: a data abort, an undefined instruction."""
     CPU = 'cortex-a7'
+    NOTHING = '0xf0000000'                      # startup_probe.c: the address of the bad read
 
     def test_fault_report_names_the_faulting_function(self):
         elf, rc, out = self.run_probe(1)
         self.assertEqual(rc, 99, out)
-        m = re.search(r'kmicro fault: data abort at (0x[0-9a-f]{8})\n    sp 0x[0-9a-f]{8}  lr 0x.*dfar 0xf0000000', out)
+        m = re.search(r'kmicro fault: data abort at (0x[0-9a-f]{8})\n    sp 0x[0-9a-f]{8}  lr 0x.*dfar ' + self.NOTHING,
+                      out)
         self.assertTrue(m, out)
         self.assertIn('probe_bad_read+', self.symbolized(elf, out))
 
@@ -112,6 +114,13 @@ class StartupCortexATest(StartupTest):
         m = re.search(r'kmicro fault: null pointer access \(data abort\) at (0x[0-9a-f]{8})\n.* dfar 0x0000000c', out)
         self.assertTrue(m, out)
         self.assertIn('probe_null_read+', self.symbolized(elf, out))
+
+
+class StartupCortexRTest(StartupCortexATest):
+    """The start code of QEMU mps3-an536 (targets/qemu-an536) on its Cortex-R52: the same report as on the
+    Cortex-A7, with guards that are addresses outside every region of the MPU."""
+    CPU = 'cortex-r52'
+    NOTHING = '0x70000000'
 
 
 if __name__ == '__main__':

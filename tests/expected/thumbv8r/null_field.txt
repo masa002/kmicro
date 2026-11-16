@@ -1,0 +1,3 @@
+start
+kmicro fault: null pointer access (data abort) at 0x{X}
+    sp 0x{X}  lr 0x{X}  cpsr 0x{X}  dfsr 0x0000020c  dfar 0x0000000c  ifsr 0x{X}  ifar 0x{X}

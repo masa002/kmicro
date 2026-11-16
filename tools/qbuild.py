@@ -30,10 +30,12 @@ usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--
                the machine starts
                virt: QEMU virt with a Cortex-A7 (targets/qemu-virt), the default for cortex-a7 and the only
                machine for it. The image is loaded into the machine's RAM and gets the same amounts of it
-    --large    l475, an385, an500, an505, an547 and virt give a program the memory of the STM32L431 kmicro aims at,
-               256 KB of flash and 64 KB of RAM: one that does not fit fails to link, and the stack ends where it
-               would end on that chip. With --large the program gets the memory of the STM32L475: 1 MB of flash and
-               96 KB of RAM
+               an536: QEMU mps3-an536, a Cortex-R52 (targets/qemu-an536), the default for cortex-r52 and the
+               only machine for it, with the image in its RAM in the same way
+    --large    l475, an385, an500, an505, an547, virt and an536 give a program the memory of the STM32L431 kmicro
+               aims at, 256 KB of flash and 64 KB of RAM: one that does not fit fails to link, and the stack ends
+               where it would end on that chip. With --large the program gets the memory of the STM32L475: 1 MB of
+               flash and 96 KB of RAM
     --run      run the image on QEMU and exit with the program's exit code (124 when it runs out of time)
     --icount   with --run: QEMU's clock is the number of instructions the program has run, one nanosecond each
                (-icount shift=0,sleep=off), not the host's clock. A timer interrupt then lands on the same
@@ -68,6 +70,7 @@ TARGETS = {   # start code and linker script, QEMU machine (and its -cpu, where 
     'an505': (ROOT / 'targets/qemu-l475', 'an505.ld', 'mps2-an505', ['-lnosys']),
     'an547': (ROOT / 'targets/qemu-l475', 'an547.ld', 'mps3-an547', ['-lnosys']),
     'virt': (ROOT / 'targets/qemu-virt', 'virt.ld', 'virt -cpu cortex-a7', ['-lnosys']),
+    'an536': (ROOT / 'targets/qemu-an536', 'an536.ld', 'mps3-an536', ['-lnosys']),
 }
 # The machine a core's programs run on when --target is not given: its own where QEMU has one with this start code,
 # else the STM32L475, whose Cortex-M4F runs the code of every core below it. QEMU has no Cortex-M23: its code, ARMv8-M
@@ -76,7 +79,7 @@ TARGETS = {   # start code and linker script, QEMU machine (and its -cpu, where 
 _M55 = ('cortex-m55', 'cortex-m55-nomve', 'cortex-m55-nofp', 'cortex-m85', 'cortex-m85-nomve', 'cortex-m85-nofp')
 DEFAULT_TARGET = {'cortex-m3': 'an385', 'cortex-m7': 'an500', 'cortex-m7-sp': 'an500', 'cortex-m23': 'an505',
                   'cortex-m33': 'an505', 'cortex-m33f': 'an505', **dict.fromkeys(_M55, 'an547'),
-                  'cortex-a7': 'virt'}
+                  'cortex-a7': 'virt', 'cortex-r52': 'an536'}
 # The cores whose code each machine runs. A machine does not run code for an FPU or for instructions its core lacks.
 # And the start code is compiled for the core: its stack and null guards are written for the MPU of ARMv8-M or for the
 # one of the older cores, and on a machine with the other MPU the program runs with no guard at all.
@@ -84,7 +87,8 @@ _M3 = ('cortex-m0', 'cortex-m0plus', 'cortex-m1', 'cortex-m3')
 _M4F = (*_M3, 'cortex-m4', 'cortex-m4f')
 _M33F = ('cortex-m23', 'cortex-m33', 'cortex-m33f')
 RUNS = {'l475': _M4F, 'an386': _M4F, 'an385': _M3, 'an500': (*_M4F, 'cortex-m7', 'cortex-m7-sp'), 'an505': _M33F,
-        'an547': (*_M33F, *_M55), 'virt': ('cortex-a7',)}
+        'an547': (*_M33F, *_M55), 'virt': ('cortex-a7',),
+        'an536': ('cortex-r52',)}
 
 
 def qemu_machine(target):

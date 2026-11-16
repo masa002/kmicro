@@ -19,13 +19,20 @@ int main(void)
     *(volatile uint32_t *)0xE000E100 = 1u << 5;         /* NVIC_ISER0: enable it */
     volatile uint32_t *raise = (volatile uint32_t *)0xE000E200;     /* NVIC_ISPR0: pend it */
     uint32_t how = 1u << 5;
-#else
+#elif __ARM_ARCH_PROFILE == 'A'
     volatile uint32_t *raise = (volatile uint32_t *)0x08000F00;     /* GICD_SGIR: raise it, for this core */
     uint32_t how = 2u << 24 | 5u;
+#else
+    *(volatile uint32_t *)0xF0110100 = 1u << 5;         /* GICR_ISENABLER0 of a GIC v3: enable it */
+    uint32_t raise = 0, how = 5u << 24 | 1u;            /* ICC_SGI1R, a system register: raise it, for this core */
+#define RAISE "mcrr p15, 0, %4, %3, c12\n"
+#endif
+#ifndef RAISE
+#define RAISE "str %4, [%3]\n"
 #endif
     uint32_t value, failed;
     __asm volatile("ldrex %0, [%2]\n"
-                   "str %4, [%3]\n"
+                   RAISE
                    "dsb\n"
                    "isb\n"
                    "nop\n"
