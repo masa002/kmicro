@@ -222,8 +222,9 @@ Kotlin/Native stdlib: 261 implemented, 52 unsupported, 40 Objective-C, 0 missing
 
 ## Another core
 
-kmicro builds for the cores from the Cortex-M0 to the Cortex-M85. [roadmap.md](roadmap.md#targets) lists them with
-what was checked on each: all of it on QEMU, and only the Cortex-M4F on a board. For a core other than the
+kmicro builds for the cores from the Cortex-M0 to the Cortex-M85, and for the Cortex-A7, which has
+[a section of its own](#a-cortex-a-core). [roadmap.md](roadmap.md#targets) lists them with
+what was checked on each: all of it on QEMU, and only the Cortex-M4F on a board. For a Cortex-M core other than the
 Cortex-M4F, these parts of a board build change:
 
 - **The name of the core.** `python tools/kbuild.py build/app app.kt --cpu cortex-m0plus` builds `k.o` and
@@ -271,6 +272,53 @@ Cortex-M4F, these parts of a board build change:
   the MVE instructions of an image, give `arm-none-eabi-objdump -d` the option `-m armv8.1-m.main`: without it
   they are shown as coprocessor instructions (`ldc2`) or as undefined. The code for the Cortex-M85 was run on a
   Cortex-M55 only, and nothing is built with PACBTI ([roadmap.md](roadmap.md#targets)).
+
+## A Cortex-A core
+
+`--cpu cortex-a7` builds for the Cortex-A7, a core of the A profile, in its 32-bit state. Nothing of it has run on a
+board. What this section says was checked on QEMU's `virt` machine, with the start code and the linker script of
+[targets/qemu-virt](../targets/qemu-virt) (`start.c`, `virt.ld`) standing in for a board's.
+
+The Kotlin code, the runtime and the C code are built as for a Cortex-M, with the flags and the multilib of the
+core's entry in `CORES`: `--target=thumbv7-none-eabihf -mthumb -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard` and
+`thumb/v7ve+simd/hard`. All of it is Thumb-2 code; `-mthumb` is needed, because clang's default for this core is ARM
+code. The steps of [Start-up](#start-up) from `.data` on are the same. What changes is what a Cortex-M has in the
+core and this core leaves to the board:
+
+- **The vectors are instructions, not addresses.** Eight of them, one per exception, at the address in VBAR. The
+  core takes every exception in ARM state, so the start code's vectors are branches to entries written as ARM code
+  (`__attribute__((target("arm")))`), which call the Thumb-2 C code.
+- **A stack for each mode.** The reset entry sets the stack pointer of every mode the program will be in:
+  Supervisor mode for the program itself, IRQ mode for the handlers, and one stack for FIQ, Abort and Undefined
+  mode, which all end in the fault report. Then the FPU, as on a Cortex-M (CPACR) plus FPEXC.EN, and lr set to
+  0xFFFFFFFF before the C start function (step 1 of Start-up).
+- **The interrupt entry is yours.** There is one IRQ vector and no NVIC: an interrupt controller outside the core
+  (a GIC on `virt`) says which interrupt came. The entry
+  - saves r0-r3, r12 and lr, and with an FPU d0-d7, d16-d31 and the FPSCR. A Cortex-M saves these itself when it
+    takes an exception; here the entry must, because the compiled code of a handler uses them;
+  - calls the handler **in IRQ mode**. The runtime takes code that runs in IRQ, FIQ, Abort or Undefined mode for a
+    handler, and code in any other mode for thread code ([runtime/km_cpu.h](../runtime/km_cpu.h)): that is how it
+    refuses an allocation or a collection inside a handler. An entry that changes to System or Supervisor mode
+    before it calls the handler, to let interrupts nest, turns these guards off without a message, and so does a
+    handler of SVC, which runs in the program's own mode;
+  - executes `clrex` before it returns. The atomics are exclusive loads and stores on this core, and ARMv7-A does
+    not promise that the store of the interrupted code fails after an exception.
+- **Which functions are handlers** is not in the image unless the board puts it there. The start code calls its
+  handlers through a table of their addresses in a section of its own, `.irq_handlers`:
+  `IRQ0_Handler` to `IRQ99_Handler`, weak, numbered as the GIC numbers its interrupts. A program defines the ones it
+  uses, in C or in Kotlin (`--c-api`), and [tools/isr_check.py](../tools/isr_check.py) takes every entry of that
+  section as a handler (`--handlers SECTION` for another name).
+- **Masking interrupts.** The runtime's short critical sections mask IRQ and FIQ through the CPSR and put the old
+  value back. `hw_irq_save` and `hw_irq_restore` of [support/hw.c](../support/hw.c) do the same; `hw_ipsr`, the
+  `hw_basepri` functions and the cycle counter do not exist for this core.
+- **No SysTick.** A timer is a peripheral of the board or one of the core's generic timers, and it need not be
+  periodic: [targets/qemu-virt/tick.h](../targets/qemu-virt/tick.h), which the tests use, moves the compare value
+  of the virtual timer on in its handler.
+- **Guards need the MMU.** The start code turns it on with a flat map in which the first megabyte and a 4 KB page
+  below the stack are not mapped, and reports a data abort there as a null pointer access or a stack overflow, as
+  [the Cortex-M start code does with the MPU](#optional-a-fault-report-and-mpu-guards). It leaves the caches off;
+  QEMU does not model them.
+- **Semihosting**, if the board's `kmicro_puts` uses it, is `svc 0xAB` in Thumb state, not `bkpt 0xAB`.
 
 ## A check on QEMU
 

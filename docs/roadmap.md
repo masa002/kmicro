@@ -32,7 +32,8 @@ what the next compiler changes before anyone depends on it.
 
 ## Targets
 
-kmicro builds for the Cortex-M cores from the Cortex-M0 to the Cortex-M85. `--cpu CORE` on kbuild, qbuild, run_all
+kmicro builds for the Cortex-M cores from the Cortex-M0 to the Cortex-M85, and for one core of the A profile, the
+Cortex-A7 in its 32-bit state. `--cpu CORE` on kbuild, qbuild, run_all
 and difftest, or the environment variable `KMICRO_CPU`, chooses the core; the default is `cortex-m4f`. `CORES` in
 [toolchain/paths.py](../toolchain/paths.py) holds the clang target, the flags and the newlib and libgcc multilib of
 each. A core without an FPU uses the soft-float calling convention.
@@ -56,10 +57,13 @@ each. A core without an FPU uses the soft-float calling convention.
 | `cortex-m85` | ARMv8.1-M Mainline | FPv5, double precision; MVE | `mps3-an547`, a Cortex-M55 | the selftest | 127.7 KB | 18.5 KB |
 | `cortex-m85-nomve` | ARMv8.1-M Mainline | FPv5, double precision | `mps3-an547`, a Cortex-M55 | the selftest | 129.8 KB | 18.5 KB |
 | `cortex-m85-nofp` | ARMv8.1-M Mainline | none | `mps3-an547`, a Cortex-M55 | the selftest | 131.0 KB | 18.5 KB |
+| `cortex-a7` | ARMv7-A, built as Thumb-2 code | VFPv4 and NEON | `virt`, with a Cortex-A7 | run_all; difftest for 16 of its programs | 116.2 KB | 18.2 KB |
 
 - **run_all** means that `python tests/run_all.py --cpu CORE` passes: every test program and example, with the
   checks the tools make on the images. The three tests of the large-memory machine, `mps2-an386`, are skipped for a
-  core whose code its Cortex-M4F does not run: the Cortex-M7 and the cores of ARMv8-M and ARMv8.1-M.
+  core whose code its Cortex-M4F does not run: the Cortex-M7, the cores of ARMv8-M and ARMv8.1-M, and the
+  Cortex-A7. For the Cortex-A7 three more are skipped, whose Kotlin code programs the System Control Block or the
+  SysTick of a Cortex-M: `isr_init_window`, `isr_init_window_tls` and the example `irq`.
 - **The selftest** means that `python tests/run_all.py --cpu CORE selftest` passes and nothing else was run.
   `cortex-m0` and `cortex-m1` differ from `cortex-m0plus` only in the `-mcpu` value, and `cortex-m7-sp` from
   `cortex-m7` in the FPU and its multilib. Of the six entries of ARMv8.1-M (below), run_all ran for `cortex-m55`.
@@ -95,6 +99,17 @@ each. A core without an FPU uses the soft-float calling convention.
   Cortex-M55 has too, and its model runs them. (The build attributes of an image do not show this: ld.lld keeps
   those of the first object that has any, which is a member of newlib.) Nothing that belongs to the Cortex-M85
   itself was tested: its reset state, its MPU and its fault registers.
+- **The Cortex-A7 is a core of another profile.** It has no vector table of handler addresses, no NVIC and no
+  SysTick, and an MMU where a Cortex-M has an MPU, so it has start code of its own
+  ([targets/qemu-virt](../targets/qemu-virt)): the program runs in Supervisor mode with the MMU on and a flat map,
+  and its interrupt handlers in IRQ mode, called through the machine's interrupt controller (a GIC, version 2).
+  The Kotlin code and the runtime are built as for a Cortex-M, as Thumb-2 code with the hard-float calling
+  convention. difftest was run for 16 of its programs, chosen across the language, the strings, the numbers, the
+  atomics and the stack traces, and all gave the output of the stock runtime; it was not run for the others or
+  under GC stress. What else was not checked: nothing ran on a board or on another QEMU machine; QEMU does not model
+  the caches, which the start code leaves off; there is no build as ARM code and none without the FPU; and one
+  core runs, the machine's default. [porting.md](porting.md#a-cortex-a-core) says what a board with such a core
+  does.
 - **On a board,** only the Cortex-M4F has run: an STM32L431, in
   [the recorded run](../examples/selftest/stm32l431-report.txt), which predates release 0.1.0.
   [porting.md](porting.md#another-core) says what a board with another core changes.
@@ -104,8 +119,9 @@ Not supported:
 
 - **PACBTI on the Cortex-M85:** the code is built without pointer authentication and branch target
   identification, and the libraries GCC has for them are not linked.
-- **Cortex-R and 32-bit Cortex-A cores:** they have the same instruction sets but another start-up and interrupt
-  model. They are a separate step after the Cortex-M cores.
+- **Cortex-R cores and the other 32-bit Cortex-A cores:** there is no entry in `CORES` and no start code for them,
+  and nothing ran. What the runtime does on the A profile ([runtime/km_cpu.h](../runtime/km_cpu.h)) is written for
+  the R profile too; its files were compiled for the Cortex-R5 and the Cortex-R52, and no more than that.
 - **64-bit ARM:** out of reach of this approach, which reads the IR of the compiler's 32-bit ARM target.
 - **Threads:** the runtime is single-threaded, and interrupt handlers follow
   [the rules](writing-kotlin.md#interrupt-handlers).
@@ -118,7 +134,7 @@ Each gap is described where it matters; this list only points there.
 |---|---|
 | The standard library: what works partly, does not work, or is not supported | [kotlin-support.md](kotlin-support.md) |
 | Memory: a heap that does not move objects and fragments, heap exhaustion that cannot be caught, the size of `Regex` | [README: Known gaps](../README.md#known-gaps), [writing-kotlin.md](writing-kotlin.md#memory) |
-| Diagnostics: stack traces of at most 12 frames, cut without a marker; stack overflow and null reads caught (by MPU guards) only by the start code of `qemu-l475`, not by `qemu-an386` or the STM32L431 example | [how-it-works.md](how-it-works.md#reading-a-stack-trace), [porting.md](porting.md#optional-a-fault-report-and-mpu-guards) |
+| Diagnostics: stack traces of at most 12 frames, cut without a marker; stack overflow and null reads caught only by the start code of `qemu-l475` (by MPU guards) and of `qemu-virt` (by pages the MMU does not map), not by `qemu-an386` or the STM32L431 example | [how-it-works.md](how-it-works.md#reading-a-stack-trace), [porting.md](porting.md#optional-a-fault-report-and-mpu-guards) |
 | Boards: the hooks a board must provide for clocks, entropy and input | [porting.md](porting.md#the-board-contract) |
 | Hosts: Windows is tested, and Linux x64 in CI; macOS is not; on Windows, file names outside the ANSI code page fail in the xPack tools | [BUILDING.md](../BUILDING.md#hosts) |
 
