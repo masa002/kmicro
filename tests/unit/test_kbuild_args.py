@@ -87,5 +87,33 @@ class Args(unittest.TestCase):
         self.assertIn('unknown option --kotlin-args', error('--kotlin-args', 'x'))
 
 
+class Output(unittest.TestCase):
+    """main() with a stdout and a stderr that cannot encode every character, as a pipe on Windows, where Python
+    writes the ANSI code page. kn.build is replaced: no compiler runs."""
+
+    def run_main(self, *argv, objs=()):
+        saved = sys.argv, sys.stdout, sys.stderr, kbuild.kn.build
+        out = io.TextIOWrapper(io.BytesIO(), encoding='ascii', errors='strict')
+        err = io.TextIOWrapper(io.BytesIO(), encoding='ascii', errors='backslashreplace')
+        sys.argv, sys.stdout, sys.stderr, kbuild.kn.build = ['kbuild.py', *argv], out, err, lambda *a, **k: objs
+        try:
+            kbuild.main()
+            code = 0
+        except SystemExit as e:
+            code = e.code
+        finally:
+            sys.argv, sys.stdout, sys.stderr, kbuild.kn.build = saved
+        out.flush()
+        err.flush()
+        return code, *(s.buffer.getvalue().decode('utf-8').splitlines() for s in (out, err))
+
+    def test_objects_in_a_folder_with_any_name(self):
+        objs = [Path('build') / 'café テスト' / name for name in ('k.o', 'bridges.o')]
+        self.assertEqual(self.run_main('build/x', HELLO, objs=objs), (0, [str(o) for o in objs], []))
+
+    def test_error_names_the_file(self):
+        self.assertEqual(self.run_main('build/x', 'café.kt'), (2, [], ['kbuild.py: error: café.kt: not found']))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -33,8 +33,8 @@ CFLAGS = [*paths.target_flags(), '-isystem', str(paths.newlib_include()), '-O2',
 CXXFLAGS = ['-std=c++17', '-fno-rtti', '-Wno-unused-variable', '-Wno-unused-but-set-variable']
 
 
-def run(args):
-    r = subprocess.run([str(a) for a in args], capture_output=True, text=True, errors='replace')
+def run(args, encoding=None):
+    r = subprocess.run([str(a) for a in args], capture_output=True, text=True, encoding=encoding, errors='replace')
     if r.returncode != 0:
         sys.exit(f'FAILED: {" ".join(map(str, args))[:400]}\n{r.stdout[-3000:]}{r.stderr[-4000:]}')
     return r
@@ -43,7 +43,8 @@ def run(args):
 def kotlin(force, out):
     """selftest.kt -> the objects tools/kbuild.py prints (k.o, and bridges.o if the code called C)."""
     r = run([sys.executable, ROOT / 'tools/kbuild.py', out, EXAMPLE / 'selftest.kt',
-             '--c-api', EXAMPLE / 'selftest.h', '--package', 'selftest', *(['--kotlin'] if force else [])])
+             '--c-api', EXAMPLE / 'selftest.h', '--package', 'selftest', *(['--kotlin'] if force else [])],
+            encoding='utf-8')                    # kbuild writes UTF-8, whatever the code page
     return [Path(line.strip()) for line in r.stdout.splitlines() if line.strip().endswith('.o')]
 
 

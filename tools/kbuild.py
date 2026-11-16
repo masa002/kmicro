@@ -147,6 +147,8 @@ def parse(argv):
 
 
 def main():
+    for stream in (sys.stdout, sys.stderr):      # UTF-8, as qbuild writes: any file name prints, also into a pipe
+        stream.reconfigure(encoding='utf-8', errors='replace')
     a = parse(sys.argv[1:])
     paths.select_cpu(a.cpu)
     objs = kn.build(a.sources, a.outdir, libs=a.libs, c_api=a.c_api, package=a.package, init_all=a.init_all,

@@ -67,7 +67,8 @@ else the newest, with a warning.
   refused: run kbuild from inside that folder, or move it; a `.def` file whose own name has such a character and no
   short name has to be renamed. The xPack tools (QEMU, `size`, `nm`, `objdump`) open files through the ANSI code
   page too: kmicro runs them in the file's folder with its bare name, so a folder name outside the code page works,
-  but such a file name does not.
+  but such a file name does not. kbuild and qbuild write their own output, the list of objects and the messages, as
+  UTF-8 also into a pipe or a file, where Python would use the ANSI code page.
 - **Linux x64:** tested in CI (ubuntu-latest), with the toolchains of versions.txt. `paths.py` runs the shell
   launchers of Kotlin/Native.
 - **macOS:** untested. `paths.py` runs the shell launchers and looks for the dev build of the LLVM.
