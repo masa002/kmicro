@@ -42,6 +42,9 @@ void TICK_HANDLER(void)
     copy_read();
 #elif defined(TEST_WEAK)
     weak_read();
+#elif defined(TEST_CHARS)
+    if (s_ticks <= 64) s_handled += classify(s_ticks);
+    if (s_ticks == 64) s_done = 1;
 #endif
 }
 
@@ -151,7 +154,22 @@ int main(void)
     kmicro_put_int(bad);
     kmicro_puts(ok ? "  OK\n" : "  BROKEN\n");
     return !ok;
-#else                                   /* the cases the runtime must stop */
+#elif defined(TEST_CHARS)
+    (void)a;
+    (void)b;
+    tick_start(RVR);                    /* no kt_init_all(): the handler is the first to read the Unicode tables */
+    wait_for_handler();
+    int32_t sum = 0;
+    for (int i = 1; i <= 64; i++)
+        sum += classify(i);
+    int ok = s_done && s_handled == sum;
+    kmicro_puts("64 characters classified by a handler first: checksum ");
+    kmicro_put_int(s_handled);
+    kmicro_puts(", by the main code afterwards ");
+    kmicro_put_int(sum);
+    kmicro_puts(ok ? "  OK\n" : "  BROKEN\n");
+    return !ok;
+#else                                  /* the cases the runtime must stop */
     (void)a;
     (void)b;
     tick_start(RVR);

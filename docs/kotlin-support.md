@@ -95,7 +95,7 @@ from the Cortex-M0 to the Cortex-M85, and what was checked on each.
 | shuffle/shuffled/random on collections | works | |
 | **Strings and text** | | |
 | String functions, StringBuilder, split/replace/trim/pad | works | byte-identical |
-| uppercase/lowercase, Char classification, digitToInt | works | the Unicode tables stay in flash; Char.category creates its 30 entries (984 B) |
+| uppercase/lowercase, Char classification, digitToInt | works | the Unicode tables stay in flash and have no first use, so an interrupt handler may classify and convert characters; Char.category and isTitleCase() create the 30 CharCategory entries (984 B) on first use |
 | encodeToByteArray, strict decoding | works | |
 | decodeToString of invalid or truncated UTF-8 | works | |
 | println of a string containing U+0000 | partly | the default `kmicro_write` drops the U+0000 itself and prints the rest; a board's `kmicro_write` gets it |

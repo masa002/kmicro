@@ -1,0 +1,1 @@
+64 characters classified by a handler first: checksum 215667, by the main code afterwards 215667  OK

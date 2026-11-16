@@ -43,7 +43,8 @@ compared with the same program without it.
 - **Stack** is the deepest the stack went below the caller, a collection inside the call included.
 - Number parsing (`toDouble`, `toFloat`, `toDoubleOrNull`) does not use `Regex`. Its scratch memory comes from the
   1 KB native-memory arena (`KM_INTEROP_BYTES`), not from the heap.
-- Case mapping and character classes read their tables from flash; only `Char.category` puts something on the heap.
+- Case mapping and character classes read their tables from flash; only `Char.category` puts something on the heap,
+  and `isTitleCase()`, which reads it.
 
 1. **Allocate up front.** The collector does not move objects, so a list that keeps growing fragments the heap. Keep
    buffers in arrays sized at start, and use ring buffers for queues.
@@ -197,6 +198,10 @@ What a handler may do:
   there the runtime masks interrupts for the smaller values too.
 - **Use native memory** with `nativeHeap.alloc` and `nativeHeap.free`: the arena masks interrupts. Not `memScoped` or
   `cstr`, which may create Kotlin objects.
+- **Classify and convert characters**: `isLetter()`, `isDigit()`, `isUpperCase()`, `isLowerCase()`,
+  `isWhitespace()`, `uppercaseChar()`, `lowercaseChar()`, `digitToInt()`. Their tables are constants in flash, in
+  place from the start: a handler may be the first code to read them, also for a character above U+007F. Not
+  `Char.category` or `isTitleCase()`: their first use creates the 30 `CharCategory` entries.
 - **Print a string that already exists**: `println` of it does not allocate.
 - **Throw and catch an exception that already exists**, such as an `object` that is an exception, created before
   interrupts are enabled. It reaches its catch also when the handler interrupted the thread code between a throw

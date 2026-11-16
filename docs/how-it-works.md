@@ -86,7 +86,7 @@ What retarget.py changes:
 | on a core without an FPU: a struct result of a C function, or of a callback given to C, is passed in memory ([toolchain/aapcs.py](../toolchain/aapcs.py)) | cinterop writes those calls for the hard-float ABI, which returns a struct of floats in registers; C compiled for the core returns it through a pointer |
 | `Random.Default` seeded from `kmicro_random_seed()` | `kotlin.random` needs no clock |
 | the hexadecimal branch of `toDouble()` / `toFloat()` calls `runtime/hexfloat.c` | number parsing does not link the Regex engine |
-| the Unicode tables stay in flash | the standard library would copy them to the heap on first use |
+| the Unicode tables stay in flash, and their files start as initialised | the standard library would copy them to the heap on first use; with no first use left, an interrupt handler may be the first to read them |
 
 kbuild compiles with kotlinc-native again only when its arguments, the compiler or one of the inputs changed;
 `--kotlin` forces it. `python tools/kbuild.py build/app app.kt --kotlinc -g` adds debug information, which

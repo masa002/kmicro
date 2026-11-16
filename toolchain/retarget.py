@@ -24,7 +24,8 @@ usage: python retarget.py in.ll out.ll [--no-tls] [--single-core] [--size [--hot
   (runtime/time.c), so Random needs no clock
 - String.toDouble()/toFloat(): the hexadecimal parser calls runtime/hexfloat.c instead of compiling regular
   expressions, so number parsing does not link the Regex engine
-- the stdlib's Unicode tables stay in flash instead of being copied to the heap on first use
+- the stdlib's Unicode tables stay in flash instead of being copied to the heap on first use, and a table file
+  whose initialiser has nothing else to do starts as initialised: its globals point at the tables from the start
 - the functions that box an Int, Long, Short or Byte are never inlined: tools/isr_check.py --boxing finds a box by
   the call
 - one of these three rewrites that matches nothing in a module that defines the code it rewrites prints a warning
@@ -236,20 +237,66 @@ for fn, ty in (('kmicro_hex_to_double', 'double'), ('kmicro_hex_to_float', 'floa
 # its tables from their constants into the heap (intArrayOf semantics), from 2.4 KB for an ASCII uppercase() to
 # 11.7 KB for Char.category, kept for good. These tables are private to the stdlib and never written, so the constant
 # itself is used: a permanent object, which the collector never frees.
+# An initialiser that then only points the file's globals at such constants has nothing left to do at run time: the
+# globals get the constants as their initial values and the file starts as initialised. There is no first use, so an
+# interrupt handler may be the first to classify a character above U+007F (the runtime refuses a first use there).
+# The files are the generated ones, _*.kt, and CharNative.kt, whose table of digits digitToInt() and String.toInt() read.
 COPY = re.compile(r'call ptr @"kfun:kotlin\.collections#copyOf__at__[^"]*"\((ptr @[0-9]+), ptr %[0-9]+\)')
+TABLE_FILE = (r'^define internal void (@"kfun:kotlin\.text\.\$init_global\$(?:_\w+|CharNative)\.kt#internal")\(\)'
+              r'[^\n]*\{$.*?^\}$')
+NO_WORK = ('@llvm.memset.', '@EnterFrame(', '@LeaveFrame(', '@Kotlin_mm_safePointFunctionPrologue(',
+           '@RegisterGlobal(')            # the calls of a function that does nothing but set its globals
 tables = []                             # the copies replaced, per table file
+static = {}                             # initialiser -> {global: constant}, for the files with nothing else to do
+
+
+def constant_stores(body):
+    """{global: constant} when the body of an initialiser only stores constants into globals, else None."""
+    value, stores = {}, {}
+    for line in body.splitlines()[1:-1]:
+        line = re.sub(r', !dbg ![0-9]+$', '', line.strip())
+        m = re.fullmatch(r'(%[\w.]+) = getelementptr inbounds i8, ptr (@[0-9]+), i32 0', line)
+        if m:
+            value[m.group(1)] = m.group(2)
+            continue
+        m = re.fullmatch(r'(%[\w.]+) = phi ptr \[ (%[\w.]+), %[\w.]+ \]', line)
+        if m and m.group(2) in value:
+            value[m.group(1)] = value[m.group(2)]
+            continue
+        m = re.fullmatch(r'call void @UpdateHeapRef\(ptr noundef (@"kvar:[^"]+"), ptr noundef (%[\w.]+)\)(?: #\d+)?',
+                         line)
+        if m and m.group(2) in value and m.group(1) not in stores:
+            stores[m.group(1)] = value[m.group(2)]
+            continue
+        if ('call ' in line or 'invoke ' in line or 'store ' in line) and not any(c in line for c in NO_WORK):
+            return None                              # it does something else: it stays an initialiser
+        if re.match(r'%[\w.]+ = (?!alloca |phi |getelementptr )', line):
+            return None
+    return stores or None
 
 
 def keep_constant(m):
     body, n = COPY.subn(r'getelementptr inbounds i8, \1, i32 0', m.group(0))
     tables.append(n)
+    stores = constant_stores(body) if n else None
+    if stores:
+        static[m.group(1)] = stores
     return body
 
 
-text = re.sub(r'^define internal void @"kfun:kotlin\.text\.\$init_global\$_\w+\.kt#internal"\(\)[^\n]*\{$.*?^\}$',
-              keep_constant, text, flags=re.M | re.S)
+text = re.sub(TABLE_FILE, keep_constant, text, flags=re.M | re.S)
 if not sum(tables):
     unmatched(text, r'kotlin\.text\.[^"]*init_global\$_', 'the Unicode tables may be copied to the heap on first use')
+for init, stores in static.items():
+    # the state of the file: the first argument of the calls that run this initialiser
+    states = set(re.findall(r'\(ptr noundef (@"state_global\$[^"]*"), ptr noundef ' + re.escape(init) + r'[,)]', text))
+    definitions = [re.compile(r'^(' + re.escape(g) + r' = internal global ptr) null\b', re.M) for g in stores]
+    state = re.compile(r'^(' + re.escape(next(iter(states), '@')) + r' = internal global i32) 0\b', re.M)
+    if len(states) != 1 or not state.search(text) or not all(d.search(text) for d in definitions):
+        continue                                     # not the IR this rewrite knows: the file keeps its first use
+    for d, constant in zip(definitions, stores.values()):
+        text = d.sub(lambda m, c=constant: f'{m.group(1)} {c}', text, count=1)
+    text = state.sub(r'\1 2', text, count=1)         # FILE_INITIALIZED (runtime/kmicro.h)
 open(dst, 'w', encoding='utf-8', newline='\n').write(text)
 
 if stubs:

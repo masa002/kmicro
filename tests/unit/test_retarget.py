@@ -230,6 +230,89 @@ attributes #0 = { "target-cpu"="arm1176jzf-s" "target-features"="+armv6kz,+dsp,+
 attributes #1 = { nounwind }
 '''
 
+# Two table files as the compiler writes them. The initialiser of the first only points its globals at the tables;
+# that of the second also calls a function.
+TABLE_MODULE = r"""target datalayout = "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64"
+target triple = "armv6kz-unknown-linux-gnueabihf"
+
+@1 = internal unnamed_addr constant [4 x i32] [i32 1, i32 2, i32 3, i32 4]
+@2 = internal unnamed_addr constant [2 x i32] [i32 5, i32 6]
+@"kvar:kotlin.text.rangeStart#internal.2" = internal global ptr null, align 4
+@"kvar:kotlin.text.rangeLength#internal" = internal global ptr null, align 4
+@"kvar:kotlin.text.keys#internal" = internal global ptr null, align 4
+@"state_global$kotlin.text$_LetterChars.kt" = internal global i32 0
+@"state_global$kotlin.text$_OtherChars.kt" = internal global i32 0
+
+define internal void @"kfun:kotlin.text.$init_global$_LetterChars.kt#internal"() #0 {
+prologue:
+  %0 = alloca ptr, i32 5, align 4
+  br label %locals_init
+
+locals_init:                                      ; preds = %prologue
+  %1 = phi ptr [ %0, %prologue ]
+  %2 = getelementptr ptr, ptr %1, i32 3
+  %3 = getelementptr ptr, ptr %1, i32 4
+  call void @EnterFrame(ptr noundef %1, i32 noundef 0, i32 noundef 5) #1
+  br label %entry
+
+entry:                                            ; preds = %locals_init
+  %4 = call ptr @"kfun:kotlin.collections#copyOf__at__kotlin.IntArray(){}kotlin.IntArray"(ptr @1, ptr %2)
+  br label %returnable_block_exit
+
+returnable_block_exit:                            ; preds = %entry
+  %5 = phi ptr [ %4, %entry ]
+  call void @RegisterGlobal(ptr noundef @"kvar:kotlin.text.rangeStart#internal.2") #1
+  call void @UpdateHeapRef(ptr noundef @"kvar:kotlin.text.rangeStart#internal.2", ptr noundef %5) #1
+  %6 = call ptr @"kfun:kotlin.collections#copyOf__at__kotlin.IntArray(){}kotlin.IntArray"(ptr @2, ptr %3)
+  br label %returnable_block_exit1
+
+returnable_block_exit1:                           ; preds = %returnable_block_exit
+  %7 = phi ptr [ %6, %returnable_block_exit ]
+  call void @RegisterGlobal(ptr noundef @"kvar:kotlin.text.rangeLength#internal") #1
+  call void @UpdateHeapRef(ptr noundef @"kvar:kotlin.text.rangeLength#internal", ptr noundef %7) #1
+  call void @LeaveFrame(ptr noundef %1, i32 noundef 0, i32 noundef 5) #1
+  ret void
+}
+
+define internal void @"kfun:kotlin.text.$init_global$_OtherChars.kt#internal"() #0 {
+entry:
+  %0 = alloca ptr, align 4
+  %1 = call ptr @"kfun:kotlin.collections#copyOf__at__kotlin.IntArray(){}kotlin.IntArray"(ptr @1, ptr %0)
+  call void @RegisterGlobal(ptr noundef @"kvar:kotlin.text.keys#internal") #1
+  call void @UpdateHeapRef(ptr noundef @"kvar:kotlin.text.keys#internal", ptr noundef %1) #1
+  call void @"kfun:kotlin.text#fill(){}"()
+  ret void
+}
+
+define i32 @"kfun:kotlin.text#isLetterImpl__at__kotlin.Char(){}kotlin.Boolean"(i32 %0) #0 {
+entry:
+  %1 = load i32, ptr @"state_global$kotlin.text$_LetterChars.kt", align 4
+  %2 = icmp eq i32 %1, 2
+  br i1 %2, label %ready, label %first
+
+first:
+  call void @CallInitGlobalPossiblyLock(ptr noundef @"state_global$kotlin.text$_LetterChars.kt", ptr noundef @"kfun:kotlin.text.$init_global$_LetterChars.kt#internal")
+  call void @CallInitGlobalPossiblyLock(ptr noundef @"state_global$kotlin.text$_OtherChars.kt", ptr noundef @"kfun:kotlin.text.$init_global$_OtherChars.kt#internal")
+  br label %ready
+
+ready:
+  %3 = load ptr, ptr @"kvar:kotlin.text.rangeStart#internal.2", align 4
+  %4 = load i32, ptr %3, align 4
+  ret i32 %4
+}
+
+declare ptr @"kfun:kotlin.collections#copyOf__at__kotlin.IntArray(){}kotlin.IntArray"(ptr, ptr) #0
+declare void @"kfun:kotlin.text#fill(){}"() #0
+declare void @EnterFrame(ptr, i32, i32)
+declare void @LeaveFrame(ptr, i32, i32)
+declare void @RegisterGlobal(ptr)
+declare void @UpdateHeapRef(ptr, ptr)
+declare void @CallInitGlobalPossiblyLock(ptr, ptr)
+
+attributes #0 = { "target-cpu"="arm1176jzf-s" "target-features"="+armv6kz,+dsp,+vfp2" }
+attributes #1 = { nounwind }
+"""
+
 
 def body(text, name):
     m = re.search(r'^define [^\n]*@"' + re.escape(name) + r'"[^\n]*\{$(.*?)^\}$', text, re.M | re.S)
@@ -424,6 +507,25 @@ class RetargetTest(unittest.TestCase):
         self.assertIn('%1 = getelementptr inbounds i8, ptr @1, i32 0', table)
         self.assertNotIn('copyOf', table)
         self.assertIn('copyOf', body(text, 'kfun:demo#copy(){}'))         # user code keeps its copy
+
+    def test_a_table_file_with_nothing_else_to_do_starts_as_initialised(self):
+        # no first use is left, so an interrupt handler may be the first to read the tables
+        (OUT / 'tables.ll').write_text(TABLE_MODULE, encoding='utf-8')
+        r, text = self.retarget(src='tables.ll')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn('retarget: warning', r.stderr)
+        self.assertIn('@"kvar:kotlin.text.rangeStart#internal.2" = internal global ptr @1, align 4\n', text)
+        self.assertIn('@"kvar:kotlin.text.rangeLength#internal" = internal global ptr @2, align 4\n', text)
+        self.assertIn('@"state_global$kotlin.text$_LetterChars.kt" = internal global i32 2\n',
+                      text)
+        # an initialiser that does more stays one: its tables are constants, its file has a first use
+        self.assertIn('@"kvar:kotlin.text.keys#internal" = internal global ptr null, align 4\n', text)
+        self.assertIn('@"state_global$kotlin.text$_OtherChars.kt" = internal global i32 0\n',
+                      text)
+        self.assertNotIn('copyOf', body(text, 'kfun:kotlin.text.$init_global$_OtherChars.kt#internal'))
+        c = subprocess.run([str(paths.clang()), *paths.target_flags(), '-O2', '-c', '-x', 'ir', OUT / 'out.ll', '-o',
+                            OUT / 'tables.o'], capture_output=True, text=True)
+        self.assertEqual(c.returncode, 0, c.stderr)
 
     def warnings(self, module, src):
         (OUT / src).write_text(module, encoding='utf-8')

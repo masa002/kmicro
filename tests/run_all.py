@@ -255,6 +255,7 @@ TESTS = [
     isr('isr_lazy_globals', 'TEST_LAZY'),
     isr('isr_init_all', 'TEST_INIT_ALL', exit=0),
     isr('isr_throw', 'TEST_THROW', exit=0),
+    isr('isr_chars', 'TEST_CHARS', exit=0),
     Test('isr_init_window', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98, m_profile=PENDS),
     Test('isr_init_window_tls', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98,
          case={'TEST_THREAD_LOCAL': 1}, m_profile=PENDS),
