@@ -111,3 +111,50 @@ fun localClass() {
 fun anonymousObject() {
     throw object : IllegalStateException("anonymous") {}
 }
+
+// A trace keeps the frames nearest to where the exception was made (KM_TRACE_MAX of them, 12), and the report says
+// so when it left some out. The exceptions are made at every depth of a recursion, through one call, so that the
+// first whose trace is full is found whatever the frames below the recursion are: it has exactly as many frames as
+// a trace keeps, which is not a cut, and the ones made one and three calls deeper have one and three more. Kotlin
+// code sees the frames that were kept and nothing else.
+class Made : Exception() {
+    var label = ""
+    var why: Throwable? = null
+    override val message: String get() = label
+    override val cause: Throwable? get() = why
+}
+
+var visits = 0                          // work on both sides of the call, so that the recursion stays one
+
+fun madeAt(depth: Int): Made {
+    visits += depth
+    val e = if (depth == 0) Made() else madeAt(depth - 1)
+    visits -= depth
+    return e
+}
+
+@CName("k_cut_trace")
+fun cutTrace() {
+    val made = List(24) { madeAt(it) }
+    val sizes = made.map { it.getStackTraceAddresses().size }
+    val full = sizes.indexOf(sizes.last())
+    println("frames of the deepest: ${sizes.last()}; of the first that has as many, and of the one before: " +
+            "${sizes[full]}, ${sizes[full - 1]}")
+    val top = made[full + 3]
+    println("getStackTrace() of the one made three calls deeper: ${top.getStackTrace().size} frames, and " +
+            "${top.stackTraceToString().trim().lines().size} lines in stackTraceToString()")
+    top.label = "three frames more than a trace keeps"
+    made[full + 1].label = "one frame more"
+    made[full].label = "as many frames as a trace keeps"
+    top.addSuppressed(made[full + 1])
+    top.why = made[full]
+    throw top
+}
+
+// More exceptions than the report prints (KM_REPORT_MAX, 16): it says that it left some out.
+fun wrapped(n: Int): Exception = if (n == 0) Exception("root") else Exception("level $n", wrapped(n - 1))
+
+@CName("k_long_chain")
+fun longChain() {
+    throw wrapped(20)
+}

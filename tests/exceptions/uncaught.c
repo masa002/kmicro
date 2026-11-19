@@ -17,6 +17,8 @@ void k_message_throws(void);
 void k_local_class(void);
 void k_anonymous_object(void);
 void k_suppressed(void);
+void k_cut_trace(void);
+void k_long_chain(void);
 
 #if defined(TEST_BL_ENTRY)
 /* A naked function that calls with bl, as a reset entry that reaches the C start function with bl: from then on lr
@@ -61,6 +63,10 @@ int main(void)
     k_anonymous_object();
 #elif defined(TEST_SUPPRESSED)
     k_suppressed();
+#elif defined(TEST_CUT_TRACE)
+    k_cut_trace();
+#elif defined(TEST_LONG_CHAIN)
+    k_long_chain();
 #elif defined(TEST_BL_ENTRY)
     bl_entry();
 #endif
