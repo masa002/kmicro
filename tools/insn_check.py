@@ -77,6 +77,14 @@ V81M = {'dls', 'wls', 'le', 'csel', 'csinc', 'csinv', 'csneg', 'cinc', 'cinv', '
 MVE = {'dlstp', 'wlstp', 'letp', 'lctp', 'vctp', 'vpnot', 'vpsel', 'asrl', 'lsll', 'lsrl', 'sqrshr', 'sqrshrl',
        'sqshl', 'sqshll', 'srshr', 'srshrl', 'uqrshl', 'uqrshll', 'uqshl', 'uqshll', 'urshr', 'urshrl'}
 PACBTI = {'pacg', 'autg', 'bxaut'}                 # pac, aut, pacbti and bti are hints: a nop without PACBTI
+SYSREG_NEEDS = {
+    'basepri': {'thumb2'}, 'basepri_max': {'thumb2'}, 'faultmask': {'thumb2'},
+    'apsr_g': {'dsp'}, 'apsr_nzcvqg': {'dsp'},
+    'msplim': {'v8m'}, 'psplim': {'v8m'},
+    'msp_ns': {'v8m'}, 'psp_ns': {'v8m'}, 'primask_ns': {'v8m'}, 'control_ns': {'v8m'}, 'sp_ns': {'v8m'},
+    'basepri_ns': {'v8m', 'thumb2'}, 'faultmask_ns': {'v8m', 'thumb2'},
+    'msplim_ns': {'v8m', 'thumb2'}, 'psplim_ns': {'v8m', 'thumb2'},
+}
 COPROCESSOR = re.compile(r'(cdp|ldc|stc|mcr|mrc|mcrr|mrrc)2?l?$')
 FPV5 = re.compile(r'vsel(eq|ge|gt|vs)$|v(max|min)nm$|vrint[anpmxzr]|vcvt[anpm]$')
 FP_OLD = {'fldmiax', 'fstmiax', 'fldmdbx', 'fstmdbx'}             # as objdump names vldmia and vstmia of an odd length
@@ -108,9 +116,18 @@ def root(m, names):
 def fp_needs(m, operands):
     """An instruction on the registers of the FPU: m is the mnemonic without .w."""
     name, _, kind = m.partition('.')
+    if root(name, {'vlstm', 'vlldm'}):
+        return {'v8m', 'thumb2'}
+    # Objdump also uses D register names for byte and halfword lanes of Q registers.
+    if (root(name, {'vmov'}) and kind in {'8', '16', 's8', 'u8', 's16', 'u16'}
+            and re.search(r'\bd[0-9]+\[', operands, re.I)):
+        return {'mve'}
     if re.search(r'\bq[0-7]\b|\bvpr\b|\bp0\b', operands, re.I) or re.match(r'vp(st|t)', name) or root(name, MVE):
         return {'mve'}
     need = {'fp'}
+    if (root(name, {'vldr', 'vstr', 'vmsr', 'vmrs'})
+            and re.search(r'\b(fpscr_nzcvqc|fpcxtns|fpcxts)\b', operands.split('@', 1)[0], re.I)):
+        need.add('v8.1m')
     if 'f64' in kind:
         need.add('fp64')
     if kind == '16' or 'f16' in kind and not re.match(r'vcvt[bt]', name):   # vcvtb, vcvtt: every FPU has them
@@ -140,8 +157,11 @@ def needs(wide, mnemonic, operands=''):
         return {'coprocessor'}
     if root(m, V8M):
         return {'v8m'}
-    if root(m, {'msr', 'mrs'}):                 # the registers ARMv6-M and ARMv8-M Baseline do not have
-        return {'thumb2'} if re.search(r'basepri|faultmask', operands, re.I) else set()
+    access = root(m, {'msr', 'mrs'})
+    if access:
+        dest, _, source = operands.split('@', 1)[0].partition(',')
+        reg = dest if access == 'msr' else source
+        return set(SYSREG_NEEDS.get(reg.strip().lower(), ()))
     if not wide:
         return {'base'} if m in ('cbz', 'cbnz') else {'thumb2'} if re.match(r'it[te]{0,3}$', m) else set()
     if m in V6M_WIDE:
