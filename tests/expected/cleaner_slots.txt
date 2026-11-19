@@ -1,0 +1,2 @@
+17 dropped, each makes two StableRefs: 16 ran before the last was made, 17 in all
+an action that makes 17 Cleaners: 16 of them ran inside it, 17 in all
