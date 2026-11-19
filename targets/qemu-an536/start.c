@@ -39,8 +39,10 @@ __attribute__((section(".vectors"))) ARM_ENTRY void vectors(void)
                    "b fiq_entry\n");
 }
 
-/* The vectors of Hyp mode (HVBAR). The program never asks for anything there, so every entry is a fault. */
-ARM_ENTRY void hyp_vectors(void)
+/* The vectors of Hyp mode (HVBAR). The program never asks for anything there, so every entry is a fault. HVBAR has
+ * no low five bits: the core enters at the 32-byte boundary below the address written to it, so the table must lie
+ * on one. (`vectors` does: it is the first thing of the image.) */
+__attribute__((aligned(32))) ARM_ENTRY void hyp_vectors(void)
 {
     __asm volatile("b hyp_entry\n b hyp_entry\n b hyp_entry\n b hyp_entry\n"
                    "b hyp_entry\n b hyp_entry\n b hyp_entry\n b hyp_entry\n");

@@ -1,0 +1,3 @@
+the vectors of Hyp mode are 0 bytes past a 32-byte boundary
+kmicro fault: an exception taken to Hyp mode at 0x{X}
+    hsr 0x4a000000

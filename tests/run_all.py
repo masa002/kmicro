@@ -241,6 +241,7 @@ TESTS = [
     Test('qbuild_irq', None, ['tests/qbuild/irq.c'], exit=99),
     Test('qbuild_irq_an386', None, ['tests/qbuild/irq.c'], exit=99, target='an386'),
     Test('qbuild_svc', None, ['tests/qbuild/svc.c'], exit=99),
+    Test('qbuild_hvc', None, ['tests/qbuild/hvc.c'], exit=99, target='an536'),
     Test('qbuild_exclusive', None, ['tests/qbuild/exclusive.c']),
     Test('qbuild_undefined', None, ['tests/qbuild/undefined.c'], fails='link', exit=1),
     # a folder name that no single ANSI code page holds (テ is outside 1252, é outside 932), with a space

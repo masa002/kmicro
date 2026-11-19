@@ -349,7 +349,8 @@ different:
   mode before anything else: it turns off every trap to it (HCR, HCPTR for the FPU), opens the system registers of
   the interrupt controller to the level below (ICC_HSRE), sets the offset of the virtual timer to 0, and returns
   (`eret`) to the rest of the entry in Supervisor mode. An exception that reaches Hyp mode after that ends in a
-  fault report of its own.
+  fault report of its own: Hyp mode has vectors of its own (HVBAR), and that table must lie on a 32-byte boundary,
+  because the register has no low five bits.
 - **An MPU, and no permission that refuses a privileged read.** The MPU of ARMv8-R gives a region a base and a
   limit in steps of 64 bytes. The start code makes one region for each piece of memory the program has (code and
   constants, read-only; the RAM below the stack guard; the stack; each exception stack; the peripherals) and turns
