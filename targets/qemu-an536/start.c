@@ -362,7 +362,10 @@ IRQS
 __attribute__((section(".irq_handlers"), used))
 void (*const irq_handlers[100])(void) = { IRQS };
 
-__attribute__((used)) void start_irq(uint32_t pc)
+/* In a section of its own, which the linker script puts between _sirq_entry and _eirq_entry: a handler returns to
+ * this function, and by that address the runtime knows a handler from the functions a handler calls
+ * (runtime/km_cpu.h). */
+__attribute__((used, section(".irq_entry"))) void start_irq(uint32_t pc)
 {
     uint32_t iar, n;
     __asm volatile("mrc p15, 0, %0, c12, c12, 0" : "=r"(iar));  /* ICC_IAR1: acknowledge it: its number */

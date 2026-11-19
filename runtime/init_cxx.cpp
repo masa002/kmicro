@@ -76,7 +76,7 @@ bool run_init(Frame &fr, void (*init)(void))
  * address of the function the compiled code called. */
 __attribute__((noinline, cold, noreturn)) static void refused(void *caller, uintptr_t st)
 {
-    if ((uintptr_t)caller >= 0xF0000000u)            /* EXC_RETURN: the call was inlined into the handler itself, */
+    if (km_handler_return((uintptr_t)caller))        /* the call was inlined into the handler itself, */
         caller = (char *)__builtin_return_address(0) - 2;   /* so name the call to here */
     km_fault_pc = caller;
     if (st == BEING_INITIALIZED)
