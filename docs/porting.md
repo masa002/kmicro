@@ -312,6 +312,12 @@ core and this core leaves to the board:
     handler of SVC, which runs in the program's own mode;
   - executes `clrex` before it returns. The atomics are exclusive loads and stores on this core, and ARMv7-A does
     not promise that the store of the interrupted code fails after an exception.
+
+  The linker script can say where the entry calls the handlers: the symbols `_sirq_entry` and `_eirq_entry` around
+  that code (in `virt.ld`, around the section of the start code's `start_irq`). A handler returns to an address
+  between them, and by that the runtime's panics name the handler (`allocation inside an interrupt handler at
+  0x...`, which [tools/symbolize.py](../tools/symbolize.py) resolves) also when the link has inlined the refused
+  call into the handler itself. Without the two symbols such a panic names the entry.
 - **Which functions are handlers** is not in the image unless the board puts it there. The start code calls its
   handlers through a table of their addresses in a section of its own, `.irq_handlers`:
   `IRQ0_Handler` to `IRQ99_Handler`, weak, numbered as the GIC numbers its interrupts. A program defines the ones it

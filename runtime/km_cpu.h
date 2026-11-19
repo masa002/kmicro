@@ -1,7 +1,8 @@
 /* Copyright 2026 the kmicro authors (NOTICE).
  * SPDX-License-Identifier: Apache-2.0 */
-/* The two things the runtime asks the core itself, which the architecture profiles answer through different
- * registers: mask interrupts for a few instructions, and tell a handler from the thread code. C and C++. */
+/* The things the runtime asks the core itself, which the architecture profiles answer in different ways: mask
+ * interrupts for a few instructions, tell a handler from the thread code, and tell the return address of a handler
+ * from one into a handler. C and C++. */
 #ifndef KM_CPU_H
 #define KM_CPU_H
 #include <stdint.h>
@@ -24,6 +25,10 @@ static inline uint32_t km_handler(void)
     __asm volatile("mrs %0, ipsr" : "=r"(ipsr));
     return ipsr & 0x1FFu;
 }
+
+/* True when `ra`, the return address of a function, is the one a handler itself returns to: the function was then
+ * inlined into the handler, and `ra` names no code of the program. On this profile it is an EXC_RETURN value. */
+static inline int km_handler_return(uintptr_t ra) { return ra >= 0xF0000000u; }
 
 #elif defined(__ARM_ARCH_PROFILE)                    /* 'A' and 'R': Cortex-A (AArch32) and Cortex-R */
 
@@ -50,11 +55,22 @@ static inline uint32_t km_handler(void)
     return mode == 0x11u || mode == 0x12u || mode == 0x17u || mode == 0x1Bu ? mode : 0u;
 }
 
+/* A handler is called like any other function, by the interrupt entry of the start code, so the address it returns
+ * to lies in that entry. The linker script says where that is, with these two symbols around the code that calls
+ * the handlers (targets/qemu-virt/virt.ld, docs/porting.md). In an image without them both are 0 and the result is
+ * always 0: a panic then names the entry where it would name the handler. */
+extern const char _sirq_entry[] __attribute__((weak)), _eirq_entry[] __attribute__((weak));
+static inline int km_handler_return(uintptr_t ra)
+{
+    return ra - (uintptr_t)_sirq_entry < (uintptr_t)_eirq_entry - (uintptr_t)_sirq_entry;
+}
+
 #else                                                /* not ARM: no interrupts to mask, never a handler */
 
 static inline uint32_t km_irq_save(void) { return 0; }
 static inline void km_irq_restore(uint32_t saved) { (void)saved; }
 static inline uint32_t km_handler(void) { return 0; }
+static inline int km_handler_return(uintptr_t ra) { (void)ra; return 0; }
 
 #endif
 

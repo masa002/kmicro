@@ -28,7 +28,7 @@ SECTIONS
 {
   .vectors : { KEEP(*(.vectors)) } > FLASH
   .irq_handlers : { KEEP(*(.irq_handlers)) } > FLASH
-  .text : { *(.text .text.*) *(.rodata .rodata.*) } > FLASH
+  .text : { _sirq_entry = .; *(.irq_entry) _eirq_entry = .; *(.text .text.*) *(.rodata .rodata.*) } > FLASH
   .ARM.extab : { *(.ARM.extab* .gnu.linkonce.armextab.*) } > FLASH
   .ARM.exidx : { __exidx_start = .; *(.ARM.exidx* .gnu.linkonce.armexidx.*) __exidx_end = .; } > FLASH
   .init_array : { __init_array_start = .; KEEP(*(SORT(.init_array.*))) KEEP(*(.init_array))

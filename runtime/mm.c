@@ -217,7 +217,7 @@ void *km_fault_pc;
 
 __attribute__((noinline, cold, noreturn)) static void isr_fail(void *caller, const char *what)
 {
-    if ((uintptr_t)caller >= 0xF0000000u)            /* EXC_RETURN: the check was inlined into the handler itself, */
+    if (km_handler_return((uintptr_t)caller))        /* the check was inlined into the handler itself, */
         caller = (char *)__builtin_return_address(0) - 2;   /* so name the call to here (it may end the handler) */
     km_fault_pc = caller;
     kmicro_panic(what);

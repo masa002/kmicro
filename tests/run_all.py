@@ -251,8 +251,9 @@ TESTS = [
     # interrupt handlers: the run-time guards, isr_check, --init-all, reference stores while the collector marks
     isr('isr_alloc', 'TEST_ALLOC', checks=[Check('isr_check', ['tools/isr_check.py', '{elf}'], exit=1), SYMBOLIZE]),
     isr('isr_to_string', 'TEST_TO_STRING'),
-    isr('isr_gc', 'TEST_GC'),
-    isr('isr_collect', 'TEST_COLLECT'),
+    # (the collection is inlined into the handler: the panic must name the handler, not the code that called it)
+    isr('isr_gc', 'TEST_GC', checks=[SYMBOLIZE]),
+    isr('isr_collect', 'TEST_COLLECT', checks=[SYMBOLIZE]),
     isr('isr_schedule', 'TEST_SCHEDULE', exit=0),
     isr('isr_lazy_globals', 'TEST_LAZY', checks=[SYMBOLIZE]),
     isr('isr_init_all', 'TEST_INIT_ALL', exit=0),
