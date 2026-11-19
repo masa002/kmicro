@@ -15,9 +15,10 @@ outside the instruction set of the core, as the compiler's flags for --cpu defin
 
 - ARMv6-M (Cortex-M0, M0+, M1): the 16-bit Thumb instructions without cbz, cbnz and it, and of the 32-bit ones only
   bl, msr, mrs, dsb, dmb and isb;
-- ARMv8-M Baseline (Cortex-M23) adds movw, movt, cbz, cbnz, the 32-bit b and b<condition>, sdiv, udiv, the
+- ARMv8-M Baseline (Cortex-M23) adds movw, movt, cbz, cbnz, the 32-bit b without a condition, sdiv, udiv, the
   exclusive loads and stores, and what ARMv8-M adds to every core (lda, stl and their kin, sg, bxns, blxns, tt);
-- the other cores have the rest of Thumb-2; the DSP instructions (smlabb, qadd, uxtab ...) from ARMv7E-M on;
+- the other cores have the rest of Thumb-2, the 32-bit b<condition> (beq.w) among it; the DSP instructions
+  (smlabb, qadd, uxtab ...) from ARMv7E-M on;
 - an FPU instruction needs an FPU, one on double-precision values (vadd.f64) a double-precision FPU, vsel, vrint,
   vmaxnm, vminnm and vcvta/n/p/m an FPv5, one on half-precision values the FPU of ARMv8.1-M;
 - MVE instructions, the low-overhead loops, csel and clrm need ARMv8.1-M, the first of them MVE;
@@ -145,7 +146,9 @@ def needs(wide, mnemonic, operands=''):
         return {'base'} if m in ('cbz', 'cbnz') else {'thumb2'} if re.match(r'it[te]{0,3}$', m) else set()
     if m in V6M_WIDE:
         return set()
-    if m == 'b' or m[0] == 'b' and m[1:] in CONDS or root(m, BASE):     # bls is b with a condition, not bl
+    if m[0] == 'b' and m[1:] in CONDS:          # bls is b with a condition, not bl; Baseline has only the plain b
+        return {'thumb2'}
+    if m == 'b' or root(m, BASE):
         return {'base'}
     return {'thumb2', 'dsp'} if root(m, DSP) else {'thumb2'}
 
