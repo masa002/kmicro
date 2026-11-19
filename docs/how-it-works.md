@@ -166,6 +166,7 @@ such as `kmicro panic: too many globals (raise KM_GLOBALS, now 160)`.
 
 Two limits are fixed in `runtime/eh.c`: a stack trace keeps at most 12 frames (`KM_TRACE_MAX`), and the
 uncaught-exception report prints at most 16 exceptions, causes and suppressed ones together (`KM_REPORT_MAX`).
+The report says where it met either limit.
 
 ## Calling between C and Kotlin
 
@@ -411,7 +412,21 @@ kmicro panic: uncaught Kotlin exception
 qemu: exit 98
 ```
 
-A trace keeps at most 12 frames, with no marker when it is cut.
+A trace keeps at most 12 frames, the ones nearest to where the exception was created. When there were more, the
+report ends that exception's frames with a line that says so, and a report that has printed 16 exceptions ends
+with one too:
+
+```
+    at 0x08009d38  #probe(kotlin.Int;kotlin.Int){}kotlin.Int+0x30
+    ... more frames left out (KM_TRACE_MAX is 12)
+Caused by: ... more exceptions left out (KM_REPORT_MAX is 16)
+```
+
+The line does not give the number of frames: counting them would mean walking the whole stack for every exception
+that is created, about 1900 instructions for each frame on a Cortex-M4. `getStackTrace()`, `stackTraceToString()`
+and `printStackTrace()` of an exception that the program caught give the frames that were kept, one entry or `at`
+line for each, without such a line: the standard library writes those, one `at` line for each entry it is given,
+and an entry that is not a frame would mislead a program that reads them.
 
 **A CPU fault** is not an exception. On `qemu-l475` the start code prints a fault report and stops with exit 99
 ([porting.md](porting.md#optional-a-fault-report-and-mpu-guards) has the format). Here a constructor of `Base` calls

@@ -1,0 +1,44 @@
+frames of the deepest: 12; of the first that has as many, and of the one before: 12, 11
+getStackTrace() of the one made three calls deeper: 12 frames, and 13 lines in stackTraceToString()
+Uncaught Kotlin exception: Made: three frames more than a trace keeps
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    ... more frames left out (KM_TRACE_MAX is 12)
+    Suppressed: Made: one frame more
+        at 0x{X}
+        at 0x{X}
+        at 0x{X}
+        at 0x{X}
+        at 0x{X}
+        at 0x{X}
+        at 0x{X}
+        at 0x{X}
+        at 0x{X}
+        at 0x{X}
+        at 0x{X}
+        at 0x{X}
+        ... more frames left out (KM_TRACE_MAX is 12)
+Caused by: Made: as many frames as a trace keeps
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+    at 0x{X}
+kmicro panic: uncaught Kotlin exception

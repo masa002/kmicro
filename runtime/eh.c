@@ -416,14 +416,28 @@ static void put_indent(int depth)
         kmicro_puts("    ");
 }
 
+/* A stack trace keeps the first KM_TRACE_MAX frames. One that was cut there has one more element, the first frame
+ * that it left out. Kotlin code does not see that element: the array's length and its strings are those of the
+ * frames kept (the natives of NativePtrArray below, a type that only stack traces have), so getStackTrace() and
+ * stackTraceToString() give one entry for each of them and nothing else. The report says that frames are missing.
+ * Not how many: the walk would have to go on to the end of the stack for every exception that is created, about
+ * 1900 instructions for each frame on a Cortex-M4, while the frame after the last one kept is reached anyway. */
+#define KM_TRACE_MAX 12
+
+static inline uint32_t trace_frames(const ObjHeader *trace)
+{
+    uint32_t n = ((const ArrayHeader *)trace)->count_;
+    return n > KM_TRACE_MAX ? KM_TRACE_MAX : n;
+}
+
 /* The frames of a trace. A later exception's frames end with the ones it shares with the first exception: all but
  * one of those are left out, as printStackTrace() does. */
 KM_REPORT static void put_frames(const ObjHeader *trace, const ObjHeader *top, int depth)
 {
-    uint32_t n = trace != NULL ? ((const ArrayHeader *)trace)->count_ : 0, common = 0;
+    uint32_t n = trace != NULL ? trace_frames(trace) : 0, common = 0;
     const uint32_t *pc = trace != NULL ? km_array_data((ArrayHeader *)trace) : NULL;
     if (top != NULL) {
-        uint32_t m = ((const ArrayHeader *)top)->count_;
+        uint32_t m = trace_frames(top);
         const uint32_t *tpc = km_array_data((ArrayHeader *)top);
         while (common < n && common < m && pc[n - 1 - common] == tpc[m - 1 - common])
             common++;
@@ -442,6 +456,10 @@ KM_REPORT static void put_frames(const ObjHeader *trace, const ObjHeader *top, i
         kmicro_put_int((int32_t)common);
         kmicro_puts(" more common stack frames skipped\n");
     }
+    if (trace != NULL && ((const ArrayHeader *)trace)->count_ > KM_TRACE_MAX) {
+        put_indent(depth);
+        kmicro_puts("    ... more frames left out (KM_TRACE_MAX is " KM_STR(KM_TRACE_MAX) ")\n");
+    }
 }
 
 /* The report of the stock runtime (ReportUnhandledException, which is printStackTrace(): Throwable.kt
@@ -454,7 +472,7 @@ KM_REPORT static void put_frames(const ObjHeader *trace, const ObjHeader *top, i
 typedef struct {
     const ObjHeader *seen[KM_REPORT_MAX];            /* printed so far: one that comes up again is only named */
     int n;
-    bool cut;                                        /* the list is full: "..." was printed, nothing more follows */
+    bool cut;                                        /* the list is full: the report said so, nothing more follows */
     ObjHeader **top;                                 /* the first exception's trace, in a frame slot of the caller */
 } km_report_t;
 
@@ -477,7 +495,7 @@ KM_REPORT static bool report_one(km_report_t *r, ObjHeader *e, int depth, const 
         put_throwable(e, &fr.text);
         kmicro_puts("]\n");
     } else if (r->n == KM_REPORT_MAX) {
-        kmicro_puts("...\n");
+        kmicro_puts("... more exceptions left out (KM_REPORT_MAX is " KM_STR(KM_REPORT_MAX) ")\n");
         r->cut = true;
         fresh = false;
     } else {
@@ -638,8 +656,7 @@ __attribute__((noinline)) ObjHeader *Kotlin_getCurrentStackTrace(ObjHeader **res
 __attribute__((weak)) void km_throwable_init(void)
     __asm__("kfun:kotlin.Throwable#<init>(kotlin.String?;kotlin.Throwable?){}");
 
-#define KM_TRACE_MAX 12
-typedef struct { uint32_t pc[KM_TRACE_MAX], last_pc, last_sp; int n, seen; } km_trace_t;
+typedef struct { uint32_t pc[KM_TRACE_MAX + 1], last_pc, last_sp; int n, seen; } km_trace_t;
 
 /* Whether the frame at pc, in the unwind region that starts at `region`, is that of the function fn. The region
  * starts at fn, or before it: ld.lld leaves out the unwind entry of a function that unwinds as the function before it
@@ -665,10 +682,8 @@ static _Unwind_Reason_Code trace_fn(_Unwind_Context *ctx, void *arg)
             || trace_frame_of(region, pc, km_throwable_init))
             return _URC_NO_REASON;
     }
-    if (t->n >= KM_TRACE_MAX)
-        return _URC_END_OF_STACK;
-    t->pc[t->n++] = pc;
-    return _URC_NO_REASON;
+    t->pc[t->n++] = pc;                              /* one more than a trace keeps: it was cut (trace_frames) */
+    return t->n > KM_TRACE_MAX ? _URC_END_OF_STACK : _URC_NO_REASON;
 }
 
 extern const TypeInfo *theNativePtrArrayTypeInfo;
@@ -684,20 +699,18 @@ ObjHeader *Kotlin_getCurrentStackTrace(ObjHeader **result)
 }
 
 /* NativePtrArray (Arrays.cpp), the type of a stack trace: printStackTrace() of an exception with a cause or a
- * suppressed exception compares its frames with the top exception's. Elements are 4-byte addresses. */
-KM_NOTHROW int32_t Kotlin_NativePtrArray_getArrayLength(const ObjHeader *a)
-{
-    return (int32_t)((const ArrayHeader *)a)->count_;
-}
+ * suppressed exception compares its frames with the top exception's. Elements are 4-byte addresses, the frames
+ * kept: the element after them in a trace that was cut is not one of them (trace_frames). */
+KM_NOTHROW int32_t Kotlin_NativePtrArray_getArrayLength(const ObjHeader *a) { return (int32_t)trace_frames(a); }
 void *Kotlin_NativePtrArray_get(const ObjHeader *a, int32_t i)
 {
-    if ((uint32_t)i >= ((const ArrayHeader *)a)->count_)
+    if ((uint32_t)i >= trace_frames(a))
         ThrowArrayIndexOutOfBoundsException();
     return ((void **)km_array_data((ArrayHeader *)a))[i];
 }
 void Kotlin_NativePtrArray_set(ObjHeader *a, int32_t i, void *v)
 {
-    if ((uint32_t)i >= ((const ArrayHeader *)a)->count_)
+    if ((uint32_t)i >= trace_frames(a))
         ThrowArrayIndexOutOfBoundsException();
     ((void **)km_array_data((ArrayHeader *)a))[i] = v;
 }
@@ -707,7 +720,7 @@ ObjHeader *CreateStringFromCString(const char *c, ObjHeader **result);
 ObjHeader *Kotlin_getStackTraceStrings(const ObjHeader *trace, ObjHeader **result)
 {
     const ArrayHeader *t = (const ArrayHeader *)trace;
-    uint32_t n = t->count_;
+    uint32_t n = trace_frames(trace);
     struct { FrameOverlay f; ObjHeader *arr, *s; } fr = { { 0, 0, 0 }, 0, 0 };
     EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
     kmicro_alloc_array(theArrayTypeInfo, (int32_t)n, &fr.arr);

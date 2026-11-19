@@ -1,0 +1,34 @@
+Uncaught Kotlin exception: kotlin.Exception: level 20
+{...}
+Caused by: kotlin.Exception: level 19
+{...}
+Caused by: kotlin.Exception: level 18
+{...}
+Caused by: kotlin.Exception: level 17
+{...}
+Caused by: kotlin.Exception: level 16
+{...}
+Caused by: kotlin.Exception: level 15
+{...}
+Caused by: kotlin.Exception: level 14
+{...}
+Caused by: kotlin.Exception: level 13
+{...}
+Caused by: kotlin.Exception: level 12
+{...}
+Caused by: kotlin.Exception: level 11
+{...}
+Caused by: kotlin.Exception: level 10
+{...}
+Caused by: kotlin.Exception: level 9
+{...}
+Caused by: kotlin.Exception: level 8
+{...}
+Caused by: kotlin.Exception: level 7
+{...}
+Caused by: kotlin.Exception: level 6
+{...}
+Caused by: kotlin.Exception: level 5
+{...}
+Caused by: ... more exceptions left out (KM_REPORT_MAX is 16)
+kmicro panic: uncaught Kotlin exception
