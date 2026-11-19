@@ -102,8 +102,8 @@ class Disassembly(unittest.TestCase):
         needs = insn_check.needs
         self.assertEqual(needs(False, 'bne.n'), set())
         self.assertEqual(needs(True, 'b.w'), {'base'})
-        self.assertEqual(needs(True, 'bls.w'), {'base'})        # b with a condition, not bl
-        self.assertEqual(needs(True, 'blt.w'), {'base'})
+        self.assertEqual(needs(True, 'bls.w'), {'thumb2'})      # b with a condition, not bl: Baseline has only b.w
+        self.assertEqual(needs(True, 'blt.w'), {'thumb2'})
         self.assertEqual(needs(True, 'blx'), {'thumb2'})
         self.assertEqual(needs(True, 'bl'), set())
         self.assertEqual(needs(False, 'ite'), {'thumb2'})
@@ -329,7 +329,11 @@ for name in sorted(insn_check.DSP):                             # every DSP inst
 # Where the tool is stricter than clang's assembler. A single-precision FPU has no vmov.f64 between D registers: the
 # assembler refuses it for the Cortex-M4F and the Cortex-M33, but takes it for a Cortex-M7 whose double precision
 # -mfpu took away. The compiler does not emit it there: it copies a double as two vmov.f32.
-STRICTER = {'cortex-m7-sp': {SAMPLES.index('vmov.f64 d0, d1')}}
+# ARMv8-M Baseline has the 32-bit b but not the 32-bit b<condition>: clang's parser takes beq.w for the Cortex-M23
+# all the same, and then fails to encode it for some targets ("Relocation not aligned"). GNU as refuses it, which
+# Assembler.test_gnu_as_refuses_the_wide_conditional_branch_for_baseline checks.
+STRICTER = {'cortex-m7-sp': {SAMPLES.index('vmov.f64 d0, d1')},
+            'cortex-m23': {SAMPLES.index('beq.w s0')}}
 
 
 @unittest.skipUnless(HAVE_TOOLS, 'needs LLVM and arm-none-eabi-gcc (python toolchain/paths.py)')
@@ -387,6 +391,18 @@ class Assembler(unittest.TestCase):
                 self.assertEqual([SAMPLES[i] for i in sorted(refused - lacks)], [],
                                  'the assembler refuses these, the tool takes them')
 
+    def test_gnu_as_refuses_the_wide_conditional_branch_for_baseline(self):
+        for sample, taken_by in (('beq.w g', {'cortex-m3'}), ('b.w g', {'cortex-m23', 'cortex-m3'})):
+            src = Path(self.tmp.name) / 'branch.s'
+            src.write_text(f'\t.syntax unified\n\t.thumb\nf:\n\t{sample}\n\tbx lr\ng:\n\tbx lr\n', encoding='utf-8')
+            for cpu in ('cortex-m0plus', 'cortex-m23', 'cortex-m3'):
+                with self.subTest(sample=sample, cpu=cpu):
+                    r = subprocess.run([str(paths.gcc_bin('as')), f'-mcpu={cpu}', src.name, '-o', 'branch.o'],
+                                       cwd=src.parent, capture_output=True, text=True, errors='replace')
+                    self.assertEqual(r.returncode == 0, cpu in taken_by, r.stderr)
+                    mnemonic = sample.split()[0]
+                    self.assertEqual(not insn_check.needs(True, mnemonic) - insn_check.features(cpu), cpu in taken_by)
+
 
 @unittest.skipUnless(HAVE_TOOLS, 'needs LLVM and arm-none-eabi-gcc (python toolchain/paths.py)')
 class CommandLine(unittest.TestCase):
@@ -406,6 +422,18 @@ class CommandLine(unittest.TestCase):
             self.assertEqual(r.stdout.splitlines(),
                              ['insn_check: f.o: 1 of 3 instructions are not ones that cortex-m0plus has',
                               '  0x00000002  f+0x2  movw r0, #4660  (needs ARMv7-M or ARMv8-M)'])
+            # a 32-bit branch with a condition, as a library built for a Thumb-2 core has it
+            src.write_text('\t.syntax unified\n\t.thumb\nf:\n\tbeq.w g\n\tb.w g\ng:\n\tbx lr\n', encoding='utf-8')
+            subprocess.run([str(paths.clang()), '--target=thumbv7m-none-eabi', '-c', str(src), '-o', str(obj)],
+                           check=True)
+            r = subprocess.run([*tool, '--cpu', 'cortex-m23'], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 1, r.stderr)
+            self.assertEqual(r.stdout.splitlines(),
+                             ['insn_check: f.o: 1 of 3 instructions are not ones that cortex-m23 has',
+                              '  0x00000000  f+0x0  beq.w 8 <g>  (needs Thumb-2 (ARMv7-M, ARMv8-M Mainline))'])
+            r = subprocess.run([*tool, '--cpu', 'cortex-m3'], capture_output=True, text=True)
+            self.assertEqual((r.returncode, r.stdout), (0, 'insn_check: f.o: 3 instructions, each of them one that '
+                                                           'cortex-m3 has\n'), r.stderr)
             r = subprocess.run([*tool[:2], str(Path(d) / 'none.elf')], capture_output=True, text=True)
             self.assertEqual(r.returncode, 2)
             self.assertIn('not found', r.stderr)
