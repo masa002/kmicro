@@ -34,13 +34,14 @@ void     mem_wr16(uint32_t addr, uint16_t v);
 uint8_t  mem_rd8(uint32_t addr);
 void     mem_wr8(uint32_t addr, uint8_t v);
 
-void     hw_dsb(void);
-void     hw_isb(void);
-void     hw_dmb(void);
+void     hw_dsb(void);                    /* these four: the instruction; before ARMv7 and outside the M profile */
+void     hw_isb(void);                    /* the write to CP15 that does the same, or nothing where the core has */
+void     hw_dmb(void);                    /* no such operation (hw.c) */
 void     hw_wfi(void);
 void     hw_nop(void);
 uint32_t hw_irq_save(void);               /* returns PRIMASK, then disables interrupts (CPSID i); on a Cortex-A or
-                                             Cortex-R core the CPSR, then masks IRQ and FIQ (CPSID if) */
+                                             Cortex-R core, and on an ARM core from before them, the CPSR, then
+                                             masks IRQ and FIQ */
 void     hw_irq_restore(uint32_t primask); /* re-enables interrupts only if they were enabled before */
 uint32_t hw_ipsr(void);                   /* 0 in thread mode, else the active exception number; Cortex-M only */
 uint32_t hw_basepri(void);                /* BASEPRI: 0 = no masking by priority */

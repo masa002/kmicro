@@ -257,7 +257,13 @@ static _Unwind_Reason_Code install(_Unwind_Control_Block *ucbp, _Unwind_Context 
 {
     _Unwind_SetGR(ctx, 0, (_Unwind_Word)(uintptr_t)ucbp);
     _Unwind_SetGR(ctx, 1, (_Unwind_Word)sel);
-    _Unwind_SetGR(ctx, 15, lp | 1u);                 /* Thumb */
+    /* The landing pad is Kotlin code, built for the same core as this file and in the same state: Thumb for every
+     * Cortex core, ARM for the cores before them, where a set bit 0 would take the core into Thumb state. */
+#if defined(__thumb__)
+    _Unwind_SetGR(ctx, 15, lp | 1u);
+#else
+    _Unwind_SetGR(ctx, 15, lp);
+#endif
     return _URC_INSTALL_CONTEXT;
 }
 

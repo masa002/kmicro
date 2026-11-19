@@ -30,14 +30,23 @@ static inline uint32_t km_handler(void)
  * inlined into the handler, and `ra` names no code of the program. On this profile it is an EXC_RETURN value. */
 static inline int km_handler_return(uintptr_t ra) { return ra >= 0xF0000000u; }
 
-#elif defined(__ARM_ARCH_PROFILE)                    /* 'A' and 'R': Cortex-A (AArch32) and Cortex-R */
+#elif defined(__arm__)                               /* 'A' and 'R': Cortex-A (AArch32) and Cortex-R */
 
-/* The same with the I and F bits of the CPSR: FIQ handlers may run Kotlin code too. The saved value is the CPSR's
- * control byte; the mode in it is the one this code runs in. */
+/* And the ARM cores from before the profiles (ARM7TDMI, ARM926EJ-S, ARM1176JZF-S), for which the compiler defines
+ * no __ARM_ARCH_PROFILE: they have the same CPSR and the same modes, and their handlers are called the same way.
+ * The same with the I and F bits of the CPSR: FIQ handlers may run Kotlin code too. The saved value is the CPSR's
+ * control byte; the mode in it is the one this code runs in. Before ARMv6 there is no cpsid: the two bits are set
+ * in a copy of the CPSR, which is written back. That is ARM code: the Thumb code of those cores cannot reach the
+ * CPSR, and the runtime is not built as such. */
 static inline uint32_t km_irq_save(void)
 {
     uint32_t cpsr;
+#if __ARM_ARCH >= 6
     __asm volatile("mrs %0, cpsr\n cpsid if" : "=r"(cpsr) : : "memory");
+#else
+    uint32_t masked;
+    __asm volatile("mrs %0, cpsr\n orr %1, %0, #0xC0\n msr cpsr_c, %1" : "=&r"(cpsr), "=&r"(masked) : : "memory");
+#endif
     return cpsr;
 }
 static inline void km_irq_restore(uint32_t cpsr) { __asm volatile("msr cpsr_c, %0" : : "r"(cpsr) : "memory"); }

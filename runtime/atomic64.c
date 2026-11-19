@@ -6,8 +6,9 @@
  * The A and R profiles have the two instructions and the compiler uses them, so there this file is empty: a function
  * of this file that only masks interrupts would not make an exclusive store of the interrupted code fail.
  * The condition is the profile, not __ARM_FEATURE_LDREX: clang gives that macro the bit for 64 bits on ARMv8-M too,
- * where it still calls these functions. */
-#if !defined(__ARM_ARCH_PROFILE) || __ARM_ARCH_PROFILE == 'M'
+ * where it still calls these functions. An ARM core from before the profiles is asked for that bit: ARMv6K
+ * (ARM1176JZF-S) has the two instructions, and the cores before it (ARM926EJ-S, ARM7TDMI) get these functions. */
+#if !defined(__arm__) || (defined(__ARM_ARCH_PROFILE) ? __ARM_ARCH_PROFILE == 'M' : !(__ARM_FEATURE_LDREX & 8))
 #include <stdbool.h>
 #include <stdint.h>
 #include "km_cpu.h"

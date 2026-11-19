@@ -22,10 +22,32 @@ void     mem_wr16(uint32_t addr, uint16_t v) { ((u16_any *)addr)->v = v; }
 uint8_t  mem_rd8(uint32_t addr) { return *(const uint8_t *)addr; }
 void     mem_wr8(uint32_t addr, uint8_t v) { *(uint8_t *)addr = v; }
 
+#if defined(__ARM_ARCH_PROFILE)
 void hw_dsb(void) { __asm volatile("dsb" ::: "memory"); }
 void hw_isb(void) { __asm volatile("isb" ::: "memory"); }
 void hw_dmb(void) { __asm volatile("dmb" ::: "memory"); }
 void hw_wfi(void) { __asm volatile("wfi" ::: "memory"); }
+#else
+/* An ARM core from before the profiles has no such instructions. Where it has the operation, it is a write to
+ * CP15: all four on ARMv6 (ARM1176JZF-S); on ARMv5 (ARM926EJ-S) the wait for an interrupt and the drain of the
+ * write buffer, which is what hw_dsb() does there. The others do nothing, and on ARMv4T all four do nothing: an
+ * ARM7TDMI has no CP15, and hw_wfi() returns at once. */
+#define HW_CP15_C7(crm, op2) __asm volatile("mcr p15, 0, %0, c7, " #crm ", " #op2 :: "r"(0u) : "memory")
+#if __ARM_ARCH >= 5
+void hw_dsb(void) { HW_CP15_C7(c10, 4); }
+void hw_wfi(void) { HW_CP15_C7(c0, 4); }
+#else
+void hw_dsb(void) {}
+void hw_wfi(void) {}
+#endif
+#if __ARM_ARCH >= 6
+void hw_isb(void) { HW_CP15_C7(c5, 4); }               /* flush the prefetch buffer */
+void hw_dmb(void) { HW_CP15_C7(c10, 5); }
+#else
+void hw_isb(void) {}
+void hw_dmb(void) {}
+#endif
+#endif
 void hw_nop(void) { __asm volatile("nop"); }
 
 #if __ARM_ARCH_PROFILE == 'M'
@@ -48,13 +70,19 @@ uint32_t hw_ipsr(void)
     return r;
 }
 #else
-/* A Cortex-A or Cortex-R core has no PRIMASK: the value is the CPSR, whose I and F bits mask IRQ and FIQ. It has no
- * IPSR, BASEPRI or DWT either: hw_ipsr and the three hw_basepri functions are not defined there, so a program that
- * calls them does not link, and hw_cycles_enable() returns false. */
+/* A Cortex-A or Cortex-R core has no PRIMASK, and an ARM core from before the profiles has none: the value is the
+ * CPSR, whose I and F bits mask IRQ and FIQ. They have no IPSR, BASEPRI or DWT either: hw_ipsr and the three
+ * hw_basepri functions are not defined there, so a program that calls them does not link, and hw_cycles_enable()
+ * returns false. */
 uint32_t hw_irq_save(void)
 {
     uint32_t m;
+#if __ARM_ARCH >= 6
     __asm volatile("mrs %0, cpsr\n cpsid if" : "=r"(m) :: "memory");
+#else                                               /* no cpsid before ARMv6: the two bits, set in a copy */
+    uint32_t masked;
+    __asm volatile("mrs %0, cpsr\n orr %1, %0, #0xC0\n msr cpsr_c, %1" : "=&r"(m), "=&r"(masked) :: "memory");
+#endif
     return m;
 }
 
