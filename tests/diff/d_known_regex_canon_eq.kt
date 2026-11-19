@@ -5,7 +5,7 @@
 // matches the canonically equivalent text.
 // Not run by default: python tools/difftest.py d_known_regex_canon_eq
 // difftest: heap 32768 -- the Regex engine builds its tables on the heap: the default 16 KB runs out
-// difftest: large -- a program that uses Regex is about 366 KB of flash
+// difftest: large -- a program that uses Regex does not fit the STM32L431's 256 KB of flash
 fun err(label: String, block: () -> Any?) {
     val r = runCatching(block)
     val e = r.exceptionOrNull()

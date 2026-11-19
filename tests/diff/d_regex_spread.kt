@@ -8,7 +8,7 @@
 // Without the collections the program stops there, on a 64 KB heap too: "wanted 16080 B, live after GC 20456 of
 // 65536 B, largest free 3024 B in 54 free blocks" (docs/writing-kotlin.md, "Memory").
 // difftest: heap 49152 -- the tables of the engine and the 16 KB block of one pattern
-// difftest: large -- a program that uses Regex is about 366 KB of flash
+// difftest: large -- a program that uses Regex does not fit the STM32L431's 256 KB of flash
 @file:OptIn(kotlin.native.runtime.NativeRuntimeApi::class)
 
 import kotlin.native.runtime.GC
