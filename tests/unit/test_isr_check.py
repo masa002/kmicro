@@ -159,6 +159,33 @@ class IsrCheck(unittest.TestCase):
         lines, _, _ = isr_check.analyse(text, vector_table(table(0x08000200)))
         self.assertEqual(lines, ['2 interrupt handler(s) checked: no path to an allocation'])
 
+    def test_the_jump_of_a_switch_in_arm_code_is_no_indirect_call(self):
+        # pc loaded from the table of addresses behind the instruction, or the offset added to pc (libgcc)
+        jumps = ('ldr\tpc, [r2, r0, lsl #2]', 'ldrls\tpc, [pc, r3, lsl #2]', 'add\tpc, pc, r1, lsl #2')
+        text = disassembly(FUNCS).replace('<fault>:\n', '<fault>:\n' + ''.join(f' 8000180:\t{i}\n' for i in jumps))
+        lines, _, _ = isr_check.analyse(text, vector_table(table(0x08000200)))
+        self.assertEqual(lines, ['2 interrupt handler(s) checked: no path to an allocation'])
+
+    def test_arm_code(self):
+        # the cores before the Cortex names run ARM code. A call through a pointer is blx there too, and on
+        # ARMv4T, which has no blx, `mov lr, pc` and bx; a load into pc from an object is one as well
+        for insn in ('blx\tr1', 'blxne\tr2', 'bx\tr1', 'ldr\tpc, [r4, #8]'):
+            text = disassembly(FUNCS).replace('<fault>:\n', f'<fault>:\n 8000180:\tmov\tlr, pc\n 8000184:\t{insn}\n')
+            lines, bad, _ = isr_check.analyse(text, vector_table(table(0x08000200)))
+            self.assertEqual(bad, 0, lines)
+            self.assertIn('note   fault: 1 indirect call site(s) not followed: not proven clean', lines, insn)
+        returns = ('pop\t{r4, pc}', 'popne\t{fp, pc}', 'ldm\tsp!, {r0, r1, r2, r3, ip, pc}^', 'ldmfd\tsp!, {r4, pc}',
+                   'pop\t{fp, lr}', 'bx\tlr', 'bxeq\tlr')
+        text = disassembly(FUNCS).replace('<fault>:\n', '<fault>:\n' + ''.join(f' 8000180:\t{i}\n' for i in returns))
+        lines, _, _ = isr_check.analyse(text, vector_table(table(0x08000200)))
+        self.assertEqual(lines, ['2 interrupt handler(s) checked: no path to an allocation'])
+        # a direct call with a condition, and one that changes to Thumb code (newlib's strlen in an ARMv5TE image)
+        for call in ('bleq', 'blx', 'bne'):
+            text = disassembly(FUNCS).replace('<fault>:\n', f'<fault>:\n 8000180:\t{call}\t8000340 <AllocInstance>\n')
+            lines, bad, _ = isr_check.analyse(text, vector_table(table(0x08000200)))
+            self.assertEqual(bad, 1, lines)
+            self.assertIn('ALLOC  fault: fault -> AllocInstance', lines, call)
+
     def test_an_image_without_the_table_says_so(self):
         # kfun:irq#record(){} allocates and is a handler only by the table: without the table nobody looks at it
         lines, bad, n = isr_check.analyse(disassembly(FUNCS + [(0x08000400, 'HardFault_Handler', [])]), '')

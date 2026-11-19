@@ -52,8 +52,11 @@ ALLOC = {'AllocInstance', 'AllocArrayInstance', 'kmicro_alloc_object', 'kmicro_a
 BOX = re.compile(r'<U?(Int|Byte|Short|Long)-box>')
 HANDLER_NAME = re.compile(r'\w+_(IRQ)?Handler|kfun:[^#]*#\w*Handler\(\)\{\}')
 # A transfer through a register or a loaded address: a call (blx r3), a tail call (bx r3, mov pc, r3) or a load into
-# pc. A function's own return is not one: bx lr, mov pc, lr, pop {.., pc}, ldr pc, [sp], #4.
-INDIRECT = re.compile(r'\t(?:blx\w*\s|bx\w*\s+(?!lr\b)|mov\w*\s+pc, (?!lr\b)|ldr\S*\s+pc, \[(?!sp\b))')
+# pc. A function's own return is not one: bx lr, mov pc, lr, pop {.., pc}, ldr pc, [sp], #4. Nor is the jump of a
+# switch in ARM code, which loads pc from the table of addresses behind it, the entry chosen by a register:
+# ldr pc, [r2, r1, lsl #2] (clang), ldrls pc, [pc, r3, lsl #2] (GCC). Thumb-2 code has tbb and tbh for that.
+INDIRECT = re.compile(r'\t(?:blx\w*\s|bx\w*\s+(?!lr\b)|mov\w*\s+pc, (?!lr\b)'
+                      r'|ldr\S*\s+pc, \[(?!sp\b)(?!\w+, \w+, lsl #2\]))')
 
 
 def lazy(name):
