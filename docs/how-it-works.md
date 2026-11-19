@@ -158,14 +158,13 @@ such as `kmicro panic: too many globals (raise KM_GLOBALS, now 160)`.
 | `KM_C_ROOTS` | 16 | 4 B each | `kmicro_root()` slots: objects that C code holds |
 | `KM_STABLE_REFS` | 16 | 8 B each, and 4 B of stack each while cleanup actions run | StableRefs alive at once, and Cleaners whose actions have not run |
 | `KM_EH_DEPTH` | 4 | 104 B each | exceptions between their throw and the end of their catch at once: one for the thread code, one for each interrupt handler that throws while it has interrupted another throw |
+| `KM_TRACE_MAX` | 12 | 4 B of heap for each frame an exception has, and 4 B of stack each while its trace is taken | the frames a stack trace keeps: the ones nearest to where the exception was created |
+| `KM_REPORT_MAX` | 16 | 4 B of stack each, during the report | the exceptions the uncaught-exception report prints, causes and suppressed ones together; after that it prints `...` |
 | `KM_TLS_KEYS` | 8 | 12 B each | modules with thread-local globals |
 | `KM_TLS_SLOTS` | 64 | 4 B each | thread-local reference slots, all modules together |
 | `KM_MARK_STACK` | 96 | 4 B each | the collector's mark stack; not a limit: an overflow costs a rescan of the heap |
 | `KM_GC_REMARKS` | 3 | none | how often an interrupt handler that stores references can make the collector mark again; the pass after that runs with interrupts masked |
 | `KM_GC_STRESS` | 0 | none | 1 (`-D KM_GC_STRESS=1`): a full collection before every allocation, and freed memory overwritten; for tests |
-
-Two limits are fixed in `runtime/eh.c`: a stack trace keeps at most 12 frames (`KM_TRACE_MAX`), and the
-uncaught-exception report prints at most 16 exceptions, causes and suppressed ones together (`KM_REPORT_MAX`).
 
 ## Calling between C and Kotlin
 
@@ -411,7 +410,7 @@ kmicro panic: uncaught Kotlin exception
 qemu: exit 98
 ```
 
-A trace keeps at most 12 frames, with no marker when it is cut.
+A trace keeps at most 12 frames (`-D KM_TRACE_MAX=N` for more), with no marker when it is cut.
 
 **A CPU fault** is not an exception. On `qemu-l475` the start code prints a fault report and stops with exit 99
 ([porting.md](porting.md#optional-a-fault-report-and-mpu-guards) has the format). Here a constructor of `Base` calls
