@@ -1,0 +1,4 @@
+{...}
+ALLOC  {*} -> AllocInstance
+{...}
+{N} interrupt handler(s) checked: {N} path(s) to an allocation

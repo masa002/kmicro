@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """toolchain/retarget.py on a small IR module shaped like kotlinc-native's output: the target attributes equal clang's
 for paths.target_flags(), --no-tls, --single-core, --hot, and the stdlib rewrites (Random seed, hex float parser, Unicode
-tables, box functions). The output must compile with clang.
+tables, box functions, the library's throws). The output must compile with clang.
 
 usage: python -m unittest discover tests/unit       (skipped when the LLVM of Kotlin/Native is not installed)
 """
@@ -314,6 +314,48 @@ attributes #1 = { nounwind }
 """
 
 
+# What throws: two functions of the standard library, one of the program and one of another library.
+THROWS = r"""
+define i32 @"kfun:kotlin.text#digitToInt__at__kotlin.Char(){}kotlin.Int"(i16 zeroext %0) #0 {
+entry:
+  %1 = alloca ptr, align 4
+  call void @ThrowException(ptr noundef %1)
+  unreachable
+}
+
+define void @"kfun:kotlinx.cinterop.nativeMemUtils#allocRaw(){}"(ptr %0) #0 personality ptr @__gxx_personality_v0 {
+entry:
+  invoke void @ThrowException(ptr noundef %0)
+          to label %next unwind label %pad
+
+next:
+  unreachable
+
+pad:
+  %1 = landingpad { ptr, i32 }
+          cleanup
+  resume { ptr, i32 } %1
+}
+
+define void @"kfun:app#fail(){}kotlin.Nothing"(ptr %0) #0 {
+entry:
+  call void @ThrowException(ptr noundef %0)
+  unreachable
+}
+
+define void @"kfun:kotlinx.coroutines#fail(){}kotlin.Nothing"(ptr %0) #0 {
+entry:
+  call void @ThrowException(ptr noundef %0)
+  unreachable
+}
+
+declare void @ThrowException(ptr noundef) #2
+declare i32 @__gxx_personality_v0(...)
+
+attributes #2 = { noreturn }
+"""
+
+
 def body(text, name):
     m = re.search(r'^define [^\n]*@"' + re.escape(name) + r'"[^\n]*\{$(.*?)^\}$', text, re.M | re.S)
     return m.group(1) if m else None
@@ -450,14 +492,26 @@ class RetargetTest(unittest.TestCase):
             self.assertEqual(kept, ['Int', 'ULong'], opts)
             self.assertNotIn('noinline', body(text, 'kfun:app#boxed(kotlin.Int){}kotlin.Any'))
 
-    def test_the_allocation_of_native_memory_is_never_inlined(self):
-        # tools/isr_check.py leaves out the exception this function throws itself, and finds it by its name
-        raw = '"kfun:kotlinx.cinterop.nativeMemUtils#allocRaw(kotlin.Long;kotlin.Int){}kotlin.native.internal.NativePtr"'
-        (OUT / 'raw.ll').write_text(MODULE + f'\ndefine ptr @{raw}(ptr %0, i64 %1, i32 %2) #0 {{\nentry:\n'
-                                    '  ret ptr null\n}\n', encoding='utf-8')
-        r, text = self.retarget(src='raw.ll')
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn(f'define ptr @{raw}(ptr %0, i64 %1, i32 %2) noinline #', text)
+    def test_the_standard_library_throws_through_a_function_of_its_own(self):
+        # by that call tools/isr_check.py knows the exception a library function creates from one the program throws
+        (OUT / 'throws.ll').write_text(MODULE + THROWS, encoding='utf-8')
+        for opts in ((), ('--no-tls', '--single-core', '--size', '--hot', 'kotlin')):
+            r, text = self.retarget(*opts, src='throws.ll')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn('  call void @kmicro_library_throw(ptr noundef %1)\n',
+                          body(text, 'kfun:kotlin.text#digitToInt__at__kotlin.Char(){}kotlin.Int'))
+            self.assertIn('  invoke void @kmicro_library_throw(ptr noundef %0)\n',
+                          body(text, 'kfun:kotlinx.cinterop.nativeMemUtils#allocRaw(){}'))
+            for own in ('kfun:app#fail(){}kotlin.Nothing', 'kfun:kotlinx.coroutines#fail(){}kotlin.Nothing'):
+                self.assertIn('  call void @ThrowException(ptr noundef %0)\n', body(text, own))
+            self.assertEqual(len(re.findall(r'^define void @kmicro_library_throw\(ptr %0\) #9998 \{$', text, re.M)), 1)
+            self.assertRegex(text, r'(?m)^attributes #9998 = \{ [^\n]*\bnoinline noreturn "target-cpu"=')
+            c = subprocess.run([str(paths.clang()), *paths.target_flags(), '-O2', '-S', '-x', 'ir', OUT / 'out.ll',
+                                '-o', OUT / 'out.s'], capture_output=True, text=True)
+            self.assertEqual(c.returncode, 0, c.stderr)
+            self.assertEqual(len(re.findall(r'^\s+bl?\s+kmicro_library_throw$', (OUT / 'out.s').read_text(), re.M)), 2)
+        r, text = self.retarget()                           # a module whose library code throws nowhere
+        self.assertNotIn('kmicro_library_throw', text)
 
     def test_hot(self):
         for regex, hot in (('^kfun:demo#', 4), ('^kfun:demo#fast', 1), (r'kotlin\.Int$', 1), ('§', 1)):

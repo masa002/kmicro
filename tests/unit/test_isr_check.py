@@ -34,6 +34,24 @@ def vector_table(words, base=0x08000000):
     return '\n'.join(out) + '\n'
 
 
+def listing(address, name, code, functions):
+    """One more function in objdump's form, with its instructions written out, 2 bytes each in this listing: an
+    operand '<f>' becomes the address and the name of function f, and '@3' the function's own fourth instruction."""
+    start = {n: a for a, n, _ in functions}
+    out = ['', f'{address:08x} <{name}>:']
+    for i, insn in enumerate(code):
+        mnemonic, _, operands = insn.partition('\t')
+        head, _, last = operands.rpartition(', ')
+        if last.startswith('@'):
+            n = 2 * int(last[1:])
+            last = f'{address + n:x} <{name}' + (f'+0x{n:x}>' if n else '>')
+        elif last.startswith('<'):
+            last = f'{start[last[1:-1]]:x} {last}'
+        out.append(f' {address + 2 * i:7x}:\t{mnemonic}\t' + (head + ', ' if head else '') + last)
+    return '\n'.join(out) + '\n'
+
+
+IAE = 'kfun:kotlin.IllegalArgumentException#<init>(kotlin.String?){}'
 FUNCS = [
     (0x08000100, 'Reset_Handler', ['main']),
     (0x08000140, 'main', ['kfun:app#loop(){}', 'kfun:kotlin#<Int-box>(kotlin.Int){}kotlin.Any']),
@@ -104,24 +122,47 @@ class IsrCheck(unittest.TestCase):
         lines, bad, _ = self.run_check(0x08000400, funcs)
         self.assertEqual(bad, 0, lines)
 
-    def test_the_exception_of_native_memory_is_not_followed(self):
-        # nativeHeap's allocation throws OutOfMemoryError from its own body when the arena is full: a throw path
-        raw = 'kfun:kotlinx.cinterop.nativeMemUtils#allocRaw(kotlin.Long;kotlin.Int){}kotlin.native.internal.NativePtr'
-        oom = 'kfun:kotlin.OutOfMemoryError#<init>(kotlin.String?){}'
-        funcs = FUNCS + [(0x08000400, 'kfun:irq#buffer(){}', [raw]),
-                         (0x08000440, raw, ['Kotlin_interop_malloc', 'AllocInstance', oom]),
-                         (0x08000480, oom, ['alloc_block']), (0x080004c0, 'Kotlin_interop_malloc', [])]
-        lines, bad, _ = self.run_check(0x08000400, funcs)
-        self.assertEqual(bad, 0, lines)
-        # an allocation behind the same function that is not its exception is still found
-        funcs[-1] = (0x080004c0, 'Kotlin_interop_malloc', ['alloc_block'])
-        lines, bad, _ = self.run_check(0x08000400, funcs)
+    def throwing(self, code, more=()):
+        """isr_check on a handler kfun:irq#digit(){} with these instructions (listing()), beside FUNCS and the
+        exception's constructor, which allocates the stack trace."""
+        funcs = FUNCS + [(0x08000440, IAE, ['alloc_block']), (0x08000480, 'kmicro_library_throw', ['ThrowException']),
+                         (0x080004c0, 'ThrowException', []), *more]
+        text = disassembly(funcs) + listing(0x08000400, 'kfun:irq#digit(){}', code, funcs)
+        return isr_check.analyse(text, vector_table(table(0x08000400)))
+
+    def test_the_exception_a_library_function_creates_itself_is_not_followed(self):
+        # digitToInt() inlined into the handler: the exception, its message and its constructor, then the throw
+        throw = ['bl\t<AllocInstance>', 'blx\tr3', f'bl\t<{IAE}>', 'bl\t<kmicro_library_throw>']
+        lines, bad, _ = self.throwing(['push\t{r7, lr}', 'cmp\tr0, #9', 'bhi.n\t@4', 'pop\t{r7, pc}', *throw])
+        self.assertEqual(lines, ['2 interrupt handler(s) checked: no path to an allocation'])
+        # also with a loop, a branch and a throw helper on the way, and when the throw is a tail call
+        last = 'bl\t<kmicro_library_throw>'
+        for code in (['bl\t<AllocInstance>', 'subs\tr4, #1', 'bne.n\t@0', f'bl\t<{IAE}>', last],
+                     ['bl\t<AllocInstance>', 'cbz\tr0, @3', 'bl\t<ThrowIndexOutOfBounds>', last],
+                     ['it\tne', 'popne\t{r7, pc}', 'bl\t<AllocInstance>', 'b.w\t<kmicro_library_throw>']):
+            lines, bad, _ = self.throwing(code)
+            self.assertEqual(bad, 0, (code, lines))
+
+    def test_an_allocation_that_is_not_part_of_a_library_throw_is_found(self):
+        alloc = 'ALLOC  kfun:irq#digit(){}: kfun:irq#digit(){} -> AllocInstance'
+        for why, code in (
+                ('the throw of the program itself', ['bl\t<AllocInstance>', f'bl\t<{IAE}>', 'bl\t<ThrowException>']),
+                ('the function may go on', ['bl\t<AllocInstance>', 'cbz\tr0, @3', 'bl\t<kmicro_library_throw>',
+                                            'pop\t{r7, pc}']),
+                ('the function may go on', ['bl\t<AllocInstance>', 'it\teq', 'bxeq\tlr', 'bl\t<kmicro_library_throw>']),
+                ('a throw helper alone', ['bl\t<AllocInstance>', 'bl\t<ThrowIndexOutOfBounds>']),
+                ('never returns, never throws', ['bl\t<AllocInstance>', 'b.n\t@1']),
+                ('a jump through a table', ['bl\t<AllocInstance>', 'tbb\t[pc, r0]', 'bl\t<kmicro_library_throw>']),
+                ('a conditional throw at the end', ['bl\t<AllocInstance>', 'blne\t<kmicro_library_throw>']),
+                ('a tail call elsewhere', ['bl\t<AllocInstance>', 'bne.w\t<fault>', 'bl\t<kmicro_library_throw>']),
+                ('data in the code', ['bl\t<AllocInstance>', '.word\t0x08000481', 'bl\t<kmicro_library_throw>'])):
+            lines, bad, _ = self.throwing(code)
+            self.assertIn(alloc, lines, why)
+        # the same call before the throw and on a path that returns: the second counts
+        code = ['cbz\tr0, @3', f'bl\t<{IAE}>', 'pop\t{r7, pc}', f'bl\t<{IAE}>', 'bl\t<kmicro_library_throw>']
+        lines, bad, _ = self.throwing(code)
         self.assertEqual(bad, 1, lines)
-        self.assertIn(f'ALLOC  kfun:irq#buffer(){{}}: kfun:irq#buffer(){{}} -> {raw} -> Kotlin_interop_malloc -> '
-                      'alloc_block', lines)
-        # and so is the same exception created by another function
-        funcs = FUNCS + [(0x08000400, 'kfun:irq#buffer(){}', [oom]), (0x08000480, oom, ['alloc_block'])]
-        self.assertEqual(self.run_check(0x08000400, funcs)[1], 1)
+        self.assertIn(f'ALLOC  kfun:irq#digit(){{}}: kfun:irq#digit(){{}} -> {IAE} -> alloc_block', lines)
 
     def test_a_user_function_named_like_a_throw_helper_is_followed(self):
         for name in ('kfun:irq#sendOrThrow(kotlin.Int){}kotlin.Int', 'kfun:irq#ThrowAway(){}',

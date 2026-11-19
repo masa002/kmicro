@@ -21,6 +21,13 @@ fun throwInHandler(): Int = try {
 
 // The thread code: n new exceptions, thrown from a called function and caught here. Returns the number caught with
 // the right message.
+// What a handler must not do: a new exception is an allocation, also when the handler catches it.
+fun throwNewInHandler(n: Int): Int = try {
+    fail(n)
+} catch (e: IllegalStateException) {
+    1
+}
+
 fun throwInThread(n: Int): Int {
     var caught = 0
     repeat(n) {
