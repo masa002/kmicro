@@ -246,6 +246,66 @@ LATE = """
  800019c:	.word	0x00001770
 """
 
+# ARM code (clang for an ARM1176JZF-S and for an ARM7TDMI). An instruction holds a constant of eight bits, shifted by
+# an even number of places, so a large frame is taken in two steps; a variable-length array; a register of the FPU.
+ARM = """
+00100000 <arm_small>:
+  100000:	push	{r4, lr}
+  100004:	sub	sp, sp, #16
+  100008:	mov	r4, r0
+  10000c:	mov	r0, sp
+  100010:	bl	100200 <use>
+  100014:	ldr	r0, [sp]
+  100018:	add	sp, sp, #16
+  10001c:	pop	{r4, pc}
+
+00100024 <arm_big>:
+  100024:	push	{r4, r5, fp, lr}
+  100028:	sub	sp, sp, #6848	@ 0x1ac0
+  10002c:	sub	sp, sp, #49152	@ 0xc000
+  100030:	mov	r5, sp
+  100034:	mov	r0, r5
+  100038:	bl	100200 <use>
+  10003c:	add	sp, sp, #6848	@ 0x1ac0
+  100040:	add	sp, sp, #49152	@ 0xc000
+  100044:	pop	{r4, r5, fp, lr}
+  100048:	bx	lr
+
+0010007c <arm_vla>:
+  10007c:	push	{r4, r5, r6, r7, fp, lr}
+  100080:	add	fp, sp, #16
+  100084:	mov	r1, #7
+  100088:	add	r0, r1, r0, lsl #2
+  10008c:	bic	r4, r0, #7
+  100090:	mov	r5, sp
+  100094:	sub	r0, r5, r4
+  100098:	mov	sp, r0
+  10009c:	bl	100200 <use>
+  1000a0:	ldr	r0, [r5, -r4]
+  1000a4:	sub	sp, fp, #16
+  1000a8:	pop	{r4, r5, r6, r7, fp, pc}
+
+001000ac <arm_alloca>:
+  1000ac:	push	{r4, r5, fp, lr}
+  1000b0:	sub	sp, sp, #8192	@ 0x2000
+  1000b4:	mov	r5, sp
+  1000b8:	mov	r0, r5
+  1000bc:	bl	100200 <use>
+  1000c0:	add	sp, sp, #8192	@ 0x2000
+  1000c4:	pop	{r4, r5, fp, pc}
+
+001000d0 <arm_fp>:
+  1000d0:	push	{fp, lr}
+  1000d4:	vpush	{d8}
+  1000d8:	sub	sp, sp, #16
+  1000dc:	mov	r0, sp
+  1000e0:	vstr	d0, [sp]
+  1000e4:	bl	100200 <use>
+  1000e8:	add	sp, sp, #16
+  1000ec:	vpop	{d8}
+  1000f0:	pop	{fp, pc}
+"""
+
 # `ld.lld --strip-all`, `arm-none-eabi-strip`: one label per section
 STRIPPED = """
 Disassembly of section .text:
@@ -285,6 +345,13 @@ class Frames(unittest.TestCase):
         self.assertEqual(f, {'gcc_thumb2': 8 + 8192, 'gcc_armv6m': 8 + 8192, 'gcc_armv6m_O0': 8 + 16 + 8192,
                              'given_back_from_the_pool': 16 + 6000})
         self.assertEqual(dynamic, set())
+
+    def test_arm_code(self):
+        dynamic = set()
+        f = frames.frames(ARM, dynamic)
+        self.assertEqual(f, {'arm_small': 8 + 16, 'arm_big': 16 + 6848 + 49152, 'arm_vla': 24,
+                             'arm_alloca': 16 + 8192, 'arm_fp': 8 + 8 + 16})
+        self.assertEqual(dynamic, {'arm_vla'})
 
     def image(self, disasm):
         """frames.of_image() for an image with this disassembly."""
