@@ -188,14 +188,18 @@ __attribute__((noinline, used, noreturn)) void start_c(void)
  * sets the stack pointer again, since a report never returns. It passes on what the mode banks: lr, which is the
  * address of the faulting instruction plus an offset per exception, and the SPSR, the CPSR of the faulting code.
  * The stack pointer and lr of that code are banked in its own mode, so the entry visits that mode to read them;
- * r4 to r7 are the same registers in every mode. tools/symbolize.py resolves the report's "at 0x..." address. */
+ * r3 to r7 are the same registers in every mode. An SVC of the program is taken in the program's own mode,
+ * Supervisor mode: there is no other mode to visit. Its stack pointer is the one the entry had before it set its
+ * own, kept in r3, and its lr is gone, because the exception wrote the return address over it: the report says
+ * "lr unknown". tools/symbolize.py resolves the report's "at 0x..." address. */
 enum { UNDEFINED = 1, SVC = 2, PREFETCH_ABORT = 3, DATA_ABORT = 4, FIQ = 7 };               /* the vector's index */
 typedef struct { uint32_t vector, lr, spsr, sp_usr, lr_usr; } fault_t;
 
 #define FAULT_ENTRY(name, vector)                                                                              \
     ARM_ENTRY void name(void)                                                                                  \
     {                                                                                                          \
-        __asm volatile("ldr sp, =_exc_stack\n"                                                                 \
+        __asm volatile("mov r3, sp\n"                                                                          \
+                       "ldr sp, =_exc_stack\n"                                                                 \
                        "mov r4, #" #vector "\n"                                                                \
                        "b fault_entry\n"                                                                       \
                        ".ltorg\n");                                                                            \
@@ -219,6 +223,9 @@ ARM_ENTRY void fault_entry(void)
                    "mov r1, sp\n"
                    "mov r2, lr\n"
                    "msr cpsr_c, r7\n"
+                   "eor r0, r6, r7\n"
+                   "tst r0, #0x1F\n"                            /* the faulting code ran in this very mode: */
+                   "moveq r1, r3\n"                             /* its sp, as the entry found it */
                    "push {r1, r2}\n"                            /* fault_t, from its end */
                    "push {r4, r5, r6}\n"
                    "mov r0, sp\n"
@@ -264,7 +271,9 @@ __attribute__((used, noreturn)) void start_fault(const fault_t *f)
     /* In Thumb state lr is 2 less far for an undefined instruction or an SVC, and as in ARM state for the others. */
     uint32_t pc = f->lr - back[f->vector] + (thumb && f->vector <= SVC ? 2u : 0u);
     uintptr_t gs = (uintptr_t)&_sguard, ge = (uintptr_t)&_eguard, ig = (uintptr_t)&_irq_guard;
-    uint32_t mode = f->spsr & 0x1Fu;
+    uint32_t mode = f->spsr & 0x1Fu, cpsr;
+    __asm volatile("mrs %0, cpsr" : "=r"(cpsr));
+    int lr_lost = mode == (cpsr & 0x1Fu);                       /* the exception was taken in the code's own mode */
     /* Only an access that no region of the MPU covers is one of the guards. With this MPU the status is in the long
      * format (bit 9), and such an access is a translation fault (status 4) or, as QEMU reports it, a permission
      * fault (12), both of level 0. A breakpoint is a prefetch abort too, with another status and no address. */
@@ -288,7 +297,10 @@ __attribute__((used, noreturn)) void start_fault(const fault_t *f)
         kmicro_puts(")");
     put_hex(" at ", pc);
     put_hex("\n    sp ", f->sp_usr);
-    put_hex("  lr ", f->lr_usr);
+    if (lr_lost)
+        kmicro_puts("  lr unknown");
+    else
+        put_hex("  lr ", f->lr_usr);
     put_hex("  cpsr ", f->spsr);
     put_hex("  dfsr ", dfsr);
     put_hex("  dfar ", dfar);
