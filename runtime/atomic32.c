@@ -1,12 +1,13 @@
 /* Copyright 2026 the kmicro authors (NOTICE).
  * SPDX-License-Identifier: Apache-2.0 */
-/* Atomics of 1, 2 and 4 bytes on a core without LDREX/STREX (ARMv6-M: Cortex-M0, M0+, M1).
+/* Atomics of 1, 2 and 4 bytes on a core without LDREX/STREX: ARMv6-M (Cortex-M0, M0+, M1), and the ARM cores from
+ * before ARMv6 (ARM7TDMI, ARM926EJ-S).
  *
  * On the other cores the compiler turns an atomic operation into an exclusive load and store that an interrupt in
- * between makes retry. ARMv6-M has no such instructions, so LLVM calls the __atomic_* functions of this file
+ * between makes retry. These cores have no such instructions, so LLVM calls the __atomic_* functions of this file
  * instead. With one thread, the only other party is an interrupt handler: each function runs with interrupts masked
- * (km_cpu.h), a few instructions long, as the 64-bit atomics of atomic64.c do on every core. On a core that has the
- * instructions this file is empty. */
+ * (km_cpu.h), a few instructions long, as the 64-bit atomics of atomic64.c do where the core has none. On a core
+ * that has the instructions this file is empty. */
 #if defined(__ARM_ARCH) && !(defined(__ARM_FEATURE_LDREX) && (__ARM_FEATURE_LDREX & 4))
 #include <stdbool.h>
 #include <stdint.h>
