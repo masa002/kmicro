@@ -226,8 +226,8 @@ Kotlin/Native stdlib: 261 implemented, 52 unsupported, 40 Objective-C, 0 missing
 
 ## Another core
 
-kmicro builds for the cores from the Cortex-M0 to the Cortex-M85, and for the Cortex-A7 and the Cortex-R52, which have
-[sections of their own](#a-cortex-a-core). [roadmap.md](roadmap.md#targets) lists them with
+kmicro builds for the cores from the Cortex-M0 to the Cortex-M85, and for the Cortex-A7, the Cortex-R52 and the
+ARM1176JZF-S, which have [sections of their own](#a-cortex-a-core). [roadmap.md](roadmap.md#targets) lists them with
 what was checked on each: all of it on QEMU, and only the Cortex-M4F on a board. For a Cortex-M core other than the
 Cortex-M4F, these parts of a board build change:
 
@@ -368,6 +368,50 @@ different:
 `--cpu cortex-r5` and `--cpu cortex-r5f` build code for the Cortex-R5 (ARMv7-R), and that code was tested on the
 Cortex-R52 ([roadmap.md](roadmap.md#targets)). There is no start code for that core: it has the MPU of ARMv7-R,
 no Hyp mode and no VBAR, so its vectors are at address 0 or 0xFFFF0000, and a board has to write all of that.
+
+## An ARM core from before the Cortex names
+
+`--cpu arm1176jzf-s` builds for the ARM1176JZF-S (ARMv6KZ with VFPv2), the core of the first Raspberry Pi and of
+the Pi Zero. Nothing of it has run on a board. What this section says was checked on QEMU's `raspi0` machine, with
+[targets/qemu-raspi0](../targets/qemu-raspi0) (`start.c`, `raspi0.ld`) standing in for a board's. Everything in
+[A Cortex-A core](#a-cortex-a-core) holds for it: the vectors at VBAR, a stack for each mode, the interrupt entry
+and its three duties (`clrex` among them), the two linker symbols around the code that calls the handlers, the
+table of handlers, the masking through the CPSR, the guards by the
+MMU. What is different:
+
+- **Everything is ARM code.** The flags are
+  `--target=armv6kz-none-eabihf -mcpu=arm1176jzf-s -mfpu=vfpv2 -mfloat-abi=hard`, with no `-mthumb`. The core has
+  Thumb, but not Thumb-2: its Thumb code has no instruction for the FPU and none for the CPSR, through which the
+  runtime masks interrupts, so [runtime/km_cpu.h](../runtime/km_cpu.h) does not compile as Thumb code for it. The
+  vectors and the entries of the start code need no `target("arm")`. An image is about a quarter larger than the
+  Thumb-2 image of the same program for a Cortex-A7: the selftest is 147.6 KB.
+- **The libraries are those of ARMv5TE.** The xPack GCC has no multilib of ARMv6 and gives this core
+  `arm/v5te/hard`: ARM code of ARMv5TE with VFPv2 and the hard-float calling convention, which the core runs. One
+  function of that newlib in the selftest image is Thumb code, `strlen`; ARM code calls it with `blx`, which the
+  linker sees to.
+- **VBAR is there because of the Security Extensions,** which the ARM1176JZF-S has; the program stays in the Secure
+  state, in which the core starts. An ARM11 core without them (ARM1136, ARM11 MPCore) has its vectors at address 0,
+  or at 0xFFFF0000 with SCTLR.V. The start code here does neither.
+- **No `isb`, `dsb`, `dmb` and `wfi` instructions.** Before ARMv7 they are writes to CP15 (register c7). The start
+  code flushes the prefetch buffer that way after it has given access to the FPU and after it has turned the MMU on,
+  and `hw_isb`, `hw_dsb`, `hw_dmb` and `hw_wfi` of [support/hw.c](../support/hw.c) are those writes.
+- **The table entries of the MMU** have two forms on ARMv6. The start code sets SCTLR.XP, which chooses the one a
+  Cortex-A has, and builds the same tables.
+- **An unaligned access goes wrong without a fault.** As this core leaves reset (SCTLR.U is 0), an LDR at an
+  address that is not a multiple of 4 reads the aligned word and rotates it. The start code sets SCTLR.A, so that
+  such an access is a data abort instead (seen on QEMU). The compiler is told not to
+  make such accesses, and the tests found none in the runtime or in the code it makes for Kotlin. C code of your
+  own that reads a word through a cast pointer into a byte buffer has one: use `memcpy`, a packed struct, or
+  `mem_rd32` and the like of [support/hw.h](../support/hw.h).
+- **The interrupt controller of the BCM2835** neither names the interrupt that came nor acknowledges it: it has
+  three pending registers with a bit for each interrupt that is asking and enabled. The entry serves the lowest
+  number. Its handler has to make the peripheral stop asking, or the same interrupt comes again as soon as the
+  handler has returned. The handlers are `IRQ0_Handler` to `IRQ71_Handler`: 0 to 63 as the pending registers 1 and
+  2 number them, 64 to 71 for the eight of the basic pending register.
+- **Semihosting**, if the board's `kmicro_puts` uses it, is `svc 0x123456` in ARM state. An SVC that is taken in
+  Supervisor mode overwrites that mode's lr, so the call names lr as changed.
+- **The image is linked for the second megabyte** (`raspi0.ld`), because the first one is the null guard. The
+  firmware of a Raspberry Pi loads an image at 0x8000 unless its configuration says otherwise.
 
 ## A check on QEMU
 

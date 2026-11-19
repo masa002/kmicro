@@ -107,10 +107,11 @@ reasons:
 ## Targets
 
 kmicro builds for the Cortex-M cores from the Cortex-M0 to the Cortex-M85, and for cores of the A and the R profile
-in their 32-bit state: the Cortex-A7 and the Cortex-R52, and others whose code those two run. `--cpu CORE` on
-kbuild, qbuild, run_all and difftest, or the environment variable `KMICRO_CPU`, chooses the core; the default is
-`cortex-m4f`. `CORES` in [toolchain/paths.py](../toolchain/paths.py) holds the clang target, the flags and the
-newlib and libgcc multilib of each. A core without an FPU uses the soft-float calling convention.
+in their 32-bit state: the Cortex-A7 and the Cortex-R52, and others whose code those two run. It also builds for
+one ARM core from before the Cortex names, the ARM1176JZF-S. `--cpu CORE` on kbuild, qbuild, run_all and difftest,
+or the environment variable `KMICRO_CPU`, chooses the core; the default is `cortex-m4f`. `CORES` in
+[toolchain/paths.py](../toolchain/paths.py) holds the clang target, the flags and the newlib and libgcc multilib of
+each. A core without an FPU uses the soft-float calling convention.
 
 | `--cpu` | Architecture | FPU | Tested on QEMU's | Checked | selftest: flash | RAM |
 |---|---|---|---|---|---|---|
@@ -140,12 +141,14 @@ newlib and libgcc multilib of each. A core without an FPU uses the soft-float ca
 | `cortex-r5` | ARMv7-R, built as Thumb-2 code | none | `mps3-an536`, a Cortex-R52 | run_all | 116.1 KB | 18.2 KB |
 | `cortex-r5f` | ARMv7-R, built as Thumb-2 code | VFPv3-D16 | `mps3-an536`, a Cortex-R52 | the selftest | 115.2 KB | 18.2 KB |
 | `cortex-r52` | ARMv8-R, built as Thumb-2 code | FP-ARMv8 and NEON | `mps3-an536`, a Cortex-R52 | run_all, also under GC stress; difftest for 16 of its programs | 117.1 KB | 18.2 KB |
+| `arm1176jzf-s` | ARMv6KZ, built as ARM code | VFPv2 | `raspi0` (a Raspberry Pi Zero), an ARM1176JZF-S | run_all; difftest for 6 of its programs | 147.6 KB | 18.2 KB |
 
 - **run_all** means that `python tests/run_all.py --cpu CORE` passes: every test program and example, with the
   checks the tools make on the images. The three tests of the large-memory machine, `mps2-an386`, are skipped for a
   core whose code its Cortex-M4F does not run: the Cortex-M7, the cores of ARMv8-M and ARMv8.1-M, and those of
-  the A and R profiles. For the A and R profiles three more are skipped, whose Kotlin code programs the System
-  Control Block or the SysTick of a Cortex-M: `isr_init_window`, `isr_init_window_tls` and the example `irq`.
+  the A and R profiles, and the ARM1176JZF-S. For those last three kinds three more are skipped, whose Kotlin code
+  programs the System Control Block or the SysTick of a Cortex-M: `isr_init_window`, `isr_init_window_tls` and the
+  example `irq`.
 - **The selftest** means that `python tests/run_all.py --cpu CORE selftest` passes and nothing else was run. The
   Cortex-A and Cortex-R cores with this word differ from the core of their machine in the `-mcpu` value, the FPU
   and its multilib.
@@ -220,6 +223,25 @@ newlib and libgcc multilib of each. A core without an FPU uses the soft-float ca
   code that this repository does not have. QEMU 9.2.4 has models of the Cortex-A8, A9 and A15 on other machines,
   for which there is no start code here, and of the Cortex-R5F on `xlnx-zcu102` (in `qemu-system-aarch64`, next to four
   64-bit Cortex-A53), where a trial did not get an image to run: the two Cortex-R5F cores stayed off.
+- **The ARM1176JZF-S is a core from before the Cortex names:** ARMv6KZ with VFPv2, the core of the first
+  Raspberry Pi and of the Pi Zero, and the one the compiler's own target, `linux_arm32_hfp`, compiles for. It has
+  the exceptions and the modes of the A profile, so its start code ([targets/qemu-raspi0](../targets/qemu-raspi0))
+  is laid out as that of the Cortex-A7: the program in Supervisor mode with the MMU on, a flat map and the same
+  guards (the first megabyte, and a 4 KB page below the stack and below each exception stack, are not mapped), its
+  handlers in IRQ mode, called through the interrupt controller of the board's chip, a BCM2835. What differs is the
+  code. This core has no Thumb-2, so everything is built as ARM code, the only core here for which it is, and an
+  image is larger: the selftest by a quarter. The libraries are those of ARMv5TE with VFPv2 (`arm/v5te/hard`), the
+  nearest the xPack GCC has. An unaligned load or store of a word faults there: the start code asks for that
+  (SCTLR.A), because this core would otherwise read the aligned word and rotate it, and run_all passes with it.
+  Six differential tests (`d_strings`, `d_atomic_arrays`, `d_exceptions`, `d_math`, `d_numbers`, `d_to_double`)
+  gave the output of the stock runtime.
+  What was not checked: nothing ran on a board, whose firmware loads an image at another address than the second
+  megabyte this one is linked for, and which has no semihosting to print through; QEMU does not model the caches,
+  which the start code leaves off; there is no build without the FPU (the ARM1176JZ-S); run_all was not run under
+  GC stress, and difftest not in full. The other ARM11 cores (the ARM1136, the ARM11 MPCore) are ARMv6 too, but
+  have no Security Extensions and with them no VBAR: their vectors are at address 0 or 0xFFFF0000, which this start
+  code does not do, and nothing was built or run for them.
+  [porting.md](porting.md#an-arm-core-from-before-the-cortex-names) says what a board with this core does.
 - **On a board,** only the Cortex-M4F has run: an STM32L431, in
   [the recorded run](../examples/selftest/stm32l431-report.txt), which predates release 0.1.0.
   [porting.md](porting.md#another-core) says what a board with another core changes.
@@ -237,6 +259,8 @@ Not supported:
 - **PACBTI on the Cortex-M85:** the code is built without pointer authentication and branch target
   identification, and the libraries GCC has for them are not linked.
 - **The other Cortex-R cores and 32-bit Cortex-A cores:** there is no entry in `CORES` for them, and nothing ran.
+- **The other ARM cores from before the Cortex names:** the rest of ARM11 (ARM1136, ARM1156, ARM11 MPCore), and all
+  of ARM9 and ARM7 (ARMv5TE, ARMv4T). There is no entry in `CORES` for them, and nothing ran.
 - **Start code for a Cortex-R5 or for a Cortex-A core other than the Cortex-A7:** the entries of those cores build
   code, and only the machines of the Cortex-A7 and the Cortex-R52 have start code.
 - **64-bit ARM:** out of reach of this approach, which reads the IR of the compiler's 32-bit ARM target.
@@ -251,7 +275,7 @@ Each gap is described where it matters; this list only points there.
 |---|---|
 | The standard library: what works partly, does not work, or is not supported | [kotlin-support.md](kotlin-support.md) |
 | Memory: a heap that does not move objects and fragments, heap exhaustion that cannot be caught, the size of `Regex` | [README: Known gaps](../README.md#known-gaps), [writing-kotlin.md](writing-kotlin.md#memory) |
-| Diagnostics: stack traces of at most 12 frames, cut without a marker; stack overflow and null reads caught only by the start code of `qemu-l475` (by MPU guards), of `qemu-virt` (by pages the MMU does not map) and of `qemu-an536` (by addresses outside the MPU's regions), not by `qemu-an386` or the STM32L431 example | [how-it-works.md](how-it-works.md#reading-a-stack-trace), [porting.md](porting.md#optional-a-fault-report-and-mpu-guards) |
+| Diagnostics: stack traces of at most 12 frames, cut without a marker; stack overflow and null reads caught only by the start code of `qemu-l475` (by MPU guards), of `qemu-virt` and `qemu-raspi0` (by pages the MMU does not map) and of `qemu-an536` (by addresses outside the MPU's regions), not by `qemu-an386` or the STM32L431 example | [how-it-works.md](how-it-works.md#reading-a-stack-trace), [porting.md](porting.md#optional-a-fault-report-and-mpu-guards) |
 | Boards: the hooks a board must provide for clocks, entropy and input | [porting.md](porting.md#the-board-contract) |
 | Hosts: Windows is tested, and Linux x64 in CI; macOS is not; on Windows, file names outside the ANSI code page fail in the xPack tools | [BUILDING.md](../BUILDING.md#hosts) |
 

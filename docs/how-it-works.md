@@ -4,7 +4,7 @@ Kotlin/Native has no target for a microcontroller without an operating system. I
 32-bit ARM, hard-float, EABI. The LLVM data layout of that target is identical, character for character, to the
 one of every Cortex-M target, from `thumbv6m-none-eabi` (Cortex-M0) to `thumbv8.1m.main-none-eabihf` (Cortex-M85),
 and to the one of `thumbv7-none-eabihf` and `thumbv8r-none-eabihf`, the Thumb-2 targets of the Cortex-A7 and the
-Cortex-R52:
+Cortex-R52, and of `armv6kz-none-eabihf`, the target of the ARM1176JZF-S, whose code is ARM code:
 
     e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64
 
@@ -57,7 +57,8 @@ core: the STM32L475 (`--target l475`) for the default core and the cores below i
 linker script of the machine. `--target an386` links for QEMU's `mps2-an386` (4 MB of code, 16 MB of RAM) instead,
 for a program that needs more memory than a microcontroller has. The Cortex-A7 runs on QEMU's `virt` machine
 (`--target virt`, its only one), with the start code of `targets/qemu-virt`, and the Cortex-R52 on `mps3-an536`
-(`--target an536`), with that of `targets/qemu-an536`. qbuild stops when the `--target` does not run the code of the
+(`--target an536`), with that of `targets/qemu-an536`. The ARM1176JZF-S runs on `raspi0`, a Raspberry Pi Zero
+(`--target raspi0`), with that of `targets/qemu-raspi0`. qbuild stops when the `--target` does not run the code of the
 core: the machine lacks its FPU or its instructions, or has the other kind of MPU, and the guards of the start code,
 compiled for the core, would then do nothing. `--run` runs the image and exits with its exit code, 124 after
 `--timeout` seconds (120 by default). With `--icount` the emulator's clock is the number of instructions the program
@@ -223,8 +224,10 @@ DWT cycle counter (`hw_cycles_enable()`, `hw_cycles()`). `hw_cycles_enable()` re
 counter and `hw_cycles()` stays 0, so check it before a loop that waits for cycles: on QEMU, which does not model
 the DWT, on ARMv6-M and ARMv8-M Baseline (Cortex-M0, M0+, M1, M23), whose DWT has no cycle counter, and on a chip
 built without one. Those four cores have no `BASEPRI` either: the three `hw_basepri` functions are not defined
-there, and a program that calls them does not link. On the Cortex-A7 and the Cortex-R52 `hw_irq_save` and
-`hw_irq_restore` work on the CPSR, and `hw_ipsr`, the `hw_basepri` functions and the cycle counter are not there.
+there, and a program that calls them does not link. On the Cortex-A7, the Cortex-R52 and the ARM1176JZF-S
+`hw_irq_save` and `hw_irq_restore` work on the CPSR, and `hw_ipsr`, the `hw_basepri` functions and the cycle counter
+are not there. The ARM1176JZF-S has no instruction for a barrier or for `WFI`: there those functions are the writes
+to CP15 that do the same.
 Kotlin reaches them through cinterop: `kbuild.py --def support/hw.def` makes them the package `c` (`import c.*`).
 `support/hw.c` is linked with the program: on QEMU it is one of qbuild's C files, on a board it is compiled with the
 runtime's flags ([porting.md](porting.md#compiling-the-runtime)). A call such as `hw_wr32(RCC.CR, v)` becomes a
@@ -247,7 +250,8 @@ A Kotlin function can be an interrupt handler: name it after the vector (`fun us
 enabled without a handler ends in the fault report (`interrupt 37 without a handler`). A Cortex-A or Cortex-R core
 has one IRQ vector and no table of handlers: the start code of QEMU's `virt` and `mps3-an536` calls `IRQ0_Handler`
 to `IRQ99_Handler` from its interrupt entry, numbered as the machine's interrupt controller numbers them
-([porting.md](porting.md#a-cortex-a-core)). An interrupt can arrive while the collector is running, so a handler
+([porting.md](porting.md#a-cortex-a-core)), and that of `raspi0` does the same with `IRQ0_Handler` to
+`IRQ71_Handler`. An interrupt can arrive while the collector is running, so a handler
 must not allocate. The runtime stops with a panic when a handler allocates or collects, the runtime's own
 allocations included. A handler may read and store references and use the atomics.
 [tools/isr_check.py](../tools/isr_check.py) finds allocation, boxing and lazy initialisation on the paths from the
