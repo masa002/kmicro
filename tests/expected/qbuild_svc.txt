@@ -1,0 +1,2 @@
+kmicro fault: exception 11 at 0x{X}
+    sp {*}
