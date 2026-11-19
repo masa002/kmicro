@@ -1,7 +1,7 @@
 # Copyright 2026 the kmicro authors (NOTICE).
 # SPDX-License-Identifier: Apache-2.0
-"""Build a QEMU test image: Kotlin LTO object(s) + the kmicro runtime + C code, for an emulated Cortex-M or
-Cortex-A.
+"""Build a QEMU test image: Kotlin LTO object(s) + the kmicro runtime + C code, for an emulated Cortex-M,
+Cortex-A or Cortex-R core, or an ARM core from before those names.
 
 usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--cpu CORE] [--target NAME] [--large]
                               [--run] [--icount] [--timeout SECONDS]
@@ -34,10 +34,13 @@ usage: python tools/qbuild.py OUT.elf FILE... [-D NAME=VALUE]... [-I DIR]... [--
                an536: QEMU mps3-an536, a Cortex-R52 (targets/qemu-an536), the default and the only machine for
                cortex-r52 and for cortex-r5 and cortex-r5f, whose code that core runs, with the image in its RAM
                in the same way
-    --large    l475, an385, an500, an505, an547, virt and an536 give a program the memory of the STM32L431 kmicro
-               aims at, 256 KB of flash and 64 KB of RAM: one that does not fit fails to link, and the stack ends
-               where it would end on that chip. With --large the program gets the memory of the STM32L475: 1 MB of
-               flash and 96 KB of RAM
+               raspi0: QEMU raspi0, a Raspberry Pi Zero with an ARM1176JZF-S (targets/qemu-raspi0), the default and
+               the only machine for arm1176jzf-s, with the image in its RAM in the same way. QEMU gives this machine
+               512 MB of memory, which a Windows host commits when the machine starts
+    --large    l475, an385, an500, an505, an547, virt, an536 and raspi0 give a program the memory of the STM32L431
+               kmicro aims at, 256 KB of flash and 64 KB of RAM: one that does not fit fails to link, and the stack
+               ends where it would end on that chip. With --large the program gets the memory of the STM32L475: 1 MB
+               of flash and 96 KB of RAM
     --run      run the image on QEMU and exit with the program's exit code (124 when it runs out of time)
     --icount   with --run: QEMU's clock is the number of instructions the program has run, one nanosecond each
                (-icount shift=0,sleep=off), not the host's clock. A timer interrupt then lands on the same
@@ -73,6 +76,7 @@ TARGETS = {   # start code and linker script, QEMU machine (and its -cpu, where 
     'an547': (ROOT / 'targets/qemu-l475', 'an547.ld', 'mps3-an547', ['-lnosys']),
     'virt': (ROOT / 'targets/qemu-virt', 'virt.ld', 'virt -cpu cortex-a7', ['-lnosys']),
     'an536': (ROOT / 'targets/qemu-an536', 'an536.ld', 'mps3-an536', ['-lnosys']),
+    'raspi0': (ROOT / 'targets/qemu-raspi0', 'raspi0.ld', 'raspi0', ['-lnosys']),
 }
 # The machine a core's programs run on when --target is not given: its own where QEMU has one with this start code,
 # else the STM32L475, whose Cortex-M4F runs the code of every core below it. QEMU has no Cortex-M23: its code, ARMv8-M
@@ -83,7 +87,7 @@ _M55 = ('cortex-m55', 'cortex-m55-nomve', 'cortex-m55-nofp', 'cortex-m85', 'cort
 DEFAULT_TARGET = {'cortex-m3': 'an385', 'cortex-m7': 'an500', 'cortex-m7-sp': 'an500', 'cortex-m23': 'an505',
                   'cortex-m33': 'an505', 'cortex-m33f': 'an505', **dict.fromkeys(_M55, 'an547'),
                   **dict.fromkeys(_A7, 'virt'), 'cortex-r52': 'an536',
-                  'cortex-r5': 'an536', 'cortex-r5f': 'an536'}
+                  'cortex-r5': 'an536', 'cortex-r5f': 'an536', 'arm1176jzf-s': 'raspi0'}
 # The cores whose code each machine runs. A machine does not run code for an FPU or for instructions its core lacks.
 # And the start code is compiled for the core: its stack and null guards are written for the MPU of ARMv8-M or for the
 # one of the older cores, and on a machine with the other MPU the program runs with no guard at all.
@@ -92,7 +96,7 @@ _M4F = (*_M3, 'cortex-m4', 'cortex-m4f')
 _M33F = ('cortex-m23', 'cortex-m33', 'cortex-m33f')
 RUNS = {'l475': _M4F, 'an386': _M4F, 'an385': _M3, 'an500': (*_M4F, 'cortex-m7', 'cortex-m7-sp'), 'an505': _M33F,
         'an547': (*_M33F, *_M55), 'virt': _A7,
-        'an536': ('cortex-r52', 'cortex-r5', 'cortex-r5f')}
+        'an536': ('cortex-r52', 'cortex-r5', 'cortex-r5f'), 'raspi0': ('arm1176jzf-s',)}
 
 
 def qemu_machine(target):
@@ -222,11 +226,13 @@ def missing_symbols(link, stderr, labels, kotlin):
 def write_stubs(path, names):
     """Each name: a function that panics with its name. Assembly, so no optimiser sees a signature it could
     disagree with (LTO deletes the paths that call a C stub with another prototype), and any spelling assembles.
-    The branch is a `bl`, which every core has (ARMv6-M has no `b.w`); kmicro_panic does not return."""
-    text = ['\t.syntax unified', '\t.thumb', '\t.section .text.kmicro_autostubs,"ax",%progbits']
+    The branch is a `bl`, which every core has (ARMv6-M has no `b.w`); kmicro_panic does not return. The stubs are
+    Thumb code or ARM code, as the image is."""
+    state, align, func = ('.thumb', 1, ['\t.thumb_func']) if paths.thumb() else ('.arm', 2, [])
+    text = ['\t.syntax unified', f'\t{state}', '\t.section .text.kmicro_autostubs,"ax",%progbits']
     for i, n in enumerate(names):
         q = '"' + n + '"'
-        text += ['\t.p2align 1', f'\t.globl {q}', f'\t.type {q}, %function', '\t.thumb_func', f'{q}:',
+        text += [f'\t.p2align {align}', f'\t.globl {q}', f'\t.type {q}, %function', *func, f'{q}:',
                  f'\tldr r0, =.Lkm_autostub{i}', '\tbl kmicro_panic', '\t.ltorg']
     text.append('\t.section .rodata.kmicro_autostubs,"a",%progbits')
     for i, n in enumerate(names):

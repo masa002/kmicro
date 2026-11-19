@@ -216,7 +216,7 @@ class ArgPathError(unittest.TestCase):
 class BugReportForm(unittest.TestCase):
     def test_the_form_offers_every_core(self):
         form = (ROOT / '.github/ISSUE_TEMPLATE/bug_report.yml').read_text(encoding='utf-8')
-        self.assertEqual(sorted(re.findall('^ +- (cortex-[a-z0-9-]+)', form, re.M)), sorted(paths.CORES))
+        self.assertEqual(sorted(re.findall('^ +- ((?:cortex-|arm)[a-z0-9-]+)', form, re.M)), sorted(paths.CORES))
 
 
 if __name__ == '__main__':

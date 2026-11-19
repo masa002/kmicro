@@ -82,7 +82,8 @@ class Targets(unittest.TestCase):
         for cpu, target, default in (('cortex-m4f', 'an505', 'l475'), ('cortex-m33', 'l475', 'an505'),
                                      ('cortex-m4f', 'an385', 'l475'), ('cortex-m7', 'an386', 'an500'),
                                      ('cortex-m4f', 'an547', 'l475'), ('cortex-m55', 'an505', 'an547'),
-                                     ('cortex-m85-nofp', 'an505', 'an547')):
+                                     ('cortex-m85-nofp', 'an505', 'an547'), ('arm1176jzf-s', 'virt', 'raspi0'),
+                                     ('cortex-a7', 'raspi0', 'virt')):
             r = run('--cpu', cpu, '--target', target)
             self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
             self.assertIn(f'qbuild: --target {target} ', r.stderr)

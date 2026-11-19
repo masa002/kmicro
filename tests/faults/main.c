@@ -32,8 +32,10 @@ static uint32_t pad_argument(uint32_t fallback)
     register void *r1 __asm("r1") = &block;
 #if __ARM_ARCH_PROFILE == 'M'
     __asm volatile("bkpt 0xAB" : "+r"(r0) : "r"(r1) : "memory");
-#else                                           /* the semihosting call of the A and R profiles, in Thumb state */
+#elif defined(__thumb__)                        /* the semihosting call of the A and R profiles, in Thumb state */
     __asm volatile("svc 0xAB" : "+r"(r0) : "r"(r1) : "memory");
+#else                                           /* and in ARM state, as the cores before the profiles make it */
+    __asm volatile("svc 0x123456" : "+r"(r0) : "r"(r1) : "memory", "lr");
 #endif
     if (r0 != 0)
         return fallback;

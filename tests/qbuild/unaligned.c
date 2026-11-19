@@ -2,7 +2,10 @@
  * SPDX-License-Identifier: Apache-2.0 */
 /* A core of ARMv6-M or ARMv8-M Baseline faults on an unaligned LDR or STR. QEMU runs the code of those cores on a
  * larger core, which allows them, so the start code asks that core to fault too (CCR.UNALIGN_TRP). This test checks
- * that setting for such a core, and for the other cores that an unaligned read gives the bytes. */
+ * that setting for such a core, and for the other cores that an unaligned read gives the bytes.
+ * An ARM core from before the profiles does not give the bytes either: as it leaves reset, it reads the aligned
+ * word and rotates it. The start code of those targets asks for a fault instead (SCTLR.A), and the test checks
+ * that setting. */
 #include "kmicro.h"
 
 #ifdef __ARM_FEATURE_UNALIGNED
@@ -14,8 +17,12 @@ int main(void)
 #ifdef __ARM_FEATURE_UNALIGNED
     volatile uintptr_t odd = (uintptr_t)s_bytes + 1;
     int ok = *(volatile uint32_t *)odd == 0x05040302u;
-#else
+#elif defined(__ARM_ARCH_PROFILE)
     int ok = (*(volatile uint32_t *)0xE000ED14 >> 3) & 1;      /* CCR.UNALIGN_TRP */
+#else
+    uint32_t sctlr;
+    __asm volatile("mrc p15, 0, %0, c1, c0, 0" : "=r"(sctlr));
+    int ok = (sctlr >> 1) & 1;                                  /* SCTLR.A */
 #endif
     kmicro_puts("unaligned access behaves as on this core  ");
     kmicro_puts(ok ? "OK\n" : "FAILED\n");

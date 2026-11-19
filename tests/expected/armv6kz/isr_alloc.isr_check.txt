@@ -1,0 +1,2 @@
+ALLOC  IRQ1_Handler: IRQ1_Handler{*} -> alloc_block
+2 interrupt handler(s) checked: 1 path(s) to an allocation

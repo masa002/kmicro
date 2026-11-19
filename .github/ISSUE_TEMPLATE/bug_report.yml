@@ -62,6 +62,7 @@ body:
         - cortex-r52
         - cortex-r5
         - cortex-r5f
+        - arm1176jzf-s
     validations:
       required: true
   - type: dropdown

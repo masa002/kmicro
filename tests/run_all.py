@@ -14,7 +14,7 @@ usage: python tests/run_all.py [NAME ...] [--cpu CORE] [--kotlin] [--stress] [-v
 Each test builds its Kotlin sources with toolchain/kn.py build(), as tools/kbuild.py does (kotlinc-native runs only
 when a source or an option changed), links them with its C files and the runtime with tools/qbuild.py, runs the image
 on QEMU's STM32L475 (with --cpu, on the machine qbuild chooses for the core: the STM32L475, mps2-an385, mps2-an500,
-mps2-an505, mps3-an547, virt or mps3-an536; or on mps2-an386, for a test that says so) and checks:
+mps2-an505, mps3-an547, virt, mps3-an536 or raspi0; or on mps2-an386, for a test that says so) and checks:
 
 - the exit code;
 - the output, line by line against tests/expected/<name>.txt (tests/expected/<architecture>/<name>.txt, for example

@@ -1,8 +1,9 @@
 # Copyright 2026 the kmicro authors (NOTICE).
 # SPDX-License-Identifier: Apache-2.0
 """The QEMU l475 start code: fault report, stack guard, null guard and clocks, on the default core, on an ARMv8-M
-one and on an ARMv8.1-M one, and the same probes on the start code of QEMU virt for the Cortex-A7 and of QEMU
-mps3-an536 for the Cortex-R52. C programs only (startup_probe.c), no Kotlin compile.
+one and on an ARMv8.1-M one, and the same probes on the start code of QEMU virt for the Cortex-A7, of QEMU
+mps3-an536 for the Cortex-R52 and of QEMU raspi0 for the ARM1176JZF-S. C programs only (startup_probe.c), no Kotlin
+compile.
 
 usage: python -m unittest discover tests/unit       (skipped when LLVM, arm-none-eabi-gcc or QEMU is not installed)
 """
@@ -121,6 +122,12 @@ class StartupCortexRTest(StartupCortexATest):
     Cortex-A7, with guards that are addresses outside every region of the MPU."""
     CPU = 'cortex-r52'
     NOTHING = '0x70000000'
+
+
+class StartupArm1176Test(StartupCortexATest):
+    """The start code of QEMU raspi0 (targets/qemu-raspi0) on its ARM1176JZF-S: ARM code, the MMU of ARMv6, and the
+    same report as on the Cortex-A7."""
+    CPU = 'arm1176jzf-s'
 
 
 if __name__ == '__main__':

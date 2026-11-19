@@ -34,7 +34,7 @@ KOTLIN_NATIVE_VERSION = '2.4.21'          # retarget.py reads this compiler's IR
 
 # The cores kmicro builds for: the clang target, the flags that choose the core and its floating-point unit, and the
 # newlib / libgcc multilib of the xPack GCC that matches them. A core without an FPU uses the soft-float calling
-# convention. Every 32-bit little-endian Thumb target has the data layout that retarget.py expects.
+# convention. Every 32-bit little-endian ARM target has the data layout that retarget.py expects.
 # The Cortex-M55 and the Cortex-M85 are made with or without their FPU (half, single and double precision) and with
 # or without MVE. Each has three entries: with both, as -mcpu means the core to clang and GCC; with the FPU only
 # (-nomve); with neither (-nofp: -mfpu=none takes MVE away too, whose registers are the FPU's). The libraries are
@@ -48,6 +48,10 @@ KOTLIN_NATIVE_VERSION = '2.4.21'          # retarget.py reads this compiler's IR
 # written for it. clang needs -mthumb for that (its default there is ARM state) and writes the triple of ARMv7-A
 # without the profile's letter: thumbv7. A Cortex-R core is built the same way. The xPack GCC has no multilib of
 # ARMv8-R: it gives the Cortex-R52 the one of ARMv7 with VFPv3-D16, whose code that core runs.
+# An ARM core from before the Cortex names is built as ARM code: it has no Thumb-2, and its Thumb code reaches
+# neither the FPU nor the CPSR. The ARM1176JZF-S (ARMv6KZ with VFPv2) is the core kotlinc-native's own target,
+# linux_arm32_hfp, compiles for. The xPack GCC has no multilib of ARMv6: it gives this core arm/v5te/hard, ARM code
+# of ARMv5TE with VFPv2 and the hard-float calling convention, which the core runs.
 _SOFT = ['-mfpu=none', '-mfloat-abi=soft']
 _FP_V81 = ['-mfpu=fp-armv8-fullfp16-d16', '-mfloat-abi=hard']
 CORES = {
@@ -90,6 +94,8 @@ CORES = {
     'cortex-r5': ('thumbv7r-none-eabi', ['-mthumb', '-mcpu=cortex-r5', *_SOFT], 'thumb/v7/nofp'),
     'cortex-r5f': ('thumbv7r-none-eabihf', ['-mthumb', '-mcpu=cortex-r5', '-mfpu=vfpv3-d16', '-mfloat-abi=hard'],
                    'thumb/v7+fp/hard'),
+    'arm1176jzf-s': ('armv6kz-none-eabihf', ['-mcpu=arm1176jzf-s', '-mfpu=vfpv2', '-mfloat-abi=hard'],
+                     'arm/v5te/hard'),
 }
 DEFAULT_CPU = 'cortex-m4f'
 
@@ -123,13 +129,20 @@ def triple():
 
 def arch():
     """The architecture of the core, as in its triple: thumbv6m, thumbv7m, thumbv7em, thumbv8m.base, thumbv8m.main,
-    thumbv8.1m.main, thumbv7 for ARMv7-A and thumbv8r for ARMv8-R."""
+    thumbv8.1m.main, thumbv7 for ARMv7-A, thumbv8r for ARMv8-R, and armv6kz for the ARM1176JZF-S."""
     return CORES[cpu()][0].split('-')[0]
 
 
 def profile():
-    """The architecture profile of the core, the letter in its name: 'M', 'A' or 'R'."""
-    return cpu().split('-')[1][0].upper()
+    """The architecture profile of the core, the letter in its name: 'M', 'A' or 'R'; '' for a core from before
+    the profiles (arm1176jzf-s)."""
+    name = cpu()
+    return name.split('-')[1][0].upper() if name.startswith('cortex-') else ''
+
+
+def thumb():
+    """Whether the core is built as Thumb code, as every Cortex core is; else as ARM code."""
+    return arch().startswith('thumb')
 
 
 def target_flags():
