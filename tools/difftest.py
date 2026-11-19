@@ -29,10 +29,11 @@ A program can declare, each on a comment line of its own:
                                           size the function computes
     // difftest: uncaught -- reason       ends with an uncaught exception: the report that the runtime prints is
                                           compared too (the host's standard error after its standard output), without
-                                          the lines of stack frames ("at ...", "... and N more common stack frames
-                                          skipped"), which differ between the targets. The host program must not exit
-                                          with 0 and the kmicro program must stop with "kmicro panic: uncaught Kotlin
-                                          exception" (exit 98); that line is taken off
+                                          its lines of stack frames ("at 0x08001234", "... and N more common stack
+                                          frames skipped"), which differ between the targets. Only the report loses
+                                          lines: what the program printed before it is compared whole. The host
+                                          program must not exit with 0 and the kmicro program must stop with "kmicro
+                                          panic: uncaught Kotlin exception" (exit 98); that line is taken off
 
 Each line of the report shows SAME, DIFF, OVER (same output, but the image does not fit the STM32L431), FRAME (same
 output, but a function of the image has a stack frame larger than the stack guard, which it could step over without a
@@ -65,7 +66,12 @@ STATS = re.compile(rb'kmicro-difftest: heap (\d+) peak (\d+) live (\d+)\n\Z')   
 NUMBER = re.compile(r'-?(?:\d+(?:\.\d+)?(?:E-?\d+)?|Infinity)|NaN')
 INTEGER = re.compile(r'-?\d+')
 FLOAT_MARK = re.compile(r'f(?!\w)')                # after a number: the program says that it printed a Float
-FRAME = re.compile(rb'^[ \t]*(?:at .*|\.\.\. and \d+ more common stack frames skipped)\r?\n', re.M)
+REPORT = b'Uncaught Kotlin exception:'             # where the report of either runtime starts
+# A frame line of the report. kmicro prints an address ("at 0x08001234"); the stock runtime a number, the module, the
+# address (without 0x on Windows) and the function ("at 0   d_x.kexe   0x41a3f1   kfun:#main(){} + 97"). Another
+# line that begins with "at " is text of the program: a line of an exception's message.
+FRAME = re.compile(rb'^[ \t]*(?:at (?:0x[0-9a-f]{8}|\d+ +\S+ +(?:0x)?[0-9a-fA-F]{6,} .*)'
+                   rb'|\.\.\. and \d+ more common stack frames skipped)\r?\n', re.M)
 PANIC = b'kmicro panic: uncaught Kotlin exception\n'    # eh.c's last line after the report
 VALUE, FLAG = {'heap', 'ulp'}, {'large', 'frame', 'uncaught'}   # the directives with a number and those without
 
@@ -111,8 +117,10 @@ def exit_code(rc):
 
 
 def frameless(out):
-    """A report of an exception without its stack frame lines."""
-    return FRAME.sub(b'', out)
+    """The output of a program that ends with the report of an exception, without the stack frame lines of the
+    report. What comes before the report stays as it is."""
+    start = out.find(REPORT)
+    return out if start < 0 else out[:start] + FRAME.sub(b'', out[start:])
 
 
 def host(name, src, uncaught=False):

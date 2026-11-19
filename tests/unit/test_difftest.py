@@ -55,6 +55,23 @@ class Frameless(unittest.TestCase):
         self.assertEqual(difftest.frameless(kmicro), text)
         self.assertEqual(difftest.frameless(host.replace(b'\n', b'\r\n')), text.replace(b'\n', b'\r\n'))
 
+    def test_the_frame_line_of_each_host(self):
+        # as Linux prints it, as Windows does (no module name, no 0x), and with a 64-bit address after 0x
+        for frame in (b'    at 0   d_x.kexe                            0x41a3f1           kfun:#main(){} + 97 \n',
+                      b'    at 0   ???                                 7ff6beec02ff       kfun:#main(){} + 26 \n',
+                      b'        at 12  ???                                 7ffd4e007374       mainCRTStartup + 27 \n',
+                      b'    at 7   d_x.kexe                            0x0000000104a3f1c4 kfun:#main(){} + 97\n'):
+            self.assertEqual(difftest.frameless(b'Uncaught Kotlin exception: kotlin.Error\n' + frame + b'end\n'),
+                             b'Uncaught Kotlin exception: kotlin.Error\nend\n', frame)
+
+    def test_only_frame_lines_of_the_report_go(self):
+        # the program's own output and the lines of an exception's message stay, also when they begin with "at "
+        before = b'value\nat index 3: 7\n  at once\n    at 0x08001234\n... and 2 more common stack frames skipped\n'
+        report = (b'Uncaught Kotlin exception: kotlin.Error: x\nat index 3: 7\n  at once\n    at 3 o\'clock\n'
+                  b'    at 0x0800\n')
+        self.assertEqual(difftest.frameless(before + report + b'    at 0x08001234\n'), before + report)
+        self.assertEqual(difftest.frameless(before), before)          # no report: nothing is taken out
+
 
 class HostSide(unittest.TestCase):
     def test_the_host_program_is_built_in_one_place_whatever_the_core(self):
