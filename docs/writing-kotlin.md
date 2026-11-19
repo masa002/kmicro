@@ -139,7 +139,8 @@ Native memory (`nativeHeap`, `memScoped`, `cstr`) comes from its own arena of `K
 does not fit throws `OutOfMemoryError("unable to allocate native memory")`; an alignment above 8 bytes is not
 supported and stops the program, and so does freeing a block twice, unless the block was handed out again in
 between. Inside an interrupt handler the `OutOfMemoryError` cannot be created: a request that does not fit stops
-the program there with the allocation panic (isr_check leaves this one path out of its report).
+the program there with the allocation panic (isr_check leaves the exceptions of the standard library out of its
+report, see [Interrupt handlers](#interrupt-handlers)).
 
 The runtime's other tables have fixed sizes too, each settable with `-D`; a full one stops the program with a panic
 that names its macro, such as `too many globals (raise KM_GLOBALS, now 160)`.
@@ -197,6 +198,14 @@ first function. It also takes
 every entry of a section `.irq_handlers` (`--handlers SECTION` for another name) as a handler: a plain table of
 handler addresses, for start code that calls its handlers through one and has no Cortex-M vector table.
 
+isr_check does not report the exception that a function of the standard library throws: that of `digitToInt()` for
+a character that is no digit, of `nativeHeap.alloc` when the arena is full, of an index out of bounds. Such an
+exception is created only when the program has a bug, and inside a handler it cannot be created: the program stops
+there with the allocation panic. What is left out is what a function does once it can do nothing more than throw in
+this way: the exception, its message, its constructor. An allocation after which the function can go on is
+reported, and so is a `throw` in the program's own code (rule 9), also one that an inline function of the standard
+library writes there, as `require` and `check` do.
+
 What a handler may do:
 
 - **Read and store object references**: fields, array elements, globals. When a handler stores a reference while the
@@ -229,7 +238,8 @@ What a handler may do:
 What a handler must not do:
 
 - **Create an object**, including the runtime's own allocations: `Int.toString()`, string templates and
-  concatenation, decoding UTF-8, the stack trace of a new exception.
+  concatenation, decoding UTF-8, the stack trace of a new exception. An exception that the standard library throws
+  is a new one: `digitToInt()` of a character that is no digit stops the program with the allocation panic.
 - **Run a collection**: `GC.collect()` and `kmicro_gc()` stop the program. `GC.schedule()` does nothing inside a
   handler.
 - **Use a file's globals for the first time** (rule 11): that initialises them, which allocates, and stops the

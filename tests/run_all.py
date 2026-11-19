@@ -91,12 +91,13 @@ class Kotlin:
 class Check:
     """A tool run after the test: tools/<script> with args, in the checkout's folder; {elf}, {log}, {dir} and {kotlin}
     stand for the image, run.log, the test's build folder and its Kotlin build folder, {in_entry} for an address in
-    the image's code (in its entry function). The output is compared with tests/expected/<test>.<name>.txt; `same`
-    names two files that must then be identical."""
+    the image's code (in its entry function). The output is compared with tests/expected/<test>.<name>.txt, or with
+    tests/expected/<expected>.txt for a check that says so; `same` names two files that must then be identical."""
     name: str
     args: list
     exit: int = 0
     same: tuple = None
+    expected: str = None                # the file of an output that several tests share
     m_profile: bool = False             # the check is for the image of a Cortex-M core only
 
 
@@ -163,6 +164,9 @@ MEMORY = Kotlin('memory', ['tests/memory/memory.kt', 'tests/memory/globals.kt'])
 FAULTS = Kotlin('faults', ['tests/faults/faults.kt'])
 
 SYMBOLIZE = Check('symbolize', ['tools/symbolize.py', '{elf}', '{log}'])
+# The handler of the test does only what docs/writing-kotlin.md allows a handler: isr_check finds no path from it to
+# an allocation.
+NO_ALLOC = Check('isr_check', ['tools/isr_check.py', '{elf}'], expected='isr_no_alloc.isr_check')
 REGEX = 'the Regex engine, which CANON_EQ needs, is most of its flash'
 PENDS = 'its Kotlin code pends SysTick in the System Control Block'
 SYSTICK = 'the example programs SysTick, the timer of the Cortex-M cores, from Kotlin'
@@ -256,23 +260,26 @@ TESTS = [
     isr('isr_collect', 'TEST_COLLECT', checks=[SYMBOLIZE]),
     isr('isr_schedule', 'TEST_SCHEDULE', exit=0),
     isr('isr_lazy_globals', 'TEST_LAZY', checks=[SYMBOLIZE]),
-    isr('isr_init_all', 'TEST_INIT_ALL', exit=0),
-    isr('isr_init_all_library', 'TEST_LIBRARY', exit=0),
+    isr('isr_init_all', 'TEST_INIT_ALL', exit=0, checks=[NO_ALLOC]),
+    isr('isr_init_all_library', 'TEST_LIBRARY', exit=0, checks=[NO_ALLOC]),
     # (with --size the backend merges small globals, which must not happen to the states the table is tied to)
     Test('isr_init_all_library_size', Kotlin('interrupts', INTERRUPTS.srcs, dict(INTERRUPTS.opts, size=True)),
-         ['tests/interrupts/main.c'], exit=0, case={'TEST_LIBRARY': 1}, tick=True),
-    isr('isr_throw', 'TEST_THROW', exit=0),
-    isr('isr_chars', 'TEST_CHARS', exit=0),
+         ['tests/interrupts/main.c'], exit=0, case={'TEST_LIBRARY': 1}, tick=True, checks=[NO_ALLOC]),
+    isr('isr_throw', 'TEST_THROW', exit=0, checks=[NO_ALLOC]),
+    isr('isr_throw_new', 'TEST_THROW_NEW', checks=[Check('isr_check', ['tools/isr_check.py', '{elf}'], exit=1)]),
+    isr('isr_chars', 'TEST_CHARS', exit=0, checks=[NO_ALLOC]),
+    isr('isr_atomics', 'TEST_ATOMICS', exit=0, checks=[NO_ALLOC]),
     Test('isr_init_window', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98, m_profile=PENDS,
          checks=[SYMBOLIZE]),
     Test('isr_init_window_tls', WINDOW, ['tests/interrupt_window/main.c', 'support/hw.c'], exit=98,
          case={'TEST_THREAD_LOCAL': 1}, m_profile=PENDS),
     isr('isr_swap_fields', 'TEST_SWAP_FIELDS', exit=0, heap=32768, defs=['KM_GC_STRESS=1'],
-        case={'RVR': '1000u', 'ROUNDS': 40000}),
+        case={'RVR': '1000u', 'ROUNDS': 40000}, checks=[NO_ALLOC]),
     isr('isr_swap_slots', 'TEST_SWAP_SLOTS', exit=0, heap=32768, defs=['KM_GC_STRESS=1'],
-        case={'RVR': '1000u', 'ROUNDS': 40000}),
-    isr('isr_copy', 'TEST_COPY', exit=0, case={'RVR': '97u', 'ROUNDS': 20000}),
-    isr('isr_weak', 'TEST_WEAK', exit=0, defs=['KM_GC_STRESS=1'], case={'RVR': '1000u', 'ROUNDS': 20000}),
+        case={'RVR': '1000u', 'ROUNDS': 40000}, checks=[NO_ALLOC]),
+    isr('isr_copy', 'TEST_COPY', exit=0, case={'RVR': '97u', 'ROUNDS': 20000}, checks=[NO_ALLOC]),
+    isr('isr_weak', 'TEST_WEAK', exit=0, defs=['KM_GC_STRESS=1'], case={'RVR': '1000u', 'ROUNDS': 20000},
+        checks=[NO_ALLOC]),
     # runtime natives: platform values, console input, entropy, and the APIs kmicro does not support
     native('natives_platform', 'TEST_PLATFORM', exit=3,
            checks=[Check('missing_natives', ['tools/missing_natives.py', '--check', '--ir', '{kotlin}/m4.ll'])]),
@@ -480,7 +487,7 @@ def run_check(t, c, d, args):
     if r.returncode != c.exit:
         raise Failed(f'{c.name}: exit {r.returncode}, expected {c.exit}\n' + out[-3000:])
     try:
-        compare(f'{t.name}.{c.name}', out, f'build/t/{d.name}/{c.name}.log', bool(t.kotlin))
+        compare(c.expected or f'{t.name}.{c.name}', out, f'build/t/{d.name}/{c.name}.log', bool(t.kotlin))
     except Failed as e:
         raise Failed(f'{c.name}: {e}') from None
     if c.same:

@@ -35,6 +35,8 @@ void TICK_HANDLER(void)
     if (s_ticks == 5) s_done = 1;
 #elif defined(TEST_THROW)
     s_handled += throw_in_handler();
+#elif defined(TEST_THROW_NEW)
+    if (!s_done) { s_done = 1; throw_new_in_handler(s_ticks); }
 #elif defined(TEST_SWAP_FIELDS)
     swap_fields();
 #elif defined(TEST_SWAP_SLOTS)
@@ -45,6 +47,9 @@ void TICK_HANDLER(void)
     weak_read();
 #elif defined(TEST_LIBRARY)
     if (s_ticks <= 5) s_handled += library_in_handler((int32_t)(intptr_t)&s_word, s_ticks);
+    if (s_ticks == 5) s_done = 1;
+#elif defined(TEST_ATOMICS)
+    if (s_ticks <= 5) s_handled += atomics_in_handler(s_ticks);
     if (s_ticks == 5) s_done = 1;
 #elif defined(TEST_CHARS)
     if (s_ticks <= 64) s_handled += classify(s_ticks);
@@ -165,6 +170,18 @@ int main(void)
     wait_for_handler();
     kmicro_stats(&b);
     kmicro_puts("native memory, pointers, an unsigned range, Random and Duration first used in a handler: ");
+    kmicro_put_int(s_handled);
+    kmicro_puts(" of 25 checks; allocations after kt_init_all: ");
+    kmicro_put_int((int32_t)(b.alloc_count - a.alloc_count));
+    kmicro_puts("\n");
+    return s_handled == 25 && b.alloc_count == a.alloc_count ? 0 : 1;
+#elif defined(TEST_ATOMICS)
+    kt_init_all();                      /* creates the atomics the handler uses */
+    kmicro_stats(&a);
+    tick_start(RVR);
+    wait_for_handler();
+    kmicro_stats(&b);
+    kmicro_puts("the atomics, a @Volatile field and println used in a handler: ");
     kmicro_put_int(s_handled);
     kmicro_puts(" of 25 checks; allocations after kt_init_all: ");
     kmicro_put_int((int32_t)(b.alloc_count - a.alloc_count));

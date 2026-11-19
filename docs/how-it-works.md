@@ -88,6 +88,7 @@ What retarget.py changes:
 | `Random.Default` seeded from `kmicro_random_seed()` | `kotlin.random` needs no clock |
 | the hexadecimal branch of `toDouble()` / `toFloat()` calls `runtime/hexfloat.c` | number parsing does not link the Regex engine |
 | the Unicode tables stay in flash, and their files start as initialised | the standard library would copy them to the heap on first use; with no first use left, an interrupt handler may be the first to read them |
+| the functions of the standard library throw through `kmicro_library_throw`, which is never inlined | by that call isr_check knows the exception a library function creates, which it leaves out, from a `throw` of the program, which it reports |
 
 kbuild compiles with kotlinc-native again only when its arguments, the compiler or one of the inputs changed;
 `--kotlin` forces it. `python tools/kbuild.py build/app app.kt --kotlinc -g` adds debug information, which

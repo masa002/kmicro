@@ -31,8 +31,11 @@ functions) or in a boxing function. The heap is not reentrant, so a handler that
 also stops at run time with "allocation inside an interrupt handler"). Paths through the throw helpers of the
 runtime and the standard library (ThrowException, kfun:kotlin.native.internal#Throw...) are not followed: those only
 run on a bug (an index out of bounds, a null), and the run-time guard covers them. The same holds for the exception
-that nativeHeap's allocation creates itself when the native-memory arena is full (kotlinx.cinterop.nativeMemUtils
-allocRaw): a handler may use native memory, and a full arena stops it at run time.
+that a function of the standard library creates in its own body (digitToInt() of a character that is no digit,
+nativeHeap's allocation when the native-memory arena is full): what a function does when it can do nothing more
+than throw as the standard library does is left out. That is read from the branches of the machine code, so it holds
+for a library function the link has inlined, and the standard library throws through a function of its own
+(kmicro_library_throw, toolchain/retarget.py): a `throw` in the program's own code allocates and is reported.
 Indirect calls (function pointers, virtual calls) cannot be followed here and are counted per handler: a handler
 that has one is not proven clean. --callback names the functions such a call reaches.
 
@@ -74,42 +77,98 @@ def throw_helper(name):
                                         name.split('#')[-1].startswith('Throw'))
 
 
-# Functions of the standard library that create the exception they throw in their own body, with no throw helper
-# in between. toolchain/retarget.py keeps them from being inlined, so that they are found here by name.
-THROWS_ITSELF = re.compile(r'kfun:kotlinx\.cinterop\.nativeMemUtils#allocRaw\(')
-EXCEPTION_INIT = re.compile(r'kfun:kotlin\.\w+(?:Error|Exception)#<init>\(')
+# The standard library's own `throw`: toolchain/retarget.py makes every function of the standard library throw through
+# this function, which is never inlined, so that the call is still there to find where the link inlined the library
+# function into the program's code.
+LIBRARY_THROW = 'kmicro_library_throw'
+INSTRUCTION = re.compile(r'^\s*([0-9a-f]+):\t(\S+)[ \t]*([^\t]*)')      # address, mnemonic, operands (no comment)
+TARGET = re.compile(r'(?:^|, )([0-9a-f]+) <(.+?)(\+0x[0-9a-f]+)?>\s*$')
+CONDITION = '(eq|ne|cs|hs|cc|lo|mi|pl|vs|vc|hi|ls|ge|lt|gt|le|al)?(?:\\.[nw])?'
+BRANCH = re.compile('(blx|bl|bx|b)' + CONDITION)                        # bls is b + ls, blls is bl + ls
+NO_BRANCH = re.compile('(?:bics?|bfc|bfi|bkpt)' + CONDITION)            # the other mnemonics that start with b
+# An instruction after which the function is left, or goes on where this tool cannot follow: a return (bx lr,
+# pop {.., pc}, ldm with pc, mov pc, lr), a jump through a register or a table (bx r3, tbb, ldr pc), an exception
+# return, a branch that names no target, and what is no instruction (.word, udf, the dump of data in the code).
+WAY_OUT = re.compile(r'(?:b|tb[bh]|eret|rfe|udf|[^a-z])|\S+\tpc\b|(?:pop|ldm)\S*\t.*\bpc\}')
 
 
-def own_throw(f, g):
-    """The call f -> g belongs to the exception that f throws itself: its allocation or its constructor."""
-    return bool(THROWS_ITSELF.match(f)) and (g in ALLOC or bool(EXCEPTION_INIT.match(g)))
+def library_throw_only(code):
+    """The instructions of one function, [(address, mnemonic, operands)], after which the function can do nothing
+    more than throw as the standard library does, as a set of indices: a call of LIBRARY_THROW can be reached from
+    them, and no way out of the function can, nor a `throw` of the program's own code (ThrowException). A throw
+    helper ends a path as LIBRARY_THROW does. An instruction that is not known here counts as a way out, so that a
+    mistake reports a path too many."""
+    at = {address: i for i, (address, _, _) in enumerate(code)}
+    before = [[] for _ in code]                 # the instructions that can run directly before each one
+    throws, out = set(), set()
+    for i, (_, mnemonic, operands) in enumerate(code):
+        b, t = BRANCH.fullmatch(mnemonic), TARGET.search(operands)
+        callee = t.group(2) if t and not t.group(3) else None       # the start of a function
+        thrower = callee == LIBRARY_THROW or bool(callee) and callee != 'ThrowException' and throw_helper(callee)
+        jump, goes_on = None, True              # where a branch goes; whether the next instruction can follow
+        if b and b.group(1) in ('bl', 'blx'):                       # a call; one through a register returns too
+            goes_on = bool(b.group(2)) or not thrower
+            way_out = callee == 'ThrowException'                    # the program's own throw
+        elif t and (b and b.group(1) == 'b' or not mnemonic.startswith('b')):   # b, beq, cbz, le; or a tail call
+            jump, goes_on = at.get(int(t.group(1), 16)), not b or bool(b.group(2))
+            way_out = jump is None and not thrower
+        else:
+            way_out = not NO_BRANCH.fullmatch(mnemonic) and bool(WAY_OUT.match(mnemonic + '\t' + operands))
+        if callee == LIBRARY_THROW:
+            throws.add(i)
+        if way_out or goes_on and i + 1 == len(code):               # what follows the function is not its code
+            out.add(i)
+        elif goes_on:
+            before[i + 1].append(i)
+        if jump is not None:
+            before[jump].append(i)
+
+    def reach(found):
+        """The instructions from which one of `found` can be reached."""
+        todo, found = list(found), set(found)
+        while todo:
+            for i in before[todo.pop()]:
+                if i not in found:
+                    found.add(i)
+                    todo.append(i)
+        return found
+    return reach(throws) - reach(out) if throws else set()
 
 
 def parse_disassembly(text):
     """objdump -d output -> (calls: function -> the functions it calls or tail-branches to, indirect: function ->
-    number of indirect calls, start: address -> function)."""
-    calls, indirect, start, cur = {}, {}, {}, None
+    number of indirect calls, start: address -> function). What a function does when it can only throw as the
+    standard library does (library_throw_only) is in neither."""
+    calls, indirect, start, cur, code = {}, {}, {}, None, []
+
+    def edges():
+        skip = library_throw_only([c[:3] for c in code])
+        for line in (c[3] for i, c in enumerate(code) if i not in skip):
+            # Kotlin names contain '<' and '>' (kotlin#<UInt-box>, <get-$companion>): take everything up to the
+            # last '>' of the line, minus a +0x offset.
+            # A call or tail call lands on a function's first instruction; a target inside another function
+            # (+0x..) comes from padding or a literal pool decoded as an instruction, and is no edge.
+            m = re.search(r'\t(b[a-z]*(?:\.[nw])?)\s+[0-9a-f]+ <(.+?)(\+0x[0-9a-f]+)?>\s*$', line)
+            if m and m.group(3):
+                m = None
+            if m and m.group(2) != cur:
+                calls[cur].add(m.group(2))
+            elif INDIRECT.search(line):
+                indirect[cur] += 1
+        code.clear()
     for line in text.splitlines():
         m = re.match(r'^([0-9a-f]+) <(.+)>:$', line)
         if m:
+            edges()
             cur = m.group(2)
             start.setdefault(int(m.group(1), 16), cur)
             calls.setdefault(cur, set())
             indirect.setdefault(cur, 0)
             continue
-        if cur is None:
-            continue
-        # Kotlin names contain '<' and '>' (kotlin#<UInt-box>, <get-$companion>): take everything up to the last
-        # '>' of the line, minus a +0x offset.
-        # A call or tail call lands on a function's first instruction; a target inside another function (+0x..)
-        # comes from padding or a literal pool decoded as an instruction, and is no edge.
-        m = re.search(r'\t(b[a-z]*(?:\.[nw])?)\s+[0-9a-f]+ <(.+?)(\+0x[0-9a-f]+)?>\s*$', line)
-        if m and m.group(3):
-            m = None
-        if m and m.group(2) != cur:
-            calls[cur].add(m.group(2))
-        elif INDIRECT.search(line):
-            indirect[cur] += 1
+        m = INSTRUCTION.match(line) if cur is not None else None
+        if m:
+            code.append((int(m.group(1), 16), m.group(2), m.group(3), line))
+    edges()
     return calls, indirect, start
 
 
@@ -162,7 +221,7 @@ def walk(root, calls, indirect):
         f = q.popleft()
         ind += indirect.get(f, 0)
         for g in sorted(calls.get(f, ())):
-            if g in prev or throw_helper(g) or own_throw(f, g):
+            if g in prev or throw_helper(g):
                 continue
             prev[g] = f
             if g in ALLOC:

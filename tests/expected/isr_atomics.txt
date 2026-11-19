@@ -1,0 +1,2 @@
+a handler printed this line
+the atomics, a @Volatile field and println used in a handler: 25 of 25 checks; allocations after kt_init_all: 0
