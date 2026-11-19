@@ -1,0 +1,6 @@
+file: warm 25890, early 0
+closed 1
+object: warm 25890
+removed 1
+an initializer that throws: caught
+removed 2

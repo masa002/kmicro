@@ -232,7 +232,8 @@ static inline void isr_check(void *caller, const char *what)
 
 static bool s_cleaners;                              /* a collection found Cleaners dead: their actions are to run */
 static bool s_cleaning;                              /* run_cleaners is running them */
-static void run_cleaners(bool nested);
+unsigned km_initializing;                            /* initializers of files and objects running (init_cxx.cpp) */
+static bool run_cleaners(bool nested);
 
 static uint32_t *alloc_block(uint32_t object_bytes)
 {
@@ -253,9 +254,9 @@ static uint32_t *alloc_block(uint32_t object_bytes)
         /* No room, and the collection found Cleaners dead. What their actions hold (a buffer given to createCleaner)
          * is still live: it is free once the actions have run and another collection has looked. A resource may have
          * a Cleaner of its own, so this repeats while collections find dead ones; each such Cleaner held a slot, which
-         * bounds the rounds. Not when an action itself is what allocates: its own round is still running. */
-        for (int round = 0; b == NULL && s_cleaners && !s_cleaning && round < KM_STABLE_REFS; round++) {
-            run_cleaners(false);
+         * bounds the rounds. Not when an action itself is what allocates: its own round is still running. And not
+         * while an initializer runs: the actions wait for its end. */
+        for (int round = 0; b == NULL && s_cleaners && round < KM_STABLE_REFS && run_cleaners(false); round++) {
             collect();
             b = take(bytes);
         }
@@ -540,15 +541,23 @@ ObjHeader *Konan_getWeakReferenceImpl(ObjHeader *referent, ObjHeader **result)
  *
  * The slots of all the Cleaners that are due are freed before the first of their actions runs, so that an action
  * that makes StableRefs or Cleaners finds the room the dead ones held. The lambdas wait in the frame meanwhile,
- * KM_STABLE_REFS slots of stack. */
+ * KM_STABLE_REFS slots of stack.
+ *
+ * No action runs while the globals of a file or of an object are being created (km_initializing). The stock
+ * runtime's finalizer thread waits when an action uses such globals. Here the action would run in the middle of
+ * the initializer, on its thread, which the first-use check lets through: it would read the globals that are not
+ * created yet as null. So the actions wait for the first of the places above after the initializer has ended.
+ * False when they did not run. */
 __attribute__((weak)) ObjHeader *km_function0_invoke(ObjHeader *function, ObjHeader **result)
     __asm__("kfun:kotlin.Function0#invoke(){}1:0");  /* the interface call */
 
-__attribute__((noinline, cold)) static void run_cleaners(bool nested)
+__attribute__((noinline, cold)) static bool run_cleaners(bool nested)
 {
     bool outer = s_cleaning;
     if (outer && !nested)                            /* an action that allocates or collects: the loop below goes on */
-        return;
+        return false;
+    if (km_initializing != 0)
+        return false;
     if (km_function0_invoke == NULL)
         kmicro_panic("Cleaner: no Function0.invoke");
     s_cleaning = true;
@@ -572,6 +581,7 @@ __attribute__((noinline, cold)) static void run_cleaners(bool nested)
     } while (s_cleaners);
     LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
     s_cleaning = outer;
+    return true;
 }
 
 /* The sweep frees an object whose class has a finalizer. For a CleanerImpl the first field is the slot of its

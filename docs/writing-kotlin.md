@@ -164,6 +164,13 @@ data that other code is in the middle of changing, and an action whose object is
 does not run. A program that stops allocating leaves the actions waiting: call `GC.collect()`, or `kmicro_gc()` from
 the C main loop, where they should run.
 
+No action runs while the initializer of a file or of an object is running, the code that creates its top-level
+properties at their first use: an action that ran in the middle of it could read a property that does not exist
+yet. The actions wait for the first of the places above after the initializer has ended, and a `GC.collect()` inside
+an initializer returns without them. Until then the cleaners keep their slots and what their actions hold, so an
+initializer that drops more cleaners than the table has slots stops with the panic below: such work belongs in a
+function that the program calls, not in the initial value of a property.
+
 A `Cleaner` holds one slot of the StableRef table (`KM_STABLE_REFS`, 16, shared with `StableRef`) from
 `createCleaner` until its action has run. When the table is full the runtime collects and runs the actions of the
 cleaners that are dead; if no slot comes free the program stops with a panic, `too many StableRefs`, that names the

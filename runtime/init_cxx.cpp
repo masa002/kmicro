@@ -39,6 +39,7 @@ void kmicro_init_thread_local(volatile uintptr_t *global_state, uintptr_t *local
 ObjHeader *kmicro_call_catching(void (*fn)(ObjHeader *), ObjHeader *arg, ObjHeader **frame, ObjHeader **slot);
 void kmicro_panic(const char *what) __attribute__((noreturn));
 extern void *km_fault_pc;                           /* runtime/mm.c: the address kmicro_panic prints */
+extern unsigned km_initializing;                    /* runtime/mm.c: no cleanup action runs while this is not zero */
 }
 
 /* kmicro.h's km_in_interrupt (that header is C) */
@@ -56,17 +57,21 @@ struct Frame {                                       /* FrameOverlay (3 words) +
     static constexpr int kSlots = 4;
 };
 
-/* Runs init(); on an exception returns it (rooted in fr), else nullptr. */
+/* Runs init(); true when it threw, with the exception rooted in fr. An initializer may start another (a first use
+ * of another file), so the ones running are counted, for the cleanup actions that must wait for them (mm.c). */
 bool run_init(Frame &fr, void (*init)(void))
 {
+    bool threw = false;
+    km_initializing++;
     try {
         init();
-        return false;
     } catch (...) {
         SetCurrentFrame(fr.start());                 /* the initializer's frames are gone */
         fr.reason = kmicro_caught_exception();
-        return true;
+        threw = true;
     }
+    km_initializing--;
+    return threw;
 }
 } // namespace
 
