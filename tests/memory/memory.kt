@@ -1,10 +1,12 @@
 // Copyright 2026 the kmicro authors (NOTICE).
 // SPDX-License-Identifier: Apache-2.0
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlin.experimental.ExperimentalNativeApi::class)
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlin.experimental.ExperimentalNativeApi::class,
+    kotlin.native.runtime.NativeRuntimeApi::class)
 
 import kotlin.concurrent.AtomicInt
 import kotlin.native.CName
 import kotlin.native.ref.createCleaner
+import kotlin.native.runtime.GC
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.StableRef
 import kotlinx.cinterop.allocArray
@@ -125,6 +127,50 @@ fun cleanerMemory() {
     println("60 buffers of 4 KB, each held by a cleaner behind a second one: most actions ran ${returned.value >= 100}")
     repeat(100) { buffered() }
     println("100 more, each held by one cleaner: most actions ran ${returned.value >= 100 + 90}")
+}
+
+// Actions that need slots of the StableRef table themselves, with the table full of dead Cleaners and no collection
+// since (the heap has room): the 17th createCleaner collects, and the 16 actions it runs make two StableRefs each.
+// Then one action that makes 17 Cleaners and drops them: the 17th finds the table full inside the action, where the
+// actions of the other 16 must run, as nothing else will free a slot.
+class Pinning(id: Int) {
+    val cleaner = createCleaner(id) {
+        val a = StableRef.create(Box(it))
+        val b = StableRef.create(Box(it + 1))
+        returned.addAndGet(b.get().v - a.get().v)
+        a.dispose()
+        b.dispose()
+    }
+}
+
+val inside = AtomicInt(0)
+
+class Leasing {
+    val cleaner = createCleaner(Unit) {
+        lease(17)
+        inside.value = returned.value % 100
+    }
+}
+
+fun pinning(n: Int) {
+    repeat(n) { Pinning(it) }
+}
+
+fun leasing() {
+    Leasing()
+}
+
+@CName("k_cleaner_slots")
+fun cleanerSlots() {
+    pinning(17)
+    val first = returned.value
+    GC.collect()
+    println("17 dropped, each makes two StableRefs: $first ran before the last was made, ${returned.value} in all")
+    returned.value = 0
+    leasing()
+    GC.collect()
+    GC.collect()
+    println("an action that makes 17 Cleaners: ${inside.value} of them ran inside it, ${returned.value % 100} in all")
 }
 
 // Case mapping and Char properties read the Unicode tables in flash: no heap kept. Char.category creates the 30

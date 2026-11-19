@@ -232,14 +232,14 @@ static inline void isr_check(void *caller, const char *what)
 
 static bool s_cleaners;                              /* a collection found Cleaners dead: their actions are to run */
 static bool s_cleaning;                              /* run_cleaners is running them */
-static void run_cleaners(void);
+static void run_cleaners(bool nested);
 
 static uint32_t *alloc_block(uint32_t object_bytes)
 {
     if (s_lo == NULL)
         heap_init();
     if (__builtin_expect(s_cleaners, 0))             /* before anything is taken from the heap */
-        run_cleaners();
+        run_cleaners(false);
     if (object_bytes > KM_HEAP_BYTES)
         ThrowOutOfMemoryError();
     uint32_t bytes = round8(object_bytes);
@@ -255,7 +255,7 @@ static uint32_t *alloc_block(uint32_t object_bytes)
          * a Cleaner of its own, so this repeats while collections find dead ones; each such Cleaner held a slot, which
          * bounds the rounds. Not when an action itself is what allocates: its own round is still running. */
         for (int round = 0; b == NULL && s_cleaners && !s_cleaning && round < KM_STABLE_REFS; round++) {
-            run_cleaners();
+            run_cleaners(false);
             collect();
             b = take(bytes);
         }
@@ -446,11 +446,12 @@ static void *stable_create(ObjHeader *obj, uint16_t rc)
         km_irq_restore(pm);
         if (attempt > 0 || km_in_interrupt())
             break;
-        /* Full. A Cleaner keeps a slot until its action has run: collect, and run the actions of the dead ones. */
+        /* Full. A Cleaner keeps a slot until its action has run: collect, and run the actions of the dead ones.
+         * An action that is running may be what asks: it cannot wait for the others, so they run inside it. */
         struct { FrameOverlay f; ObjHeader *obj; } fr = { { 0, 0, 0 }, obj };
         EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
         collect();
-        run_cleaners();
+        run_cleaners(true);
         LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
     }
     kmicro_panic("too many StableRefs (raise KM_STABLE_REFS, now " KM_STR(KM_STABLE_REFS) ")");
@@ -535,32 +536,42 @@ ObjHeader *Konan_getWeakReferenceImpl(ObjHeader *referent, ObjHeader **result)
  * collected, when it still finds no room: alloc_block), at the end of GC.collect() and
  * kmicro_gc(), and when the StableRef table is full. Never inside the collector, and never in an interrupt handler,
  * which reaches none of these places. The action may allocate, collect and make Cleaners; an exception it throws
- * ends inside the lambda, as in the stock runtime. */
+ * ends inside the lambda, as in the stock runtime.
+ *
+ * The slots of all the Cleaners that are due are freed before the first of their actions runs, so that an action
+ * that makes StableRefs or Cleaners finds the room the dead ones held. The lambdas wait in the frame meanwhile,
+ * KM_STABLE_REFS slots of stack. */
 __attribute__((weak)) ObjHeader *km_function0_invoke(ObjHeader *function, ObjHeader **result)
     __asm__("kfun:kotlin.Function0#invoke(){}1:0");  /* the interface call */
 
-__attribute__((noinline, cold)) static void run_cleaners(void)
+__attribute__((noinline, cold)) static void run_cleaners(bool nested)
 {
-    if (s_cleaning)                                  /* an action that allocates or collects: the loop below goes on */
+    bool outer = s_cleaning;
+    if (outer && !nested)                            /* an action that allocates or collects: the loop below goes on */
         return;
     if (km_function0_invoke == NULL)
         kmicro_panic("Cleaner: no Function0.invoke");
     s_cleaning = true;
-    struct { FrameOverlay f; ObjHeader *action, *unit; } fr = { { 0, 0, 0 }, 0, 0 };
+    struct { FrameOverlay f; ObjHeader *unit, *action[KM_STABLE_REFS]; } fr;
+    memset(&fr, 0, sizeof fr);
     EnterFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
-    while (s_cleaners) {
+    do {                                             /* a nested call finds the flag cleared by the loop it is in */
         s_cleaners = false;
+        int n = 0;
         for (int i = 0; i < KM_STABLE_REFS; i++)
             if (s_stable[i].clean) {                 /* as the stdlib's executeAndRelease: free the slot, then run */
-                fr.action = s_stable[i].obj;
+                fr.action[n++] = s_stable[i].obj;
                 uint32_t pm = km_irq_save();
                 s_stable[i] = (km_stable_ref_t){ NULL, 0, false, false };
                 km_irq_restore(pm);
-                km_function0_invoke(fr.action, &fr.unit);
             }
-    }
+        for (int i = 0; i < n; i++) {
+            km_function0_invoke(fr.action[i], &fr.unit);
+            fr.action[i] = NULL;                     /* what it held is garbage for the next action's allocations */
+        }
+    } while (s_cleaners);
     LeaveFrame((ObjHeader **)&fr, 0, sizeof fr / sizeof(ObjHeader *));
-    s_cleaning = false;
+    s_cleaning = outer;
 }
 
 /* The sweep frees an object whose class has a finalizer. For a CleanerImpl the first field is the slot of its
@@ -801,7 +812,7 @@ void kmicro_gc(void)
     isr_check(__builtin_return_address(0), "garbage collection inside an interrupt handler");
     collect();
     if (s_cleaners)
-        run_cleaners();
+        run_cleaners(false);
 }
 
 void kmicro_stats(kmicro_stats_t *out)

@@ -167,7 +167,10 @@ the C main loop, where they should run.
 A `Cleaner` holds one slot of the StableRef table (`KM_STABLE_REFS`, 16, shared with `StableRef`) from
 `createCleaner` until its action has run. When the table is full the runtime collects and runs the actions of the
 cleaners that are dead; if no slot comes free the program stops with a panic, `too many StableRefs`, that names the
-macro. A program that keeps more cleaners alive than that sets `-D KM_STABLE_REFS=N`, 8 bytes of RAM each.
+macro. The slots of all the cleaners that are due are free before the first of their actions runs, so an action may
+itself make StableRefs and cleaners in their place; when it is an action that finds the table full, the actions of
+the cleaners that died since run inside it. A program that keeps more cleaners alive than that sets
+`-D KM_STABLE_REFS=N`, 8 bytes of RAM each, and 4 bytes of stack each while actions run.
 
 A `WeakReference` needs no slot: it takes 16 bytes of heap besides itself, and `get()` is null from the collection
 that finds its object dead.
